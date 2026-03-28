@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import java.io.File
 
 class SessionStorageManager(
@@ -46,7 +47,14 @@ class SessionStorageManager(
 
     private fun parseSession(file: File): Session? {
         return try {
-            gson.fromJson(file.readText(), Session::class.java)
+            val rawJson = file.readText()
+            val jsonObject = JsonParser.parseString(rawJson).asJsonObject
+            val parsedSession = gson.fromJson(jsonObject, Session::class.java)
+            if (!jsonObject.has(PROCESSING_VERSION_FIELD) || parsedSession.processingVersion <= 0) {
+                parsedSession.copy(processingVersion = Session.DEFAULT_PROCESSING_VERSION)
+            } else {
+                parsedSession
+            }
         } catch (exception: Exception) {
             Log.w("SessionStorageManager", "Failed to parse session file ${file.name}", exception)
             null
@@ -56,5 +64,9 @@ class SessionStorageManager(
     private fun sanitizeTrackName(trackName: String): String {
         val trimmed = trackName.trim().ifBlank { "track" }
         return trimmed.replace(Regex("[^A-Za-z0-9_-]+"), "_")
+    }
+
+    companion object {
+        private const val PROCESSING_VERSION_FIELD = "processingVersion"
     }
 }

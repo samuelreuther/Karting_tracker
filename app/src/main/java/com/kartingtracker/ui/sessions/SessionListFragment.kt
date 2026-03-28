@@ -89,11 +89,21 @@ class SessionListFragment : Fragment() {
     private fun showOpenOptions(session: Session) {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(session.trackName)
-            .setItems(arrayOf("Open laps", "Open comparison")) { _, which ->
-                sessionViewModel.loadSession(session)
+            .setItems(arrayOf("Open laps", "Open comparison", "Reprocess session")) { _, which ->
                 when (which) {
-                    0 -> findNavController().navigate(R.id.action_sessionListFragment_to_lapsFragment)
-                    1 -> findNavController().navigate(R.id.action_sessionListFragment_to_comparisonFragment)
+                    0 -> {
+                        sessionViewModel.loadSession(session)
+                        findNavController().navigate(R.id.action_sessionListFragment_to_lapsFragment)
+                    }
+
+                    1 -> {
+                        sessionViewModel.loadSession(session)
+                        findNavController().navigate(R.id.action_sessionListFragment_to_comparisonFragment)
+                    }
+
+                    2 -> {
+                        sessionViewModel.reprocessSession(session)
+                    }
                 }
             }
             .show()

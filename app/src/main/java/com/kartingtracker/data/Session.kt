@@ -10,5 +10,10 @@ data class Session(
     val samples: List<SensorSample>,
     val laps: List<Lap>,
     val estimatedLapTimeMs: Long? = null,
-    val quality: SessionQuality? = null
-)
+    val quality: SessionQuality? = null,
+    val processingVersion: Int = DEFAULT_PROCESSING_VERSION
+) {
+    companion object {
+        const val DEFAULT_PROCESSING_VERSION = 1
+    }
+}

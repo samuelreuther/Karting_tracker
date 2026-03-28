@@ -1,5 +1,6 @@
 package com.kartingtracker.data
 
+import android.util.Log
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.domain.SectorDetector
@@ -203,6 +204,48 @@ class SessionRepository(
         _storedSessions.value = sessionStorageManager.loadAllSessions()
     }
 
+    fun reprocessSession(session: Session): Session {
+        if (session.samples.isEmpty()) {
+            Log.i(TAG, "Skipping reprocess for session ${session.id} because it has no samples")
+            return session
+        }
+
+        Log.i(TAG, "Reprocessing session: ${session.id}")
+        val reprocessed = processSessionInternal(
+            session.copy(
+                laps = emptyList(),
+                quality = null
+            )
+        )
+
+        val updated = reprocessed.copy(
+            processingVersion = CURRENT_PROCESSING_VERSION
+        )
+
+        Log.i(TAG, "Old version: ${session.processingVersion} -> New version: ${updated.processingVersion}")
+        Log.i(TAG, "Lap count before/after: ${session.laps.size} -> ${updated.laps.size}")
+
+        sessionStorageManager.saveSession(updated)
+        refreshStoredSessions()
+
+        updated.trackName.takeIf { trackName -> trackName.isNotBlank() }?.let { trackName ->
+            val sessionsForTrack = sessionStorageManager.loadSessionsForTrack(trackName)
+            val updatedProfile = trackProfileManager.updateProfile(trackName, sessionsForTrack)
+            if (trackName == _currentTrackName.value && updatedProfile.averageLapTimeMs > 0L) {
+                _currentTrackProfile.value = updatedProfile
+            }
+        }
+
+        if (_currentSession.value?.id == updated.id) {
+            _currentSession.value = updated
+        }
+        if (_latestSession.value?.id == updated.id) {
+            _latestSession.value = updated
+        }
+
+        return updated
+    }
+
     private fun refreshTracks() {
         _availableTracks.value = trackManager.getTracks()
     }
@@ -254,40 +297,12 @@ class SessionRepository(
         if (session.samples.isEmpty()) {
             return session
         }
-        if (session.laps.isNotEmpty()) {
-            val trackProfile = loadUsableTrackProfile(session.trackName)
-            val enrichedLaps = session.laps.map { lap ->
-                val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
-                val shouldRecomputeSectorTimes = shouldForceTrackProfileSectors(trackProfile) ||
-                    lap.sectorTimesMs.isEmpty() ||
-                    lap.sectorBoundaries != sectorBoundaries
-                lap.copy(
-                    sectorBoundaries = sectorBoundaries,
-                    sectorTimesMs = if (shouldRecomputeSectorTimes) {
-                        SectorDetector.computeSectorTimes(lap, sectorBoundaries)
-                    } else {
-                        lap.sectorTimesMs
-                    }
-                )
-            }
-            val classifiedSession = session.copy(laps = classifyLaps(enrichedLaps))
-                .withQuality()
-            if (classifiedSession != session) {
-                sessionStorageManager.saveSession(classifiedSession)
-                refreshStoredSessions()
-            }
-            return classifiedSession
-        }
 
-        val recoveredSession = buildProcessedSession(
-            sourceSession = session,
-            samples = session.samples,
-            endTimestampNs = session.endTimestampNs,
-            endTimeEpochMs = session.endTimeEpochMs
-        )
-        sessionStorageManager.saveSession(recoveredSession)
-        refreshStoredSessions()
-        return recoveredSession
+        return if (shouldReprocessSession(session)) {
+            reprocessSession(session)
+        } else {
+            session
+        }
     }
 
     private fun buildProcessedSession(
@@ -296,30 +311,22 @@ class SessionRepository(
         endTimeEpochMs: Long,
         sourceSession: Session? = null
     ): Session {
-        val trackName = sourceSession?.trackName ?: _currentTrackName.value
-        val trackProfile = loadUsableTrackProfile(trackName)
-        val detectionResult = lapDetector.detect(samples, trackProfile)
-        val laps = classifyLaps(detectionResult.laps.map { lap ->
-            val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
-            lap.copy(
-                brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
-                corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples),
-                sectorBoundaries = sectorBoundaries,
-                sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
-            )
-        })
-
-        return Session(
+        val baseSession = Session(
             id = sourceSession?.id ?: currentSessionId,
-            trackName = trackName,
+            trackName = sourceSession?.trackName ?: _currentTrackName.value,
             startTimeEpochMs = sourceSession?.startTimeEpochMs ?: currentStartTimeEpochMs,
             endTimeEpochMs = endTimeEpochMs,
             startTimestampNs = sourceSession?.startTimestampNs ?: currentStartTimestampNs,
             endTimestampNs = endTimestampNs,
             samples = samples,
-            laps = laps,
-            estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
-        ).withQuality()
+            laps = emptyList(),
+            estimatedLapTimeMs = null,
+            quality = null
+        )
+
+        return processSessionInternal(baseSession).copy(
+            processingVersion = CURRENT_PROCESSING_VERSION
+        )
     }
 
     private fun classifyLaps(laps: List<Lap>): List<Lap> {
@@ -363,10 +370,6 @@ class SessionRepository(
         }
     }
 
-    private fun shouldForceTrackProfileSectors(trackProfile: TrackProfile?): Boolean {
-        return isConsistentSectorLayout(trackProfile?.typicalSectorBoundaries.orEmpty())
-    }
-
     private fun loadUsableTrackProfile(trackName: String): TrackProfile? {
         val profile = trackProfileManager.loadProfile(trackName) ?: return null
         return profile.takeIf { candidate ->
@@ -393,7 +396,49 @@ class SessionRepository(
         return copy(quality = SessionQualityEvaluator.evaluate(laps))
     }
 
+    private fun processSessionInternal(session: Session): Session {
+        val trackProfile = loadUsableTrackProfile(session.trackName)
+        val detectionResult = lapDetector.detect(session.samples, trackProfile)
+        val laps = classifyLaps(
+            detectionResult.laps.map { lap ->
+                val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
+                lap.copy(
+                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
+                    corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples),
+                    sectorBoundaries = sectorBoundaries,
+                    sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
+                )
+            }
+        )
+
+        return session.copy(
+            laps = laps,
+            estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
+            quality = null
+        ).withQuality()
+    }
+
+    private fun shouldReprocessSession(session: Session): Boolean {
+        if (session.samples.isEmpty()) {
+            return false
+        }
+        if (session.processingVersion < CURRENT_PROCESSING_VERSION) {
+            return true
+        }
+        if (session.laps.isEmpty()) {
+            return true
+        }
+        if (session.quality == null) {
+            return true
+        }
+        return session.laps.any { lap ->
+            lap.sectorBoundaries.isEmpty() || lap.sectorTimesMs.isEmpty()
+        }
+    }
+
     companion object {
+        private const val TAG = "SessionRepository"
+        private const val CURRENT_PROCESSING_VERSION = 2
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

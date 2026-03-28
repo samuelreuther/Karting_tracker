@@ -25,6 +25,7 @@ Implemented today:
 - braking and cornering peak markers
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
 - persistent session storage as JSON
+- processing-versioned session reanalysis from stored raw sensor data
 - periodic autosave during recording
 - dropdown-based track management with duplicate-safe creation flow
 - track-specific learning with reusable profiles, quality guards, and weighted updates
@@ -243,13 +244,22 @@ Each saved session contains:
 - disturbed and outlap flags
 - sector boundaries and sector times
 - session quality metrics when laps were processed
+- processing version for algorithm upgrades
 
 Crash protection:
 
 - during recording, autosave runs every 5 seconds
-- if a session was saved only partially and has no laps yet, the repository reprocesses it on load
-- if an older saved session has laps but no sector metadata yet, the repository enriches it on load
+- if a session was saved only partially and has no laps yet, the repository fully reprocesses it on load
+- if an older saved session has laps but no sectors or no quality yet, the repository fully reprocesses it on load
+- if a saved session was processed with an older algorithm version, it is automatically reprocessed from raw samples on load
 - the foreground service keeps recording active while the app is backgrounded or the screen is off
+
+Session reprocessing:
+
+- stored raw `SensorSample` data remains the source of truth
+- reprocessing reruns lap detection, peak detection, sector detection, disturbed-lap classification, and session quality
+- fresh recordings are saved with the current processing version
+- older JSON files remain readable because missing `processingVersion` defaults to version `1`
 
 ## Track Management
 
@@ -313,18 +323,18 @@ The app includes a session list screen with:
 - filter by track
 - open laps
 - open comparison
+- optional debug action to reprocess a stored session
 
 There is also a `Load last session` button on the main screen.
 
 When a saved session is loaded:
 
 - the repository sets it as `currentSession`
+- older or incomplete sessions are reprocessed automatically when needed
 - the lap list is refreshed
 - comparison state is recomputed
 - default lap selection prefers laps that are neither outlap nor disturbed
-- missing sector metadata is enriched on load
-- older lap classifications are refreshed on load when needed
-- session quality is recomputed on load when older files did not contain it yet
+- outdated sectors, lap classifications, confidence values, and session quality are recomputed from raw samples
 
 ## Simulated Test Data
 

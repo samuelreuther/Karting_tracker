@@ -55,6 +55,7 @@ Wichtig fuer dieses Dokument:
 - Ideal-Lap-Berechnung aus Best-Sektoren
 - einfache textliche Fahrstil-Insights
 - persistente Session-Speicherung als JSON
+- Reprocessing gespeicherter Sessions aus Rohdaten mit Processing-Versionierung
 - periodisches Autosave waehrend Recording
 - Track-Verwaltung
 - dropdown-basierte Track-Auswahl mit persistierter Letztwahl und Duplicate-Schutz
@@ -207,8 +208,11 @@ Bedeutung:
 - `laps`
 - `estimatedLapTimeMs`
 - `quality`
+- `processingVersion`
 
 `quality` ist optional, weil rohe Autosave-Snapshots noch keine verarbeiteten Laps enthalten.
+
+`processingVersion` kennzeichnet, mit welcher Verarbeitungslogik die Session zuletzt voll analysiert wurde.
 
 ## SessionQuality
 
@@ -814,11 +818,13 @@ Gespeicherte Inhalte:
 - Sektorgrenzen und Sektorzeiten
 - geschatzte Rundenzeit
 - Session-Quality-Metriken
+- `processingVersion`
 
 Aktueller Stand:
 
 - `Lap` speichert explizite Segmenttypen ueber `lapPhase`
 - bestehende Kompatibilitaetsfelder wie `isOutlap` bleiben erhalten
+- fehlende `processingVersion`-Felder in aelteren JSON-Dateien werden beim Laden kompatibel als Version `1` behandelt
 
 Die App nutzt derzeit keine Datenbank.
 
@@ -842,6 +848,7 @@ Verantwortung:
 - aktuelles Track-Profil
 - Autosave
 - finale Verarbeitung bei Stop
+- zentrale Reprocessing-Pipeline fuer gespeicherte Sessions
 - Rehydration geladener Sessions
 - Lap-Klassifikation
 - Profil-Update nach Sessionende
@@ -858,6 +865,17 @@ Wichtige States:
 - `currentTrackName`
 - `currentTrackProfile`
 
+Zentrale Reprocessing-Logik:
+
+- `CURRENT_PROCESSING_VERSION = 2`
+- `processSessionInternal(session)` fuehrt die komplette deterministische Verarbeitung erneut aus:
+  - `LapDetector`
+  - `PeakDetector`
+  - `SectorDetector`
+  - Disturbed-Klassifikation
+  - `SessionQualityEvaluator`
+- `reprocessSession(session)` speichert das Ergebnis wieder als JSON und aktualisiert bei Bedarf auch das zugehoerige `TrackProfile`
+
 ## Autosave
 
 Waehrend Recording:
@@ -872,10 +890,10 @@ Finalisierung:
 
 Recovery:
 
-- wenn eine gespeicherte Session Samples, aber noch keine Laps enthaelt, verarbeitet das Repository sie beim Laden nach
-- wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten enthaelt, werden diese beim Laden nacherzeugt
-- geladene Laps werden beim Laden erneut klassifiziert, damit `isDisturbed` auch fuer aeltere Dateien konsistent bleibt
-- geladene Sessions erhalten beim Laden auch fehlende `quality`-Daten
+- wenn eine gespeicherte Session Samples, aber noch keine Laps enthaelt, wird sie beim Laden vollstaendig reprocessiert
+- wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten oder `quality` enthaelt, wird sie ebenfalls vollstaendig reprocessiert
+- wenn `processingVersion < CURRENT_PROCESSING_VERSION` ist, wird die Session beim Laden automatisch mit der aktuellen Verarbeitungslogik neu analysiert
+- Reprocessing nutzt weiterhin die gespeicherten Rohsamples als Quelle und erzeugt neue Laps, Peaks, Sektoren, Confidence-Werte und Session-Quality
 - der Foreground Service reduziert Session-Verlust bei Hintergrundbetrieb deutlich
 
 Grenze:
@@ -1025,12 +1043,14 @@ Aktuelle Funktionen:
   - Sample-Anzahl
 - Session laden
 - direkt zu Laps oder Comparison navigieren
+- Debug-Aktion zum manuellen Reprocess einer Session
 
 ## Laden gespeicherter Sessions
 
 Beim Laden einer Session:
 
 - `SessionRepository.loadSession(...)` setzt `currentSession`
+- falls die Session alt oder unvollstaendig verarbeitet ist, wird zuerst `reprocessSession(...)` ausgefuehrt
 - `SessionViewModel` bezieht `laps` aus `currentSession`
 - Comparison-State wird neu berechnet
 - Standardauswahl fuer Lap A und Lap B wird zurueckgesetzt
@@ -1066,6 +1086,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Persistenz | JSON-Speicherung | Erfuellt | `SessionStorageManager` |
 | Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
+| Persistenz | Reprocessing alter Sessions | Erfuellt | `processingVersion` + `SessionRepository.reprocessSession(...)` |
 | Betrieb | Foreground Service | Erfuellt | `RecordingForegroundService` mit Notification und Wake-Lock |
 | Track Learning | Session-Quality-Guard | Erfuellt | schlechte Sessions duerfen das Profil nicht updaten |
 | Track Learning | gewichtete Profil-Updates | Erfuellt | hohe Session-Qualitaet beeinflusst das Profil staerker |
