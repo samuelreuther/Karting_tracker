@@ -18,6 +18,7 @@ Implemented today:
 - derived signals for both chart compatibility and pocket-tolerant detection
 - hybrid lap detection with correlation, event detection, confidence scoring, track-profile biasing, and outlap handling
 - distinction between `OUTLAP` and `DISTURBED` laps
+- session quality scoring for processed sessions
 - automatic sector detection and sector time calculation without GPS
 - track-profile driven stable sector usage when learned sector boundaries exist
 - braking and cornering peak markers
@@ -25,7 +26,7 @@ Implemented today:
 - persistent session storage as JSON
 - periodic autosave during recording
 - track management
-- track-specific learning with reusable profiles
+- track-specific learning with reusable profiles, quality guards, and weighted updates
 - session browser with filter and reload
 - load-last-session shortcut
 - debug seeding of one simulated test session
@@ -126,6 +127,12 @@ Disturbed lap handling:
 - a lap is marked disturbed when it is much slower than the session reference, has low confidence, or contains too few braking/cornering peaks
 - disturbed laps stay visible in the session, but the app avoids auto-selecting them for comparison when cleaner laps exist
 
+Session quality:
+
+- every processed session gets a quality score derived from valid-lap ratio, average confidence, disturbed ratio, and lap-time variance
+- low-quality sessions are still stored and viewable
+- low-quality sessions are excluded from track-profile learning so bad runs do not poison the learned profile
+
 ### Comparison
 
 Lap comparison still uses the compatibility signals:
@@ -190,6 +197,7 @@ Each saved session contains:
 - braking and cornering peak indices
 - disturbed and outlap flags
 - sector boundaries and sector times
+- session quality metrics when laps were processed
 
 Crash protection:
 
@@ -224,15 +232,19 @@ What is stored per track:
 - typical cornering zones
 - typical sector boundaries
 - number of sessions used for learning
+- profile confidence score
 
 How it is used:
 
 - the profile is saved under `filesDir/track_profiles`
 - after a session stops, the profile for that track is rebuilt from historical sessions
+- only sessions with enough clean laps and strong session quality are allowed to update the profile
+- laps with outlier lap times, too little confidence, or too few peaks are rejected before profile updates
 - new sessions on the same track use that profile immediately during lap detection
 - if `typicalSectorBoundaries` has at least 2 internal boundaries, all laps on that track reuse those boundaries instead of per-lap re-detection
-- profiles with fewer than 2 sessions have lower influence
-- sector boundary updates are smoothed instead of replaced abruptly
+- sector and signal updates are weighted by session quality
+- sector boundary updates are damped or rejected when they deviate too far from the existing learned layout
+- mature profiles become harder to change than young profiles
 
 ## Session Browser
 
@@ -253,6 +265,7 @@ When a saved session is loaded:
 - default lap selection prefers laps that are neither outlap nor disturbed
 - missing sector metadata is enriched on load
 - older lap classifications are refreshed on load when needed
+- session quality is recomputed on load when older files did not contain it yet
 
 ## Simulated Test Data
 
@@ -269,13 +282,13 @@ This is intended for UI and chart validation when no real kart session has been 
 ## Project Structure
 
 - `app/src/main/java/com/kartingtracker/data`
-  - data models, repository, session storage, track manager, track profiles, simulated data
+  - data models, repository, session storage, session quality, track manager, track profiles, simulated data
 - `app/src/main/java/com/kartingtracker/sensor`
   - sensor capture, calibration, low-pass filter
 - `app/src/main/java/com/kartingtracker/service`
   - foreground service, notification helper, start/stop helpers
 - `app/src/main/java/com/kartingtracker/domain`
-  - lap detection, sector detection, peak detection, normalization, time loss, ideal lap, insights
+  - lap detection, sector detection, peak detection, normalization, time loss, ideal lap, session quality evaluation, insights
 - `app/src/main/java/com/kartingtracker/ui`
   - shared view model and UI state
 - `app/src/main/java/com/kartingtracker/ui/main`
@@ -363,7 +376,6 @@ Practical advice:
 
 - no export outside app storage
 - no database
-- no ideal-lap or best-sector aggregation across sessions
 - no fully sensor-fused 3D orientation estimation
 - recording continuity is greatly improved in background, but a killed process cannot fully reconstruct a live sensor stream mid-session
 - background behavior still depends partly on OEM battery policies despite the foreground service

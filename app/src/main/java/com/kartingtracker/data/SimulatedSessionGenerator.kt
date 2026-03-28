@@ -1,6 +1,7 @@
 package com.kartingtracker.data
 
 import android.content.Context
+import com.kartingtracker.domain.SessionQualityEvaluator
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
@@ -137,7 +138,8 @@ object SimulatedSessionGenerator {
             endTimestampNs = allSamples.lastOrNull()?.timestampNs ?: startTimestampNs,
             samples = allSamples,
             laps = laps,
-            estimatedLapTimeMs = estimatedLapTimeMs
+            estimatedLapTimeMs = estimatedLapTimeMs,
+            quality = SessionQualityEvaluator.evaluate(laps)
         )
     }
 

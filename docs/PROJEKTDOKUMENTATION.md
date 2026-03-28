@@ -34,6 +34,7 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Lap-Detection mit Sliding Window, Korrelation, Event-Erkennung und Confidence
 - Outlap-Markierung fuer eine instabile erste Runde
 - Disturbed-Lap-Klassifikation fuer spaete oder unplausible Runden
+- Session-Quality-Bewertung pro verarbeiteter Session
 - automatische Sektor-Erkennung pro Lap
 - stabile Sektorverwendung ueber `TrackProfile.typicalSectorBoundaries`
 - Sektorzeiten pro Lap
@@ -47,6 +48,7 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - periodisches Autosave waehrend Recording
 - Track-Verwaltung
 - Track-spezifisches Lernen ueber `TrackProfile`
+- geschuetztes Track-Learning mit Quality-Guard, Ausreisserfilter und Profil-Reifegrad
 - Session-Browsing mit Filter
 - Laden der letzten Session
 - Laden gespeicherter Sessions in den aktiven App-State
@@ -88,7 +90,7 @@ Aktuelles Verhalten:
 ## Schichten
 
 - `data`
-  - Datenmodelle `SensorSample`, `Lap`, `Session`, `Track`, `TrackProfile`
+  - Datenmodelle `SensorSample`, `Lap`, `Session`, `SessionQuality`, `Track`, `TrackProfile`
   - `SessionRepository` als zentrale Sitzungs- und Zustandslogik
   - `SessionStorageManager` fuer JSON-Persistenz
   - `TrackManager` fuer persistente Track-Verwaltung
@@ -107,6 +109,7 @@ Aktuelles Verhalten:
   - `LapNormalizer` fuer interpolierte Vergleichskurven
   - `TimeLossCalculator` fuer stabilisierte Zeitverlust-Approximation
   - `TimeLossResult` als internes Ergebnis mit Delta-Kurve und Confidence
+  - `SessionQualityEvaluator` fuer Session-Qualitaetsbewertung
   - `DrivingInsightsGenerator` fuer einfache Heuristiken
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
@@ -183,6 +186,25 @@ Bedeutung:
 - `samples`
 - `laps`
 - `estimatedLapTimeMs`
+- `quality`
+
+`quality` ist optional, weil rohe Autosave-Snapshots noch keine verarbeiteten Laps enthalten.
+
+## SessionQuality
+
+`SessionQuality` enthaelt:
+
+- `overallScore`
+- `validLapRatio`
+- `avgConfidence`
+- `disturbedLapRatio`
+- `lapTimeVariance`
+
+Bedeutung:
+
+- `overallScore` ist die verdichtete Lern-Eignung der Session auf Skala `0.0` bis `1.0`
+- `validLapRatio` zaehlt Laps, die nicht Outlap, nicht Disturbed und ausreichend sicher sind
+- `lapTimeVariance` ist normiert, damit stark streuende Sessions schlechter bewertet werden
 
 ## Track
 
@@ -206,6 +228,9 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 - `typicalCorneringZones`
 - `typicalSectorBoundaries`
 - `sessionCount`
+- `confidenceScore`
+
+`confidenceScore` beschreibt die Reife und Stabilitaet des Profils auf Skala `0.0` bis `1.0`.
 
 ## Datenfluss
 
@@ -225,9 +250,10 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 14. `PeakDetector` berechnet Peak-Indizes pro Lap.
 15. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
 16. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
-17. `SessionStorageManager` speichert die finale Session als JSON.
-18. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
-19. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+17. `SessionQualityEvaluator` berechnet die Session-Qualitaet.
+18. `SessionStorageManager` speichert die finale Session als JSON.
+19. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
+20. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 
@@ -416,6 +442,38 @@ Wichtig:
 - `isOutlap` bleibt davon unberuehrt
 - eine Runde kann gleichzeitig `isOutlap = true` und `isDisturbed = true` sein
 - die UI bevorzugt fuer den Vergleich Laps, die weder Outlap noch Disturbed sind
+
+## Session Quality
+
+`SessionQualityEvaluator` bewertet jede verarbeitete Session aus ihren Laps.
+
+Kennzahlen:
+
+- `validLapRatio`
+  - Laps mit:
+    - nicht `isOutlap`
+    - nicht `isDisturbed`
+    - `confidenceScore >= 0.6`
+- `avgConfidence`
+  - Mittelwert aller `confidenceScore`
+- `disturbedLapRatio`
+  - Anteil gestoerter Laps
+- `lapTimeVariance`
+  - normierte Standardabweichung der Lap-Time
+
+Gesamtscore:
+
+- `overallScore =`
+  - `0.35 * validLapRatio`
+  - `+ 0.25 * avgConfidence`
+  - `+ 0.20 * (1 - disturbedLapRatio)`
+  - `+ 0.20 * (1 - lapTimeVariance)`
+
+Nutzung:
+
+- wird in `Session.quality` persistiert
+- wird beim Laden alter Sessions bei Bedarf neu berechnet
+- steuert, ob eine Session das `TrackProfile` ueberhaupt beeinflussen darf
 
 ## Peak-Detection
 
@@ -662,6 +720,7 @@ Gespeicherte Inhalte:
 - Outlap- und Disturbed-Flags
 - Sektorgrenzen und Sektorzeiten
 - geschatzte Rundenzeit
+- Session-Quality-Metriken
 
 Die App nutzt derzeit keine Datenbank.
 
@@ -718,6 +777,7 @@ Recovery:
 - wenn eine gespeicherte Session Samples, aber noch keine Laps enthaelt, verarbeitet das Repository sie beim Laden nach
 - wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten enthaelt, werden diese beim Laden nacherzeugt
 - geladene Laps werden beim Laden erneut klassifiziert, damit `isDisturbed` auch fuer aeltere Dateien konsistent bleibt
+- geladene Sessions erhalten beim Laden auch fehlende `quality`-Daten
 - der Foreground Service reduziert Session-Verlust bei Hintergrundbetrieb deutlich
 
 Grenze:
@@ -751,28 +811,46 @@ Aktuell nicht vorhanden:
 Profilaufbau:
 
 1. Sessions des Tracks laden
-2. Nur Sessions mit mindestens 2 brauchbaren Laps verwenden
-3. Outlaps, Disturbed-Laps und Laps mit geringer Confidence ignorieren
-4. `totalAcceleration` und `yawRateAbs` aller gueltigen Laps auf 101 Punkte normalisieren
-5. Mittelkurven bilden
-6. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
-7. typische Sektorgrenzen aus historischen Laps ableiten
-8. Mittelwert und Standardabweichung der Lap-Time speichern
+2. Nur Sessions mit ausreichender `SessionQuality` verwenden:
+   - `overallScore >= 0.6`
+   - `validLapRatio >= 0.5`
+   - mindestens 3 gueltige Laps
+3. Bei reifen Profilen mit hoher `confidenceScore` werden die Schwellwerte weiter verschaerft
+4. Outlaps, Disturbed-Laps und Laps mit geringer Confidence ignorieren
+5. Lap-Ausreisser innerhalb einer Session verwerfen, wenn:
+   - `lapTimeMs` ausserhalb `mean +- 2 * stddev`
+   - oder `confidenceScore < 0.5`
+   - oder zu wenige Peaks vorhanden sind
+6. `totalAcceleration` und `yawRateAbs` der verbleibenden Laps auf 101 Punkte normalisieren
+7. Session-Mittelkurven bilden und ueber Sessions qualitaetsgewichtet aggregieren
+8. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
+9. typische Sektorgrenzen aus historischen Laps ableiten
+10. Mittelwert und Standardabweichung der Lap-Time speichern
 
 Verbesserung der Sektorgrenzen:
 
 - vorhandene `typicalSectorBoundaries` werden nicht hart ueberschrieben
-- neue Grenzen werden geglaettet:
-  - `0.8 * alt + 0.2 * neu`
-- Update nur wenn:
-  - mindestens 3 gueltige Laps vorhanden sind
-  - der Disturbed-Anteil ausreichend niedrig ist
+- neue Grenzen werden mit qualitaetsabhaengigem Einfluss geglaettet:
+  - `new = (1 - 0.2 * quality) * old + (0.2 * quality) * detected`
+- wenn neue Grenzen mehr als `15` Prozentpunkte vom Profil abweichen:
+  - wird ihr Einfluss halbiert
+- wenn neue Grenzen mehr als `30` Prozentpunkte abweichen:
+  - wird das Boundary-Update verworfen
+- inkonsistente oder unbrauchbare Profilgrenzen werden im Runtime-Pfad nicht erzwungen
+
+Profil-Reife:
+
+- `TrackProfile.confidenceScore` steigt pro gutem Update mit:
+  - `min(1.0, old + 0.1 * sessionQuality)`
+- hohe Profil-Reife macht kuenftige Updates restriktiver
+- junge Profile bleiben lernfaehiger, aber schlechte Sessions duerfen weiterhin nicht unter die Basisschwellwerte fallen
 
 Nutzung in neuer Session:
 
 - falls Profil vorhanden, wird die Lap-Detection frueh und enger um die erwartete Rundenzeit gesucht
 - falls `typicalSectorBoundaries.size >= 2`, werden diese festen Sektorgrenzen fuer alle Laps wiederverwendet
-- Profile mit `sessionCount < 2` wirken absichtlich schwacher, um Ueberanpassung zu vermeiden
+- falls die Profilgrenzen inkonsistent wirken, faellt das System auf lap-spezifische Sektor-Erkennung zurueck
+- Profile mit niedriger `confidenceScore` sind lernfaehiger, reife Profile stabiler
 
 UI:
 
@@ -858,6 +936,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Verarbeitung | Gravitation entfernen | Erfuellt | `CalibrationManager.projectAcceleration()` |
 | Verarbeitung | Pocket-taugliche Signale | Erfuellt | `totalAcceleration`, `yawRateAbs` |
 | Datenmodell | `SensorSample`, `Lap`, `Session`, `Track` | Erfuellt | vorhanden und persistent speicherbar |
+| Datenmodell | `SessionQuality` | Erfuellt | wird pro verarbeiteter Session gespeichert |
 | Datenmodell | `TrackProfile` | Erfuellt | gespeichert als JSON pro Track |
 | Lap Detection | Sliding Window + Korrelation | Erfuellt | `LapDetector` |
 | Lap Detection | Event-Erkennung | Erfuellt | braking/cornering checks |
@@ -870,6 +949,9 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
 | Betrieb | Foreground Service | Erfuellt | `RecordingForegroundService` mit Notification und Wake-Lock |
+| Track Learning | Session-Quality-Guard | Erfuellt | schlechte Sessions duerfen das Profil nicht updaten |
+| Track Learning | gewichtete Profil-Updates | Erfuellt | hohe Session-Qualitaet beeinflusst das Profil staerker |
+| Track Learning | Sector-Deviation-Schutz | Erfuellt | starke Boundary-Abweichungen werden gedrosselt oder verworfen |
 | Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
 | Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
 | Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | feste Nutzung von `typicalSectorBoundaries` bei ausreichender Profilstaerke |
@@ -896,6 +978,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - Lap-Detection ist heuristisch und nicht gegen Referenz-Transponder validiert
 - Time-Loss ist eine Approximation aus Beschleunigung, nicht echte Fahrzeugzeitmessung
 - Sektorgrenzen sind heuristisch aus Musterpunkten abgeleitet, nicht physisch vermessen
+- auch mit Schutzlogik bleibt Track-Learning heuristisch und datenabhaengig
 - ein bereits laufendes Recording kann nach Prozess-Tod nicht nahtlos live fortgesetzt werden
 - keine Exportfunktion
 - keine Tests im Projekt
@@ -948,6 +1031,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/data/SensorSample.kt`
 - `app/src/main/java/com/kartingtracker/data/Lap.kt`
 - `app/src/main/java/com/kartingtracker/data/Session.kt`
+- `app/src/main/java/com/kartingtracker/data/SessionQuality.kt`
 - `app/src/main/java/com/kartingtracker/data/Track.kt`
 - `app/src/main/java/com/kartingtracker/data/TrackProfile.kt`
 - `app/src/main/java/com/kartingtracker/data/SessionRepository.kt`
@@ -967,6 +1051,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
 - `app/src/main/java/com/kartingtracker/domain/TimeLossCalculator.kt`
 - `app/src/main/java/com/kartingtracker/domain/IdealLapCalculator.kt`
+- `app/src/main/java/com/kartingtracker/domain/SessionQualityEvaluator.kt`
 - `app/src/main/java/com/kartingtracker/domain/DrivingInsightsGenerator.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionViewModel.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionUiModels.kt`

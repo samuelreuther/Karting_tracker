@@ -10,5 +10,6 @@ data class TrackProfile(
     val typicalBrakingZones: List<Int>,
     val typicalCorneringZones: List<Int>,
     val typicalSectorBoundaries: List<Int>,
-    val sessionCount: Int
+    val sessionCount: Int,
+    val confidenceScore: Float = 0f
 )

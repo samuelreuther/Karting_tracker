@@ -3,6 +3,7 @@ package com.kartingtracker.data
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.domain.SectorDetector
+import com.kartingtracker.domain.SessionQualityEvaluator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,7 +105,8 @@ class SessionRepository(
                     startTimestampNs = currentStartTimestampNs,
                     endTimestampNs = endTimestampNs,
                     samples = emptyList(),
-                    laps = emptyList()
+                    laps = emptyList(),
+                    quality = null
                 )
                 _latestSession.value = emptySession
                 _currentSession.value = emptySession
@@ -249,6 +251,7 @@ class SessionRepository(
                 )
             }
             val classifiedSession = session.copy(laps = classifyLaps(enrichedLaps))
+                .withQuality()
             if (classifiedSession != session) {
                 sessionStorageManager.saveSession(classifiedSession)
                 refreshStoredSessions()
@@ -296,7 +299,7 @@ class SessionRepository(
             samples = samples,
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
-        )
+        ).withQuality()
     }
 
     private fun classifyLaps(laps: List<Lap>): List<Lap> {
@@ -328,7 +331,7 @@ class SessionRepository(
 
     private fun resolveSectorBoundaries(trackProfile: TrackProfile?, lap: Lap): List<Int> {
         val profileBoundaries = trackProfile?.typicalSectorBoundaries.orEmpty()
-        return if (profileBoundaries.size >= 2) {
+        return if (isConsistentSectorLayout(profileBoundaries)) {
             profileBoundaries
         } else if (lap.sectorBoundaries.isNotEmpty()) {
             lap.sectorBoundaries
@@ -338,19 +341,37 @@ class SessionRepository(
     }
 
     private fun shouldForceTrackProfileSectors(trackProfile: TrackProfile?): Boolean {
-        return trackProfile?.typicalSectorBoundaries?.size ?: 0 >= 2
+        return isConsistentSectorLayout(trackProfile?.typicalSectorBoundaries.orEmpty())
     }
 
     private fun loadUsableTrackProfile(trackName: String): TrackProfile? {
         val profile = trackProfileManager.loadProfile(trackName) ?: return null
         return profile.takeIf { candidate ->
-            candidate.averageLapTimeMs in 15_000L..120_000L &&
+                candidate.averageLapTimeMs in 15_000L..120_000L &&
                 candidate.averageTotalAcceleration.isNotEmpty() &&
                 candidate.averageYawRateAbs.isNotEmpty()
         }
     }
 
+    private fun isConsistentSectorLayout(boundaries: List<Int>): Boolean {
+        if (boundaries.size < 2) {
+            return false
+        }
+        val sortedBoundaries = boundaries.sorted()
+        if (sortedBoundaries.any { boundary -> boundary !in 1..99 }) {
+            return false
+        }
+        return sortedBoundaries.zipWithNext().all { (previous, next) ->
+            next - previous >= minimumSectorSpacingPercent
+        }
+    }
+
+    private fun Session.withQuality(): Session {
+        return copy(quality = SessionQualityEvaluator.evaluate(laps))
+    }
+
     companion object {
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
+        private const val minimumSectorSpacingPercent = 10
     }
 }

@@ -9,5 +9,6 @@ data class Session(
     val endTimestampNs: Long,
     val samples: List<SensorSample>,
     val laps: List<Lap>,
-    val estimatedLapTimeMs: Long? = null
+    val estimatedLapTimeMs: Long? = null,
+    val quality: SessionQuality? = null
 )
