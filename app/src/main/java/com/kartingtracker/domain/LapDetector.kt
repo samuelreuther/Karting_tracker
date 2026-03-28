@@ -1,5 +1,6 @@
 package com.kartingtracker.domain
 
+import android.util.Log
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.SensorSample
 import kotlin.math.abs
@@ -7,20 +8,23 @@ import kotlin.math.sqrt
 
 data class LapDetectionResult(
     val laps: List<Lap>,
-    val estimatedLapTimeMs: Long? = null
+    val estimatedLapTimeMs: Long? = null,
+    val confidenceScores: List<Float> = emptyList()
 )
 
 class LapDetector {
     private data class BoundaryCandidate(
         val endIndex: Int,
-        val similarity: Float
+        val similarity: Float,
+        val eventPresence: Float,
+        val durationConsistency: Float = 1f,
+        val confidence: Float = 0f
     )
 
     private data class ResampledPoint(
         val timestampNs: Long,
-        val longitudinalAccel: Float,
-        val lateralAccel: Float,
-        val yawRate: Float
+        val totalAcceleration: Float,
+        val yawRateAbs: Float
     )
 
     fun detect(samples: List<SensorSample>): LapDetectionResult {
@@ -56,14 +60,22 @@ class LapDetector {
             windowSize = windowSize,
             threshold = maxOf(0.8f, bestShift.second * 0.94f)
         )
-        val laps = buildLaps(samples, boundaryTimestampsNs)
+        val laps = buildLaps(samples, boundaryTimestampsNs.map { candidate -> resampled[candidate.endIndex].timestampNs })
         if (laps.isEmpty()) {
+            Log.i(TAG, "Lap detection fallback: no stable laps for session with ${samples.size} samples")
             return fallbackLap(samples)
         }
 
+        val averageConfidence = if (boundaryTimestampsNs.isEmpty()) 0f else boundaryTimestampsNs.map { it.confidence }.average().toFloat()
+        Log.i(
+            TAG,
+            "Lap detection result: bestShift=${bestShift.first}, correlation=${bestShift.second}, candidates=${boundaryTimestampsNs.size}, laps=${laps.size}, avgConfidence=$averageConfidence"
+        )
+
         return LapDetectionResult(
             laps = laps,
-            estimatedLapTimeMs = bestShift.first * 100L
+            estimatedLapTimeMs = bestShift.first * 100L,
+            confidenceScores = boundaryTimestampsNs.map { candidate -> candidate.confidence }
         )
     }
 
@@ -81,7 +93,8 @@ class LapDetector {
         )
         return LapDetectionResult(
             laps = listOf(lap),
-            estimatedLapTimeMs = lap.lapTimeMs
+            estimatedLapTimeMs = lap.lapTimeMs,
+            confidenceScores = listOf(0.3f)
         )
     }
 
@@ -93,9 +106,8 @@ class LapDetector {
         val result = mutableListOf<ResampledPoint>()
         var bucketStartNs = samples.first().timestampNs
         var count = 0
-        var longitudinalSum = 0f
-        var lateralSum = 0f
-        var yawSum = 0f
+        var totalAccelerationSum = 0f
+        var yawRateAbsSum = 0f
 
         fun flushBucket() {
             if (count == 0) {
@@ -103,14 +115,12 @@ class LapDetector {
             }
             result += ResampledPoint(
                 timestampNs = bucketStartNs,
-                longitudinalAccel = longitudinalSum / count,
-                lateralAccel = lateralSum / count,
-                yawRate = yawSum / count
+                totalAcceleration = totalAccelerationSum / count,
+                yawRateAbs = yawRateAbsSum / count
             )
             count = 0
-            longitudinalSum = 0f
-            lateralSum = 0f
-            yawSum = 0f
+            totalAccelerationSum = 0f
+            yawRateAbsSum = 0f
         }
 
         samples.forEach { sample ->
@@ -119,9 +129,8 @@ class LapDetector {
                 bucketStartNs += bucketNs
             }
             count += 1
-            longitudinalSum += sample.longitudinalAccel
-            lateralSum += sample.lateralAccel
-            yawSum += sample.gyroZ
+            totalAccelerationSum += sample.totalAcceleration
+            yawRateAbsSum += sample.yawRateAbs
         }
         flushBucket()
         return result
@@ -145,17 +154,19 @@ class LapDetector {
         shift: Int,
         windowSize: Int,
         threshold: Float
-    ): List<Long> {
+    ): List<BoundaryCandidate> {
         val candidates = mutableListOf<BoundaryCandidate>()
         var endIndex = shift + windowSize
         while (endIndex < points.size) {
             val similarity = windowSimilarity(points, endIndex, shift, windowSize)
             val startIndex = (endIndex - windowSize).coerceAtLeast(0)
-            val brakingPeaks = detectBrakingPeaks(points, startIndex, endIndex)
+            val brakingPeaks = detectBrakingEvents(points, startIndex, endIndex)
             val corneringEvents = detectCorneringEvents(points, startIndex, endIndex)
+            val eventPresence = if (brakingPeaks.isNotEmpty() && corneringEvents.isNotEmpty()) 1f else 0f
             candidates += BoundaryCandidate(
                 endIndex = endIndex,
-                similarity = if (brakingPeaks.isNotEmpty() && corneringEvents.isNotEmpty()) similarity else 0f
+                similarity = similarity,
+                eventPresence = eventPresence
             )
             endIndex += 5
         }
@@ -166,6 +177,7 @@ class LapDetector {
             val current = candidates[index]
             val next = candidates[index + 1]
             if (
+                current.eventPresence > 0f &&
                 current.similarity >= threshold &&
                 current.similarity >= previous.similarity &&
                 current.similarity >= next.similarity
@@ -174,10 +186,9 @@ class LapDetector {
             }
         }
 
-        return filterDuplicateCandidates(localMaxima, (shift * 0.7f).toInt())
-            .map { candidate -> points[candidate.endIndex].timestampNs }
-            .distinct()
-            .sorted()
+        val uniqueCandidates = filterDuplicateCandidates(localMaxima, (shift * 0.7f).toInt())
+        return applyConfidence(uniqueCandidates, shift)
+            .filter { candidate -> candidate.confidence >= 0.55f }
     }
 
     private fun buildLaps(samples: List<SensorSample>, boundaryTimestampsNs: List<Long>): List<Lap> {
@@ -207,7 +218,14 @@ class LapDetector {
                 endTimestampNs = endNs
             )
         }
-        return laps
+        if (laps.isEmpty()) {
+            return emptyList()
+        }
+
+        val averageLapTimeMs = laps.map { lap -> lap.lapTimeMs }.average()
+        return laps.filter { lap ->
+            abs(lap.lapTimeMs - averageLapTimeMs) / averageLapTimeMs <= 0.3
+        }
     }
 
     private fun windowSimilarity(
@@ -229,15 +247,13 @@ class LapDetector {
         for (offset in 0 until windowSize) {
             val pointA = points[startA + offset]
             val pointB = points[startB + offset]
-            val ax = pointA.longitudinalAccel
-            val ay = pointA.lateralAccel
-            val az = pointA.yawRate * 0.5f
-            val bx = pointB.longitudinalAccel
-            val by = pointB.lateralAccel
-            val bz = pointB.yawRate * 0.5f
-            dot += (ax * bx) + (ay * by) + (az * bz)
-            normA += (ax * ax) + (ay * ay) + (az * az)
-            normB += (bx * bx) + (by * by) + (bz * bz)
+            val ax = pointA.totalAcceleration
+            val ay = pointA.yawRateAbs * 0.7f
+            val bx = pointB.totalAcceleration
+            val by = pointB.yawRateAbs * 0.7f
+            dot += (ax * bx) + (ay * by)
+            normA += (ax * ax) + (ay * ay)
+            normB += (bx * bx) + (by * by)
         }
 
         if (normA == 0f || normB == 0f) {
@@ -247,7 +263,7 @@ class LapDetector {
         return dot / (sqrt(normA) * sqrt(normB))
     }
 
-    private fun detectBrakingPeaks(
+    private fun detectBrakingEvents(
         points: List<ResampledPoint>,
         startIndex: Int,
         endIndex: Int
@@ -259,11 +275,13 @@ class LapDetector {
             return emptyList()
         }
         for (index in safeStart..safeEnd) {
-            val current = points[index].longitudinalAccel
+            val previous = points[index - 1].totalAcceleration
+            val current = points[index].totalAcceleration
+            val next = points[index + 1].totalAcceleration
             if (
-                current < -2.5f &&
-                current < points[index - 1].longitudinalAccel &&
-                current <= points[index + 1].longitudinalAccel
+                (previous - current) > 0.6f &&
+                current < previous &&
+                current <= next
             ) {
                 peaks += index
             }
@@ -283,7 +301,8 @@ class LapDetector {
             return emptyList()
         }
         for (index in safeStart..safeEnd) {
-            if (abs(points[index].lateralAccel) > 2.0f) {
+            val sustainedAcceleration = averageTotalAcceleration(points, index)
+            if (points[index].yawRateAbs > 0.35f && sustainedAcceleration > 1.4f) {
                 events += index
             }
         }
@@ -304,5 +323,42 @@ class LapDetector {
             }
         }
         return selected.sortedBy { candidate -> candidate.endIndex }
+    }
+
+    private fun applyConfidence(
+        candidates: List<BoundaryCandidate>,
+        expectedShift: Int
+    ): List<BoundaryCandidate> {
+        if (candidates.isEmpty()) {
+            return emptyList()
+        }
+
+        val sortedCandidates = candidates.sortedBy { candidate -> candidate.endIndex }
+        return sortedCandidates.mapIndexed { index, candidate ->
+            val durationConsistency = if (index == 0) {
+                1f
+            } else {
+                val gap = candidate.endIndex - sortedCandidates[index - 1].endIndex
+                (1f - (abs(gap - expectedShift).toFloat() / expectedShift.toFloat())).coerceIn(0f, 1f)
+            }
+            val confidence = candidate.similarity * candidate.eventPresence * durationConsistency
+            candidate.copy(durationConsistency = durationConsistency, confidence = confidence)
+        }
+    }
+
+    private fun averageTotalAcceleration(points: List<ResampledPoint>, index: Int): Float {
+        val from = maxOf(0, index - 1)
+        val to = minOf(points.lastIndex, index + 1)
+        var sum = 0f
+        var count = 0
+        for (sampleIndex in from..to) {
+            sum += points[sampleIndex].totalAcceleration
+            count += 1
+        }
+        return if (count == 0) 0f else sum / count
+    }
+
+    companion object {
+        private const val TAG = "LapDetector"
     }
 }

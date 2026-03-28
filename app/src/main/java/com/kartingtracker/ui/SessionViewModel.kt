@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.domain.DrivingInsightsGenerator
 import com.kartingtracker.domain.LapNormalizer
@@ -27,6 +28,7 @@ class SessionViewModel(
 
     private val selectedLapAIndex = MutableStateFlow(0)
     private val selectedLapBIndex = MutableStateFlow(1)
+    private val selectedSessionFilter = MutableStateFlow(ALL_TRACKS_FILTER)
 
     val laps: StateFlow<List<Lap>> = sessionRepository.latestSession
         .map { session -> session?.laps.orEmpty() }
@@ -37,8 +39,11 @@ class SessionViewModel(
         sessionRepository.isRecording,
         sessionRepository.sampleCount,
         sessionRepository.lastSample,
-        sessionRepository.latestSession
-    ) { recorderPhase, isRecording, sampleCount, lastSample, session ->
+        sessionRepository.latestSession,
+        sessionRepository.availableTracks,
+        sessionRepository.currentTrackName,
+        sessionRepository.storedSessions
+    ) { recorderPhase, isRecording, sampleCount, lastSample, session, tracks, currentTrackName, storedSessions ->
         SessionUiState(
             isRecording = recorderPhase == RecorderPhase.RECORDING || isRecording,
             isCalibrating = recorderPhase == RecorderPhase.CALIBRATING,
@@ -48,6 +53,9 @@ class SessionViewModel(
             liveLateralAccel = lastSample?.lateralAccel ?: 0f,
             lapCount = session?.laps?.size ?: 0,
             estimatedLapTimeMs = session?.estimatedLapTimeMs,
+            trackOptions = tracks.map { track -> track.name },
+            selectedTrackName = currentTrackName,
+            canLoadLastSession = storedSessions.isNotEmpty(),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
                 recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
@@ -58,6 +66,24 @@ class SessionViewModel(
             }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
+
+    val sessionListUiState: StateFlow<SessionListUiState> = combine(
+        sessionRepository.storedSessions,
+        sessionRepository.availableTracks,
+        selectedSessionFilter
+    ) { storedSessions, tracks, selectedFilter ->
+        val filterOptions = listOf(ALL_TRACKS_FILTER) + tracks.map { track -> track.name }
+        val filteredSessions = if (selectedFilter == ALL_TRACKS_FILTER) {
+            storedSessions
+        } else {
+            storedSessions.filter { session -> session.trackName == selectedFilter }
+        }
+        SessionListUiState(
+            filterOptions = filterOptions,
+            selectedFilter = selectedFilter,
+            sessions = filteredSessions
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
 
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
         laps,
@@ -125,10 +151,41 @@ class SessionViewModel(
         selectedLapBIndex.value = index
     }
 
+    fun selectTrack(trackName: String) {
+        sessionRepository.selectTrack(trackName)
+        selectedSessionFilter.value = trackName
+    }
+
+    fun createTrack(trackName: String): String? {
+        val track = sessionRepository.createTrack(trackName) ?: return null
+        selectedSessionFilter.value = track.name
+        return track.name
+    }
+
+    fun loadLastSession(): Boolean {
+        val session = sessionRepository.loadLastSession() ?: return false
+        selectedSessionFilter.value = session.trackName
+        return true
+    }
+
+    fun loadSession(session: Session) {
+        sessionRepository.loadSession(session)
+        selectedSessionFilter.value = session.trackName
+    }
+
+    fun selectSessionFilter(filter: String) {
+        selectedSessionFilter.value = filter
+    }
+
     private fun createDeltaEntries(entriesA: List<Entry>, entriesB: List<Entry>): List<Entry> {
         val size = minOf(entriesA.size, entriesB.size)
         return List(size) { index ->
             Entry(entriesA[index].x, entriesA[index].y - entriesB[index].y)
         }
+    }
+
+    companion object {
+        const val ALL_TRACKS_FILTER = "All tracks"
+        const val CREATE_TRACK_OPTION = "Create new track..."
     }
 }

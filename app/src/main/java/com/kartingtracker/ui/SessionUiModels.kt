@@ -1,6 +1,7 @@
 package com.kartingtracker.ui
 
 import com.github.mikephil.charting.data.Entry
+import com.kartingtracker.data.Session
 
 data class SessionUiState(
     val isRecording: Boolean = false,
@@ -11,6 +12,9 @@ data class SessionUiState(
     val liveLateralAccel: Float = 0f,
     val lapCount: Int = 0,
     val estimatedLapTimeMs: Long? = null,
+    val trackOptions: List<String> = emptyList(),
+    val selectedTrackName: String = "",
+    val canLoadLastSession: Boolean = false,
     val statusLabel: String = "Idle"
 )
 
@@ -32,4 +36,10 @@ data class ComparisonUiState(
     val deltaLateral: List<Entry> = emptyList(),
     val insights: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
+)
+
+data class SessionListUiState(
+    val filterOptions: List<String> = emptyList(),
+    val selectedFilter: String = SessionViewModel.ALL_TRACKS_FILTER,
+    val sessions: List<Session> = emptyList()
 )

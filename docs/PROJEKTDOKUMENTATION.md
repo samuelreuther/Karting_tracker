@@ -2,25 +2,73 @@
 
 ## Zweck
 
-Die App ist ein Android-MVP zur Analyse von Indoor-Kartfahrten mit Smartphone-Sensoren ohne GPS.
-Erfasst werden Beschleunigungs- und Gyroskopdaten. Daraus werden Sessions und Runden abgeleitet,
-die anschliessend visuell verglichen werden koennen.
+Die App ist eine Android-Anwendung zur Analyse von Indoor-Kartfahrten mit Smartphone-Sensoren ohne GPS.
+Sie zeichnet Sensordaten auf, erkennt Runden heuristisch, speichert Sessions dauerhaft auf dem Geraet
+und erlaubt den Vergleich einzelner Runden.
 
-## Zielbild laut Anforderung
+Der aktuelle Stand ist kein Wegwerf-MVP mehr, sondern eine praktisch nutzbare Version mit:
 
-- Start/Stop-Aufnahme fuer Sensoren
-- Erfassung von Accelerometer und Gyroscope mit `SENSOR_DELAY_FASTEST`
-- Kalibrierung vor der Aufnahme zur Schaetzung der Gravitation
-- Speicherung zeitgestempelter Messwerte
-- Ableitung von longitudinaler und lateraler Beschleunigung
-- Rauschreduktion per Low-Pass-Filter
-- Rundenerkennung ueber Mustervergleich in gleitenden Fenstern
-- Datenmodell fuer Sample, Lap, Session
-- Visualisierung per MPAndroidChart
-- Vergleich von zwei Runden nach Normierung auf 0-100 Prozent
-- Einfache MVVM-Struktur
-- Speicherung nur im Speicher
-- Bonus: Brems-Peaks und farbliche Hervorhebung
+- Sensoraufzeichnung
+- Kalibrierung
+- persistenter Session-Speicherung
+- Track-Verwaltung
+- Session-Browsing
+- Lap-Detection
+- Vergleichsdiagrammen und Text-Insights
+
+## Aktueller Funktionsumfang
+
+- Aufnahme per Start/Stop
+- 2-Sekunden-Kalibrierung vor der Session
+- Accelerometer- und Gyroscope-Aufnahme mit `SENSOR_DELAY_FASTEST`
+- Low-Pass-Filter auf beiden Sensorsignalen
+- Berechnung kompatibler Richtungswerte:
+  - `longitudinalAccel`
+  - `lateralAccel`
+- Berechnung robuster pocket-tauglicher Signale:
+  - `totalAcceleration`
+  - `yawRateAbs`
+- Hybrid-Lap-Detection mit Korrelation, Event-Erkennung und Confidence
+- Marker fuer Brems- und Cornering-Ereignisse
+- Delta-Chart und einfache Fahrstil-Insights
+- dauerhafte Speicherung jeder Session als JSON-Datei
+- Track-Auswahl und Track-Erstellung
+- Session-Liste mit Filter nach Track
+- Laden der letzten Session
+
+## Architektur
+
+## Schichten
+
+- `data`
+  - Datenmodelle `SensorSample`, `Lap`, `Session`, `Track`
+  - `SessionRepository` als zentrale Fachlogik fuer aktuelle Session, gespeicherte Sessions und Track-Zustand
+  - `SessionStorageManager` fuer JSON-Persistenz
+  - `TrackManager` fuer persistente Track-Verwaltung
+- `sensor`
+  - `SensorRecorder` kapselt Android-Sensorzugriff
+  - `CalibrationManager` entfernt Gravitation und liefert kompatible Fahrdynamikwerte
+  - `LowPassFilter` reduziert Rauschen
+- `domain`
+  - `LapDetector` fuer Mustererkennung, Event-Erkennung und Confidence-Scoring
+  - `PeakDetector` fuer Brems- und Cornering-Peaks
+  - `LapNormalizer` fuer interpolierte Vergleichskurven
+  - `DrivingInsightsGenerator` fuer heuristische Vergleichstexte
+- `ui`
+  - `SessionViewModel` als zentraler State-Halter
+  - `MainFragment`, `LapsFragment`, `ComparisonFragment`, `SessionListFragment`
+
+## Datenfluss
+
+1. Nutzer waehlt oder erstellt einen Track auf dem Main Screen.
+2. `SessionViewModel` ruft `SensorRecorder.startRecording()` auf.
+3. `SensorRecorder` startet mit Kalibrierung bei stehendem Kart.
+4. Nach erfolgreicher Kalibrierung startet `SessionRepository.startSession()`.
+5. Waehrend der Session werden `SensorSample`-Objekte gesammelt.
+6. Beim Stoppen ruft `SessionRepository.stopSession()` die Lap-Detection auf.
+7. `PeakDetector` ergaenzt Brems- und Cornering-Peaks.
+8. `SessionStorageManager.saveSession()` speichert die Session sofort als JSON.
+9. `SessionViewModel` stellt die Session fuer Lap-Liste, Comparison und Session-Browsing bereit.
 
 ## Anforderungsmatrix
 
@@ -28,389 +76,345 @@ die anschliessend visuell verglichen werden koennen.
 |---|---|---|---|
 | Recording | Start-Button | Erfuellt | `MainFragment` startet Aufnahme ueber `SessionViewModel.startRecording()` |
 | Recording | Stop-Button | Erfuellt | `MainFragment` stoppt Aufnahme ueber `SessionViewModel.stopRecording()` |
-| Recording | Live-Indikator | Erfuellt | Statusanzeige auf Main Screen aus `SessionUiState.statusLabel` |
+| Recording | Live-Indikator | Erfuellt | `SessionUiState.statusLabel` mit Idle, Calibrating, Recording, Stopped |
 | Recording | Accelerometer lesen | Erfuellt | `SensorRecorder` registriert `TYPE_ACCELEROMETER` |
 | Recording | Gyroscope lesen | Erfuellt | `SensorRecorder` registriert `TYPE_GYROSCOPE` |
 | Recording | `SENSOR_DELAY_FASTEST` | Erfuellt | Listener-Registrierung in `SensorRecorder.registerListeners()` |
-| Recording | Kalibrierung vor Aufnahme | Erfuellt | `CalibrationManager` sammelt ca. 2 Sekunden stationaere Accelerometerdaten |
-| Recording | Zeitgestempelte Daten speichern | Erfuellt | `SensorSample` und `SessionRepository.currentSamples` |
-| Verarbeitung | Low-Pass-Filter | Erfuellt | `LowPassFilter` fuer Accelerometer und Gyroscope |
-| Verarbeitung | Longitudinal/Lateral trennen | Erfuellt | `CalibrationManager` entfernt Gravitation und projiziert Beschleunigung auf die Fahr-Ebene |
-| Lap Detection | Zeitreihe fortlaufend speichern | Erfuellt | Samples werden waehrend Recording fortlaufend in `SessionRepository` gesammelt |
-| Lap Detection | Sliding Window 5-10 Sekunden | Erfuellt | In `LapDetector`: 100-ms-Resampling, Fensterlaenge 60 Punkte = ca. 6 Sekunden |
-| Lap Detection | Aehnlichkeit via Dot Product/Korrelation | Erfuellt | Kosinus-Aehnlichkeit ueber dot product und Normen in `windowSimilarity()` |
-| Lap Detection | Eventbasierte Ergaenzung | Erfuellt | Kandidaten muessen zusaetzlich Brems- und Cornering-Ereignisse enthalten |
-| Lap Detection | Wiederholende Muster als Runden erkennen | Erfuellt | `LapDetector.detect()` sucht bestes Shift und Grenzen |
-| Lap Detection | Runden als Segmente speichern | Erfuellt | `Lap`-Objekte werden in `buildLaps()` erzeugt |
-| Datenmodell | `SensorSample` | Erfuellt | Vorhanden |
-| Datenmodell | `Lap` | Erfuellt | Vorhanden |
-| Datenmodell | `Session` | Erfuellt | Vorhanden |
-| Visualisierung | Laps als Line Graphs | Erfuellt | `ComparisonFragment` mit `MPAndroidChart` |
-| Visualisierung | X-Achse 0-100 Prozent | Erfuellt | `LapNormalizer` erzeugt normierte Werte und `ChartUtils` setzt X-Achse 0-100 |
-| Visualisierung | Y-Achse longitudinal/lateral | Erfuellt | Zwei Charts, jeweils fuer longitudinal und lateral |
-| Lap Comparison | Zwei Runden auswaehlen | Erfuellt | Zwei Spinner in `ComparisonFragment` |
-| Lap Comparison | Auf gleiche Laenge normieren | Erfuellt | `LapNormalizer.normalize()` auf 251 Punkte |
-| Lap Comparison | Overlays Lap A vs Lap B | Erfuellt | Beide DataSets gleichzeitig pro Chart |
-| Lap Comparison | Delta Graph | Erfuellt | Dritter Chart mit longitudinalem und lateralem Delta |
-| Lap Comparison | Text-Insights | Erfuellt | Heuristische Vergleichssaetze aus Bremsen, Cornering und Beschleunigung |
-| UI | Main Screen | Erfuellt | `fragment_main.xml` |
-| UI | Lap Screen | Erfuellt | `fragment_laps.xml` + RecyclerView |
-| UI | Comparison Screen | Erfuellt | `fragment_comparison.xml` |
-| Technik | Kotlin | Erfuellt | Komplettes Projekt in Kotlin |
-| Technik | MVVM / clean structure | Erfuellt | Activity/Fragments + gemeinsames ViewModel + Repository + Domain |
-| Technik | SensorManager korrekt nutzen | Erfuellt | Registrierung/Abmeldung in `SensorRecorder` |
-| Technik | Lifecycle korrekt behandeln | Weitgehend erfuellt | `SensorRecorder` ist `DefaultLifecycleObserver` |
-| Technik | Nur In-Memory | Erfuellt | Keine DB, alles im Repository gehalten |
-| Bonus | Peaks hervorheben | Erfuellt | Brems- und Cornering-Peaks werden als Marker im Chart gezeichnet |
-| Bonus | Farben fuer acceleration/braking/cornering | Teilweise erfuellt | Farbige Linien vorhanden, aber keine semantische Einfaerbung innerhalb derselben Runde |
-
-## Architektur
-
-## Schichten
-
-- `data`
-  - Datenmodelle `SensorSample`, `Lap`, `Session`
-  - `SessionRepository` als In-Memory-Speicher und zentrale Session-Verwaltung
-- `sensor`
-  - `SensorRecorder` kapselt Android-Sensorzugriff
-  - `CalibrationManager` bestimmt Gravitation und Fahr-Ebene
-  - `LowPassFilter` reduziert Rauschen
-- `domain`
-  - `LapDetector` fuer Mustererkennung und Rundenschnitt
-  - `LapNormalizer` fuer Vergleich auf normierter Zeitachse
-  - `PeakDetector` fuer einfache Brems-Peak-Erkennung
-- `ui`
-  - `SessionViewModel` als zentraler State-Halter fuer alle Screens
-  - `MainFragment`, `LapsFragment`, `ComparisonFragment`
-
-## Datenfluss
-
-1. Nutzer startet Aufnahme auf dem Main Screen.
-2. `SessionViewModel` ruft `SensorRecorder.startRecording()` auf.
-3. `SensorRecorder` registriert Sensorlistener auf separatem `HandlerThread`.
-4. Accelerometer- und Gyroskopdaten werden gefiltert.
-5. Bei jedem Accelerometer-Event wird ein `SensorSample` erzeugt.
-6. `SessionRepository.appendSample()` sammelt die Samples im Speicher.
-7. Beim Stoppen ruft `SessionRepository.stopSession()` die Rundenerkennung auf.
-8. `LapDetector` erzeugt `Lap`-Segmente.
-9. `PeakDetector` ergaenzt einfache Brems-Peaks.
-10. `SessionViewModel` stellt daraus UI-State fuer Listen und Charts bereit.
+| Recording | Kalibrierung vor Session | Erfuellt | `CalibrationManager` sammelt ca. 2 Sekunden stationaere Daten |
+| Verarbeitung | Low-Pass-Filter | Erfuellt | `LowPassFilter` fuer Accel und Gyro |
+| Verarbeitung | Gravitation entfernen | Erfuellt | `CalibrationManager.projectAcceleration()` |
+| Verarbeitung | Pocket-taugliche Signale | Erfuellt | `SensorSample.totalAcceleration` und `SensorSample.yawRateAbs` |
+| Datenmodell | `SensorSample` | Erfuellt | kompatible und robuste Signale im Modell vorhanden |
+| Datenmodell | `Lap` | Erfuellt | Samples, Lap Time, Peak-Indizes vorhanden |
+| Datenmodell | `Session` | Erfuellt | Track, Zeiten, Samples, Laps vorhanden |
+| Datenmodell | `Track` | Erfuellt | `Track(name: String)` vorhanden |
+| Lap Detection | Sliding Window | Erfuellt | 100-ms-Resampling, 60 Punkte Fenster |
+| Lap Detection | Korrelation | Erfuellt | Kosinus-Aehnlichkeit in `LapDetector.windowSimilarity()` |
+| Lap Detection | Event-Erkennung | Erfuellt | Brems- und Cornering-Ereignisse in `LapDetector` |
+| Lap Detection | Confidence Score | Erfuellt | Korrelation, Event-Praesenz und Dauer-Konsistenz kombiniert |
+| Lap Detection | min/max Lap Time | Erfuellt | 15 bis 120 Sekunden in `buildLaps()` |
+| Lap Detection | Ausreisser-Filter | Erfuellt | Laps mit >30 Prozent Abweichung werden verworfen |
+| Lap Detection | Fallback | Erfuellt | eine Session wird notfalls als einzelne Lap gespeichert |
+| Persistenz | Session als JSON speichern | Erfuellt | `SessionStorageManager.saveSession()` |
+| Persistenz | Dateiname `session_<track>_<timestamp>.json` | Erfuellt | Dateinamenschema in `SessionStorageManager` |
+| Persistenz | Sessions laden | Erfuellt | `loadAllSessions()`, `loadSessionsForTrack()`, `loadLastSession()` |
+| Persistenz | Speichern auf Stop | Erfuellt | direkt in `SessionRepository.stopSession()` |
+| Track Management | Track auswaehlen | Erfuellt | Spinner auf Main Screen |
+| Track Management | Track anlegen | Erfuellt | Dialog auf Main Screen |
+| Track Management | Track persistieren | Erfuellt | `TrackManager` mit `SharedPreferences` |
+| Session Browsing | Liste aller Sessions | Erfuellt | `SessionListFragment` |
+| Session Browsing | Nach Track filtern | Erfuellt | Filter-Spinner in `SessionListFragment` |
+| Session Browsing | Session laden | Erfuellt | Session wird in `SessionRepository` geladen |
+| UX | Letzte Session laden | Erfuellt | Button `Load last session` auf Main Screen |
+| Visualisierung | Lap-Overlay | Erfuellt | `ComparisonFragment` mit MPAndroidChart |
+| Visualisierung | Delta-Chart | Erfuellt | zusaetzlicher Chart in `ComparisonFragment` |
+| Visualisierung | Peak-Marker | Erfuellt | Marker fuer Brems- und Cornering-Peaks |
+| Insights | Textliche Hinweise | Erfuellt | `DrivingInsightsGenerator` |
 
 ## Implementierung im Detail
 
-## 1. Recording
+## 1. Recording und Kalibrierung
 
-### Implementiert
+### Ablauf
 
-- Sensoren:
-  - `TYPE_ACCELEROMETER`
-  - `TYPE_GYROSCOPE`
-- Sampling:
-  - `SensorManager.SENSOR_DELAY_FASTEST`
-- Kalibrierung:
-  - etwa 2 Sekunden stationaere Accelerometerdaten vor Session-Start
-- Threading:
-  - eigener `HandlerThread("karting-sensor-thread")`
-- Start/Stop:
-  - Start beginnt zunaechst mit Kalibrierung
-  - Session startet erst nach erfolgreicher Kalibrierung
-  - Stop beendet Listener und startet Verarbeitung
-- Live-Status:
-  - Recording-Status, Sample-Anzahl, Live-Beschleunigungen, erkannte Runden
+- Starten der Aufnahme aktiviert nicht sofort die Session.
+- Zunaechst laeuft eine Kalibrierungsphase von etwa 2 Sekunden.
+- In dieser Zeit wird angenommen, dass das Kart stillsteht.
+- Aus den Accelerometer-Daten wird ein mittlerer Gravitationsvektor berechnet.
+- Erst danach startet die eigentliche Session-Aufzeichnung.
 
 ### Technische Umsetzung
 
-`SensorRecorder` registriert beide Sensoren und verarbeitet Events in `onSensorChanged()`.
-
-- Gyro-Events aktualisieren den zuletzt bekannten Gyro-Zustand.
-- Accelerometer-Events erzeugen einen vollstaendigen `SensorSample`.
-- `timestampNs` wird aus `event.timestamp` uebernommen.
+- `SensorRecorder`
+  - verwaltet `RecorderPhase.IDLE`, `CALIBRATING`, `RECORDING`
+  - nutzt separaten `HandlerThread`
+  - verarbeitet Sensorereignisse in `onSensorChanged()`
+- `CalibrationManager`
+  - akkumuliert stationaere Accel-Werte
+  - normalisiert den Gravitationsvektor
+  - entfernt den Gravitationsanteil aus kuenftigen Beschleunigungswerten
 
 ### Wichtige Annahme
 
-Die App nimmt weiterhin an, dass das Smartphone grob in Fahrtrichtung montiert ist.
-Die feste Achsen-Zuordnung wurde jedoch durch eine Kalibrierung ersetzt.
+Die App ist inzwischen robuster gegen unbekannte Telefonlage, aber nicht vollkommen orientationsinvariant.
+Die kompatiblen Richtungswerte `longitudinalAccel` und `lateralAccel` bleiben eine angenaeherte Projektion.
 
-## 2. Datenverarbeitung
+## 2. Signalverarbeitung
 
-### Low-Pass-Filter
+### Klassische kompatible Signale
 
-Der Filter ist in `LowPassFilter` implementiert.
+Diese Felder bleiben erhalten, damit bestehende Visualisierung und Datenmodell kompatibel bleiben:
 
-- Alpha: `0.18f`
-- Zustand: 3-dimensional fuer X, Y, Z
-- Einsatz:
-  - einmal fuer Accelerometer
-  - einmal fuer Gyroscope
+- `longitudinalAccel`
+- `lateralAccel`
 
-### Ableitung der Fahrdynamik
+Sie werden nach Gravitation-Entfernung auf eine angenaeherte Fahr-Ebene projiziert.
 
-Es gibt in diesem MVP keine vollstaendige Orientierungsschaetzung mit Fusion mehrerer Sensoren.
-Stattdessen wird eine einfache, robuste Kalibrierung verwendet:
+### Robuste pocket-taugliche Signale
 
-1. Waehrend der ersten ca. 2 Sekunden wird bei stehendem Kart der mittlere Gravitationsvektor gemessen.
-2. Der Vektor wird normalisiert.
-3. Der Gravitationsanteil wird aus allen folgenden Accelerometerwerten entfernt.
-4. Die verbleibende Beschleunigung wird auf die Fahr-Ebene projiziert.
-5. Die Vorwaertsachse wird aus der Geraeteorientierung auf diese Ebene projiziert.
-6. Daraus werden longitudinale und laterale Komponenten berechnet.
+Fuer realen Einsatz mit variabler Orientierung verwendet die App zusaetzlich:
 
-### Einschraenkung
+- `totalAcceleration`
+  - Betrag der gravitationsbereinigten Beschleunigung
+- `yawRateAbs`
+  - Betrag der Z-Gyro-Rate
 
-Die neue Kalibrierung macht das Signal deutlich robuster gegen Pitch und Roll.
-Trotzdem bleibt die Montageposition relevant, insbesondere wenn das Telefon stark verdreht oder instabil befestigt ist.
+Diese Werte sind deutlich robuster, wenn das Telefon locker in der Tasche liegt oder verdreht ist.
 
-## 3. Rundenerkennung
+## 3. Lap Detection
 
 ### Ziel
 
-Wiederkehrende Muster in Beschleunigungs- und Gyrodaten sollen genutzt werden, um Rundenenden zu finden.
+Rundengrenzen sollen auch unter realen Bedingungen erkannt werden, selbst wenn die Richtungssignale unzuverlaessig sind.
 
-### Implementierte Methode
+### Verwendete Signale
 
-`LapDetector` arbeitet jetzt hybrid in mehreren Schritten:
+Die aktuelle Lap-Detection arbeitet primaer mit:
 
-1. Rohdaten werden auf 100-ms-Buckets heruntergesampelt.
-2. Pro Bucket werden Mittelwerte fuer
-   - longitudinale Beschleunigung
-   - laterale Beschleunigung
-   - Yaw-Rate (`gyroZ`)
-   berechnet.
-3. Ein Sliding Window von 60 Punkten wird verwendet.
-4. 60 Punkte bei 100 ms entsprechen ca. 6 Sekunden und liegen damit in der geforderten Spanne von 5-10 Sekunden.
-5. Es werden verschiedene Shifts zwischen 150 und 1200 Punkten getestet.
-6. Ein Shift entspricht einer moeglichen Rundendauer.
-7. Fuer jedes Shift wird eine Aehnlichkeit berechnet.
-8. Die beste Shift-Hypothese wird ausgewaehlt.
-9. Ein Kandidat muss zusaetzlich mindestens ein Bremsereignis und ein Cornering-Ereignis enthalten.
-10. Doppelte Kandidaten werden gefiltert, die staerksten bleiben erhalten.
-11. Daraus werden `Lap`-Segmente geschnitten.
+- `totalAcceleration`
+- `yawRateAbs`
 
-### Aehnlichkeitsmass
+### Schritte
 
-Verwendet wird eine Kosinus-Aehnlichkeit auf Basis von dot product:
-
-- Signal A:
-  - longitudinal
-  - lateral
-  - `yawRate * 0.5`
-- Signal B:
-  - dieselben Groessen
-
-Damit werden Formaehnlichkeiten zwischen zwei Fenstern verglichen.
+1. Resampling auf 100-ms-Buckets.
+2. Sliding Window ueber 60 Punkte, also ca. 6 Sekunden.
+3. Test mehrerer Shift-Werte als Kandidaten fuer moegliche Rundendauer.
+4. Korrelation zweier Fenster ueber `totalAcceleration` und `yawRateAbs`.
+5. Zusatzpruefung:
+   - Bremsereignis vorhanden
+   - Cornering-Ereignis vorhanden
+6. Duplicate-Filter fuer zu nahe Kandidaten.
+7. Confidence-Berechnung aus:
+   - Korrelation
+   - Event-Praesenz
+   - Dauer-Konsistenz
+8. Verwerfen unplausibler Laps:
+   - unter 15 Sekunden
+   - ueber 120 Sekunden
+   - mehr als 30 Prozent Abweichung vom Mittelwert
+9. Fallback auf eine einzelne Lap, wenn die Erkennung instabil ist.
 
 ### Event-Erkennung
 
-Zusatzbedingungen fuer einen gueltigen Kandidaten:
+- Bremsereignis:
+  - deutlicher Abfall in `totalAcceleration`
+- Cornering-Ereignis:
+  - hohes `yawRateAbs`
+  - gleichzeitig erhoehte `totalAcceleration`
 
-- Brems-Peak:
-  - longitudinale Beschleunigung kleiner als ca. `-2.5 m/s^2`
-- Cornering:
-  - Betrag der lateralen Beschleunigung groesser als ca. `2.0 m/s^2`
+### Logging
 
-### Fallback-Verhalten
+`LapDetector` schreibt Ergebnisse und Confidence-Werte per `Log.i(...)`.
 
-Wenn die Datenlage fuer eine robuste Segmentierung nicht reicht, faellt die Logik auf genau eine Runde zurueck:
+## 4. Peak Detection
 
-- gesamte Session = eine `Lap`
+`PeakDetector` erzeugt Peak-Indizes fuer:
 
-Das ist fuer ein MVP sinnvoll, weil die App dann immer noch Daten visualisieren kann.
+- Brems-Peaks
+- Cornering-Peaks
 
-### Einschraenkungen
+Diese Peaks werden:
 
-- Keine Streckenkarte, keine echte Start/Ziel-Referenz
-- Kein maschinelles Lernen
-- Keine adaptive Kalibrierung pro Strecke
-- Heuristiken sind empfindlich gegen:
-  - stark unregelmaessige Runden
-  - kurze Sessions
-  - Safety-Car- oder Abbruchphasen
-  - veraenderte Telefonlage
+- in `Lap` gespeichert
+- im Comparison Screen als Marker dargestellt
+- in Text-Zusammenfassungen verwendet
 
-## 4. Datenmodell
+## 5. Persistenz
 
-### `SensorSample`
+### SessionStorageManager
 
-Enthaelt:
+`SessionStorageManager` speichert jede Session als JSON-Datei im app-spezifischen Speicher.
 
-- Zeitstempel in Nanosekunden
-- Accelerometer X/Y/Z
-- Gyroscope X/Y/Z
-- longitudinale Beschleunigung
-- laterale Beschleunigung
+### Speicherort
 
-### `Lap`
+- `context.filesDir/sessions`
 
-Enthaelt:
+### Dateinamen
 
-- laufende ID
-- Liste von `SensorSample`
-- `lapTimeMs`
-- Start- und Endzeitstempel
-- `brakingPeakIndices`
+- `session_<trackName>_<timestamp>.json`
 
-### `Session`
-
-Enthaelt:
+### Gespeicherte Inhalte
 
 - Session-ID
+- Track-Name
 - Start- und Endzeit
-- alle Session-Samples
-- alle erkannten Runden
-- geschaetzte Rundendauer
+- Start- und Endzeitstempel
+- alle `SensorSample`
+- alle `Lap`
+- Lap Times
+- Peak-Indizes
 
-## 5. Visualisierung
+### Integrationspunkt
 
-### Umsetzung
+- Speichern erfolgt unmittelbar in `SessionRepository.stopSession()`
 
-Die Visualisierung basiert auf `MPAndroidChart`.
+Damit ist Datenverlust nach dem Stoppen stark reduziert.
 
-- Drei getrennte Charts:
-  - longitudinal
-  - lateral
-  - delta
-- X-Achse:
-  - 0 bis 100 Prozent
-- Pro Chart:
-  - Lap A
-  - Lap B
+## 6. Track Management
 
-### Normierung
+### Modell
 
-`LapNormalizer.normalize()` interpoliert jede Runde linear auf 251 Stuetzpunkte.
+- `Track(name: String)`
 
-- 0 = Rundenstart
-- 100 = Rundenende
+### Speicher
 
-Das erlaubt den direkten Vergleich auch bei unterschiedlichen Rundenzeiten.
+- `TrackManager` nutzt `SharedPreferences`
 
-## 6. Rundenvergleich
+### Main Screen
+
+Vor dem Starten kann der Nutzer:
+
+- einen bestehenden Track waehlen
+- einen neuen Track per Dialog anlegen
+
+### Session-Integration
+
+Jede Session traegt `trackName`.
+
+### Nutzen
+
+- Sessions koennen nach Track gruppiert und gefiltert werden.
+- Historische Daten pro Strecke sind damit spaeter nutzbar.
+
+## 7. Session Browsing
+
+### Neuer Screen
+
+- `SessionListFragment`
+
+### Funktionen
+
+- Liste aller gespeicherten Sessions
+- Anzeige von:
+  - Track-Name
+  - Datum
+  - Anzahl Laps
+  - Anzahl Samples
+- Filter nach Track
+- Session laden und direkt zu:
+  - Lap-Liste
+  - Comparison
+
+## 8. Main Screen
 
 ### Implementiert
 
-- Auswahl von zwei Runden per Spinner
-- Normierung beider Runden
-- Overlay in zwei Charts
-- Delta-Chart fuer Longitudinal- und Lateral-Differenz
-- Marker fuer Brems- und Cornering-Peaks
-- Vergleichstext:
-  - welche Runde schneller ist
-  - Zeitdifferenz
-  - Anzahl Brems-Peaks
-  - Anzahl Cornering-Peaks
-- einfache Driving-Style-Insights
-
-### Noch nicht implementiert
-
-- Abschnittsweise Zeitdifferenz pro Sektor
-- echte Zeitverlustschaetzung statt reiner Beschleunigungsdifferenz
-- feinere Markerlogik fuer mehrere Kurvenkomplexe
-
-## 7. UI-Umsetzung
-
-## Main Screen
-
-Implementiert:
-
+- Track-Spinner
 - Start
 - Stop
-- Statusanzeige
+- Live-Status
 - Sample Count
 - Live longitudinal/lateral
-- Anzahl erkannter Runden
 - geschaetzte Rundendauer
+- `Load last session`
+- `Browse sessions`
 - Navigation zu Laps und Comparison
 
-## Lap Screen
-
-Implementiert:
-
-- Liste erkannter Runden
-- Rundenzeit
-- Anzahl Samples
-- Anzahl erkannter Brems-Peaks
-
-## Comparison Screen
-
-Implementiert:
-
-- Auswahl Lap A
-- Auswahl Lap B
-- Ueberlagerte Charts
-- Delta-Chart
-- Peak-Marker
-- Insight-Textblock
-- Zusammenfassung schneller/langsamer
-
-## Lifecycle und Zustandsverwaltung
+## 9. Lap Screen
 
 ### Implementiert
 
-- Gemeinsames `SessionViewModel` fuer alle Screens
-- Sensorlistener werden ueber Lifecycle-Callbacks registriert/abgemeldet
-- UI basiert auf `StateFlow`
-- Fragments sammeln Daten mit `repeatOnLifecycle(Lifecycle.State.STARTED)`
+- Liste erkannter Laps
+- Lap Time
+- Anzahl Samples
+- Anzahl Brems-Peaks
+- Anzahl Cornering-Peaks
 
-### Einschraenkung
+## 10. Comparison Screen
 
-Es gibt keine Persistenz ueber App-Neustarts oder Prozessverlust hinaus.
+### Implementiert
+
+- Auswahl Lap A und Lap B
+- interpolierte Normierung per `LapNormalizer`
+- Longitudinal-Chart
+- Lateral-Chart
+- Delta-Chart
+- Marker fuer Peaks
+- textliche Zusammenfassung
+- heuristische Fahrstil-Insights
+
+## 11. Lifecycle und Zustandsverwaltung
+
+### Implementiert
+
+- gemeinsames `SessionViewModel`
+- `StateFlow` fuer Recording-State, Tracks, gespeicherte Sessions und Comparison-State
+- `SensorRecorder` als `DefaultLifecycleObserver`
+- Session-Laden aktualisiert `SessionRepository` und UI-State
+
+### Was jetzt robust ist
+
+- Sessions ueberleben App-Neustarts
+- letzter Run kann schnell wieder geladen werden
+- Sessions sind nach Track organisiert
+
+## Bekannte Grenzen
+
+- Kein Foreground Service, daher keine echte Hintergrundaufnahme fuer lange Sessions
+- Noch kein periodisches Autosave waehrend einer laufenden Session
+- Keine Exportfunktion nach CSV oder externem Share
+- Keine echte 3D-Orientierungsfusion fuer vollstaendig freie Telefonlage
+- `yawRateAbs` basiert nur auf `gyroZ`, nicht auf vollstaendig richtungsunabhaengiger Rotationsmagnitude
+- Lap-Detection ist heuristisch und nicht gegen reale Referenzdaten validiert
 
 ## Offene Punkte
 
 ## Fachlich offen
 
-- Orientierungskalibrierung des Smartphones
-- Bessere Trennung von Fahrdynamik und Gravitation
-- Robustere Rundenerkennung fuer verschiedene Streckenlaengen und Fahrstile
-- Plausibilisierung erkannter Rundenzeiten
-- Sektorzeiten oder Abschnittsvergleich
+- bessere Strecke-spezifische Historiennutzung fuer Lap-Detection
+- robustere Erkennung von Outlaps, Inlaps und Unterbrechungen
+- Sektorzeiten oder abschnittsweise Vergleiche
+- genauere Zeitverlustanalyse statt nur Signal-Differenzen
 
 ## Technisch offen
 
-- Persistenz von Sessions, z. B. per Datei oder Room
-- Exportfunktion, z. B. CSV oder JSON
-- Hintergrundaufnahme / Foreground Service fuer laengere Sessions
-- Runtime-Checks fuer mehr Sensortypen und Geraetevarianten
-- Tests:
-  - Unit-Tests fuer `LapDetector`
-  - Unit-Tests fuer `LapNormalizer`
-  - UI-Tests fuer Screen-Flow
-- Build-Validierung in einer echten Android-Umgebung
+- echtes Autosave waehrend Recording
+- Export als CSV oder JSON ausserhalb des App-Verzeichnisses
+- Foreground Service fuer laengere Sessions
+- Unit-Tests fuer:
+  - `LapDetector`
+  - `SessionStorageManager`
+  - `TrackManager`
+  - `LapNormalizer`
+- UI-Tests fuer:
+  - Track-Erstellung
+  - Session-Browsing
+  - Load-Last-Session-Flow
+- Build- und Laufvalidierung in echter Android-Umgebung
 
 ## UX offen
 
-- Hinweis-/Setup-Screen zur korrekten Telefonmontage
-- Bessere Fehlertexte bei zu kurzer Session
-- Farbige Segmentdarstellung innerhalb einer Runde:
+- klarerer Setup-Hinweis fuer Pocket-Nutzung
+- bessere Fehlertexte bei unzureichender Kalibrierung
+- visuelle Kennzeichnung geladenen Sessions gegenueber frisch aufgenommenen Sessions
+- semantische Farbsegmente innerhalb derselben Lap:
   - gruen fuer Beschleunigen
   - rot fuer Bremsen
   - blau fuer Cornering
 
-## Bekannte Grenzen des MVP
-
-- Keine echte Fahrzeugkoordinaten-Transformation
-- Keine GPS- oder Beacon-Referenz
-- Keine automatische Erkennung falscher Telefonlage
-- Bei sehr kurzen Aufnahmen wird die komplette Session als eine Runde gespeichert
-- Die Rundenerkennung ist heuristisch und nicht validiert gegen reale Referenzdaten
-
 ## Empfohlene naechste Schritte
 
-1. Build und Lauf auf echtem Android-Geraet validieren.
-2. Testdaten aufzeichnen und die Lap-Detection-Schwellen gegen reale Indoor-Kart-Sessions justieren.
-3. Telefonlage/Kalibrierung als expliziten Setup-Schritt einfuehren.
-4. Brems-Peaks direkt im Chart markieren.
-5. Persistenz und Export hinzufuegen.
+1. App in Android Studio auf einem echten Geraet bauen und testen.
+2. Mehrere Sessions je Track aufzeichnen und die Schwellwerte fuer Event-Detection feinjustieren.
+3. Autosave waehrend Recording ergaenzen.
+4. Exportfunktion fuer Sessions hinzufuegen.
+5. Tests fuer Persistenz und Lap-Detection nachziehen.
 
 ## Relevante Dateien
 
-- `app/src/main/java/com/kartingtracker/sensor/SensorRecorder.kt`
-- `app/src/main/java/com/kartingtracker/sensor/LowPassFilter.kt`
 - `app/src/main/java/com/kartingtracker/data/SessionRepository.kt`
+- `app/src/main/java/com/kartingtracker/data/SessionStorageManager.kt`
+- `app/src/main/java/com/kartingtracker/data/TrackManager.kt`
+- `app/src/main/java/com/kartingtracker/data/Track.kt`
+- `app/src/main/java/com/kartingtracker/sensor/SensorRecorder.kt`
+- `app/src/main/java/com/kartingtracker/sensor/CalibrationManager.kt`
+- `app/src/main/java/com/kartingtracker/sensor/LowPassFilter.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapDetector.kt`
-- `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`
+- `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
+- `app/src/main/java/com/kartingtracker/domain/DrivingInsightsGenerator.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionViewModel.kt`
 - `app/src/main/java/com/kartingtracker/ui/main/MainFragment.kt`
 - `app/src/main/java/com/kartingtracker/ui/laps/LapsFragment.kt`
 - `app/src/main/java/com/kartingtracker/ui/comparison/ComparisonFragment.kt`
+- `app/src/main/java/com/kartingtracker/ui/sessions/SessionListFragment.kt`

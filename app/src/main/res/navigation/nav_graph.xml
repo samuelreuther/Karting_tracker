@@ -14,6 +14,9 @@
         <action
             android:id="@+id/action_mainFragment_to_comparisonFragment"
             app:destination="@id/comparisonFragment" />
+        <action
+            android:id="@+id/action_mainFragment_to_sessionListFragment"
+            app:destination="@id/sessionListFragment" />
     </fragment>
 
     <fragment
@@ -25,5 +28,17 @@
         android:id="@+id/comparisonFragment"
         android:name="com.kartingtracker.ui.comparison.ComparisonFragment"
         android:label="@string/comparison_title" />
+
+    <fragment
+        android:id="@+id/sessionListFragment"
+        android:name="com.kartingtracker.ui.sessions.SessionListFragment"
+        android:label="@string/saved_sessions_title">
+        <action
+            android:id="@+id/action_sessionListFragment_to_lapsFragment"
+            app:destination="@id/lapsFragment" />
+        <action
+            android:id="@+id/action_sessionListFragment_to_comparisonFragment"
+            app:destination="@id/comparisonFragment" />
+    </fragment>
 
 </navigation>

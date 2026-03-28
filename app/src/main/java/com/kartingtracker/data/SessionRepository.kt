@@ -8,11 +8,17 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class SessionRepository(
     private val lapDetector: LapDetector,
-    private val peakDetector: PeakDetector
+    private val peakDetector: PeakDetector,
+    private val sessionStorageManager: SessionStorageManager,
+    private val trackManager: TrackManager
 ) {
     private val lock = Any()
-    private var currentSessionId: Long = 0L
+    private var currentSessionId: Long = sessionStorageManager
+        .loadAllSessions()
+        .maxOfOrNull { session -> session.id }
+        ?: 0L
     private var currentStartTimestampNs: Long = 0L
+    private var currentStartTimeEpochMs: Long = 0L
     private val currentSamples = mutableListOf<SensorSample>()
 
     private val _isRecording = MutableStateFlow(false)
@@ -27,10 +33,20 @@ class SessionRepository(
     private val _latestSession = MutableStateFlow<Session?>(null)
     val latestSession: StateFlow<Session?> = _latestSession.asStateFlow()
 
+    private val _storedSessions = MutableStateFlow(sessionStorageManager.loadAllSessions())
+    val storedSessions: StateFlow<List<Session>> = _storedSessions.asStateFlow()
+
+    private val _availableTracks = MutableStateFlow(trackManager.getTracks())
+    val availableTracks: StateFlow<List<Track>> = _availableTracks.asStateFlow()
+
+    private val _currentTrackName = MutableStateFlow(trackManager.getSelectedTrackName())
+    val currentTrackName: StateFlow<String> = _currentTrackName.asStateFlow()
+
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
             currentSessionId += 1L
             currentStartTimestampNs = startTimestampNs
+            currentStartTimeEpochMs = System.currentTimeMillis()
             currentSamples.clear()
             _latestSession.value = null
             _sampleCount.value = 0
@@ -60,12 +76,17 @@ class SessionRepository(
             if (currentSamples.isEmpty()) {
                 val emptySession = Session(
                     id = currentSessionId,
+                    trackName = _currentTrackName.value,
+                    startTimeEpochMs = currentStartTimeEpochMs,
+                    endTimeEpochMs = System.currentTimeMillis(),
                     startTimestampNs = currentStartTimestampNs,
                     endTimestampNs = endTimestampNs,
                     samples = emptyList(),
                     laps = emptyList()
                 )
                 _latestSession.value = emptySession
+                sessionStorageManager.saveSession(emptySession)
+                refreshStoredSessions()
                 return emptySession
             }
 
@@ -80,6 +101,9 @@ class SessionRepository(
 
             val session = Session(
                 id = currentSessionId,
+                trackName = _currentTrackName.value,
+                startTimeEpochMs = currentStartTimeEpochMs,
+                endTimeEpochMs = System.currentTimeMillis(),
                 startTimestampNs = currentStartTimestampNs,
                 endTimestampNs = endTimestampNs,
                 samples = rawSamples,
@@ -87,7 +111,55 @@ class SessionRepository(
                 estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
             )
             _latestSession.value = session
+            sessionStorageManager.saveSession(session)
+            refreshStoredSessions()
             return session
         }
+    }
+
+    fun createTrack(trackName: String): Track? {
+        val track = trackManager.saveTrack(trackName) ?: return null
+        refreshTracks()
+        selectTrack(track.name)
+        return track
+    }
+
+    fun selectTrack(trackName: String) {
+        trackManager.setSelectedTrack(trackName)
+        _currentTrackName.value = trackName
+        refreshTracks()
+        refreshStoredSessions()
+    }
+
+    fun loadSessionsForTrack(trackName: String): List<Session> {
+        return sessionStorageManager.loadSessionsForTrack(trackName)
+    }
+
+    fun loadLastSession(): Session? {
+        val session = sessionStorageManager.loadLastSession() ?: return null
+        loadSession(session)
+        return session
+    }
+
+    fun loadSession(session: Session) {
+        synchronized(lock) {
+            _isRecording.value = false
+            _latestSession.value = session
+            _sampleCount.value = session.samples.size
+            _lastSample.value = session.samples.lastOrNull()
+            if (session.trackName.isNotBlank()) {
+                _currentTrackName.value = session.trackName
+                trackManager.setSelectedTrack(session.trackName)
+                refreshTracks()
+            }
+        }
+    }
+
+    fun refreshStoredSessions() {
+        _storedSessions.value = sessionStorageManager.loadAllSessions()
+    }
+
+    private fun refreshTracks() {
+        _availableTracks.value = trackManager.getTracks()
     }
 }

@@ -40,6 +40,19 @@
             android:text="@string/device_mount_note"
             android:textColor="@color/karting_muted" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/track_selection_label"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/trackSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -205,6 +218,22 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="@string/compare_laps" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/loadLastSessionButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/load_last_session" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/browseSessionsButton"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/browse_sessions" />
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>

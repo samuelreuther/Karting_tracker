@@ -6,6 +6,10 @@
     <string name="device_mount_note">Mount assumption: phone is roughly aligned with the kart and lies stable. The app calibrates gravity for about 2 seconds before recording starts.</string>
     <string name="start_recording">Start</string>
     <string name="stop_recording">Stop</string>
+    <string name="track_selection_label">Track</string>
+    <string name="create_new_track">Create new track</string>
+    <string name="save_track">Save track</string>
+    <string name="new_track_hint">Track name</string>
     <string name="live_telemetry">Live telemetry</string>
     <string name="samples_label">Samples</string>
     <string name="detected_laps_label">Detected laps</string>
@@ -14,13 +18,18 @@
     <string name="estimated_lap_label">Estimated lap time</string>
     <string name="view_detected_laps">View detected laps</string>
     <string name="compare_laps">Compare laps</string>
+    <string name="load_last_session">Load last session</string>
+    <string name="browse_sessions">Browse sessions</string>
     <string name="lap_list_title">Laps</string>
     <string name="comparison_title">Comparison</string>
+    <string name="saved_sessions_title">Saved sessions</string>
     <string name="no_laps_detected">No laps detected yet. Record a session and stop it to run lap detection.</string>
     <string name="comparison_intro">Each lap is normalized to 0-100 percent of its duration so the traces can be overlaid directly.</string>
     <string name="insights_title">Driving style insights</string>
     <string name="lap_a_label">Lap A</string>
     <string name="lap_b_label">Lap B</string>
     <string name="no_comparison_data">No laps available to compare yet.</string>
+    <string name="session_filter_label">Filter by track</string>
+    <string name="no_saved_sessions">No saved sessions found.</string>
     <string name="accel_value_format">%.2f m/s^2</string>
 </resources>

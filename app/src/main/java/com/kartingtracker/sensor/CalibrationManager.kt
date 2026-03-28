@@ -1,10 +1,12 @@
 package com.kartingtracker.sensor
 
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 data class CalibratedAcceleration(
     val longitudinalAcceleration: Float,
-    val lateralAcceleration: Float
+    val lateralAcceleration: Float,
+    val totalAcceleration: Float
 )
 
 class CalibrationManager(
@@ -58,13 +60,14 @@ class CalibrationManager(
     fun getGravityVector(): FloatArray? = calibrationData?.gravityVector?.copyOf()
 
     fun projectAcceleration(accelValues: FloatArray): CalibratedAcceleration {
-        val calibration = calibrationData ?: return CalibratedAcceleration(0f, 0f)
+        val calibration = calibrationData ?: return CalibratedAcceleration(0f, 0f, 0f)
         val gravityComponentMagnitude = dot(accelValues, calibration.gravityUnitVector)
         val gravityComponent = scale(calibration.gravityUnitVector, gravityComponentMagnitude)
-        val planarAcceleration = subtract(accelValues, gravityComponent)
+        val gravityRemovedAcceleration = subtract(accelValues, gravityComponent)
         return CalibratedAcceleration(
-            longitudinalAcceleration = dot(planarAcceleration, calibration.forwardAxis),
-            lateralAcceleration = dot(planarAcceleration, calibration.lateralAxis)
+            longitudinalAcceleration = dot(gravityRemovedAcceleration, calibration.forwardAxis),
+            lateralAcceleration = dot(gravityRemovedAcceleration, calibration.lateralAxis),
+            totalAcceleration = norm(gravityRemovedAcceleration)
         )
     }
 
@@ -92,6 +95,9 @@ class CalibrationManager(
         var lateralAxis = normalize(cross(forwardAxis, gravityUnitVector))
         if (norm(lateralAxis) < 1e-4f) {
             lateralAxis = normalize(cross(gravityUnitVector, forwardAxis))
+        }
+        if (abs(dot(forwardAxis, lateralAxis)) > 0.1f) {
+            lateralAxis = normalize(projectOntoPlane(lateralAxis, forwardAxis))
         }
 
         calibrationData = CalibrationData(

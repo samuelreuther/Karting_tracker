@@ -14,6 +14,7 @@ import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.abs
 
 enum class RecorderPhase {
     IDLE,
@@ -125,7 +126,9 @@ class SensorRecorder(
                     gyroY = lastGyro[1],
                     gyroZ = lastGyro[2],
                     longitudinalAccel = calibratedAcceleration.longitudinalAcceleration,
-                    lateralAccel = calibratedAcceleration.lateralAcceleration
+                    lateralAccel = calibratedAcceleration.lateralAcceleration,
+                    totalAcceleration = calibratedAcceleration.totalAcceleration,
+                    yawRateAbs = abs(lastGyro[2])
                 )
                 sessionRepository.appendSample(sample)
             }

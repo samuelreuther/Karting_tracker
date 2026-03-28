@@ -9,5 +9,7 @@ data class SensorSample(
     val gyroY: Float,
     val gyroZ: Float,
     val longitudinalAccel: Float,
-    val lateralAccel: Float
+    val lateralAccel: Float,
+    val totalAcceleration: Float = 0f,
+    val yawRateAbs: Float = 0f
 )
