@@ -8,6 +8,8 @@ import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.TrackProfile
 import com.kartingtracker.domain.DrivingInsightsGenerator
+import com.kartingtracker.domain.IdealLap
+import com.kartingtracker.domain.IdealLapCalculator
 import com.kartingtracker.domain.LapNormalizer
 import com.kartingtracker.domain.TimeLossCalculator
 import com.kartingtracker.service.startRecordingService
@@ -33,6 +35,22 @@ class SessionViewModel(
     private val selectedLapAIndex = MutableStateFlow(0)
     private val selectedLapBIndex = MutableStateFlow(1)
     private val selectedSessionFilter = MutableStateFlow(ALL_TRACKS_FILTER)
+
+    val idealLap: StateFlow<IdealLap?> = combine(
+        sessionRepository.storedSessions,
+        sessionRepository.currentSession,
+        sessionRepository.currentTrackName
+    ) { storedSessions, currentSession, currentTrackName ->
+        val trackSessions = storedSessions.filter { session -> session.trackName == currentTrackName }
+        val allTrackLaps = buildList {
+            trackSessions.forEach { session -> addAll(session.laps) }
+            val currentTrackSession = currentSession?.takeIf { session -> session.trackName == currentTrackName }
+            if (currentTrackSession != null && trackSessions.none { session -> session.id == currentTrackSession.id }) {
+                addAll(currentTrackSession.laps)
+            }
+        }
+        IdealLapCalculator.calculate(allTrackLaps)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val laps: StateFlow<List<Lap>> = sessionRepository.currentSession
         .map { session -> session?.laps.orEmpty() }
@@ -94,9 +112,10 @@ class SessionViewModel(
 
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
         laps,
+        idealLap,
         selectedLapAIndex,
         selectedLapBIndex
-    ) { laps, selectedA, selectedB ->
+    ) { laps, idealLap, selectedA, selectedB ->
         if (laps.isEmpty()) {
             return@combine ComparisonUiState()
         }
@@ -141,6 +160,8 @@ class SessionViewModel(
             lateralCornerMarkersB = normalizedB.corneringMarkerEntries,
             timeLossEntries = timeLossEntries,
             sectorComparisonLines = createSectorComparisonLines(lapA, lapB),
+            idealLapLabel = idealLap?.let { ideal -> "Ideal Lap: ${formatLapTime(ideal.totalTimeMs)}" }.orEmpty(),
+            idealLapSectorLines = createIdealLapSectorLines(idealLap),
             insights = DrivingInsightsGenerator.generate(normalizedA, normalizedB),
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
@@ -153,6 +174,9 @@ class SessionViewModel(
                 append(" ")
                 append("Braking peaks: ${lapA.brakingPeakIndices.size} vs ${lapB.brakingPeakIndices.size}. ")
                 append("Cornering peaks: ${lapA.corneringPeakIndices.size} vs ${lapB.corneringPeakIndices.size}. ")
+                idealLap?.let { ideal ->
+                    append("Ideal lap reference: ${formatLapTime(ideal.totalTimeMs)}. ")
+                }
                 timeLossEntries.lastOrNull()?.let { finalDelta ->
                     val absoluteDelta = abs(finalDelta.y)
                     val deltaLeader = when {
@@ -239,6 +263,12 @@ class SessionViewModel(
                 else -> prefix + "-${formatLapTime(abs(deltaMs))}"
             }
         }
+    }
+
+    private fun createIdealLapSectorLines(idealLap: IdealLap?): List<String> {
+        return idealLap?.sectorBestTimes?.mapIndexed { index, sectorTimeMs ->
+            "Best S${index + 1}: ${formatLapTime(sectorTimeMs)}"
+        }.orEmpty()
     }
 
     private fun resetLapSelection(session: Session) {

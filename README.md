@@ -19,8 +19,9 @@ Implemented today:
 - hybrid lap detection with correlation, event detection, confidence scoring, track-profile biasing, and outlap handling
 - distinction between `OUTLAP` and `DISTURBED` laps
 - automatic sector detection and sector time calculation without GPS
+- track-profile driven stable sector usage when learned sector boundaries exist
 - braking and cornering peak markers
-- lap comparison with overlay charts, a time loss chart, sector deltas, and simple text insights
+- lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
 - persistent session storage as JSON
 - periodic autosave during recording
 - track management
@@ -33,7 +34,6 @@ Not implemented yet:
 
 - export to CSV or external share target
 - fully orientation-invariant directional charts
-- best-sector or ideal-lap analysis across many laps
 - full live recording recovery after process death or device reboot
 - automated tests
 - verified build/run in this environment
@@ -141,6 +141,7 @@ The comparison screen shows:
 - Lap A and Lap B overlay for lateral acceleration
 - time loss graph for `Lap A - Lap B`
 - sector-by-sector delta lines
+- ideal lap total time and best sector lines
 - braking markers
 - cornering markers
 - short heuristic driving insights
@@ -229,8 +230,9 @@ How it is used:
 - the profile is saved under `filesDir/track_profiles`
 - after a session stops, the profile for that track is rebuilt from historical sessions
 - new sessions on the same track use that profile immediately during lap detection
-- new laps on the same track reuse learned sector boundaries when available
+- if `typicalSectorBoundaries` has at least 2 internal boundaries, all laps on that track reuse those boundaries instead of per-lap re-detection
 - profiles with fewer than 2 sessions have lower influence
+- sector boundary updates are smoothed instead of replaced abruptly
 
 ## Session Browser
 
@@ -273,7 +275,7 @@ This is intended for UI and chart validation when no real kart session has been 
 - `app/src/main/java/com/kartingtracker/service`
   - foreground service, notification helper, start/stop helpers
 - `app/src/main/java/com/kartingtracker/domain`
-  - lap detection, sector detection, peak detection, normalization, time loss, insights
+  - lap detection, sector detection, peak detection, normalization, time loss, ideal lap, insights
 - `app/src/main/java/com/kartingtracker/ui`
   - shared view model and UI state
 - `app/src/main/java/com/kartingtracker/ui/main`

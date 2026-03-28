@@ -235,17 +235,16 @@ class SessionRepository(
         if (session.laps.isNotEmpty()) {
             val trackProfile = loadUsableTrackProfile(session.trackName)
             val enrichedLaps = session.laps.map { lap ->
-                val sectorBoundaries = when {
-                    lap.sectorBoundaries.isNotEmpty() -> lap.sectorBoundaries
-                    trackProfile?.typicalSectorBoundaries?.isNotEmpty() == true -> trackProfile.typicalSectorBoundaries
-                    else -> SectorDetector.detectSectors(lap)
-                }
+                val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
+                val shouldRecomputeSectorTimes = shouldForceTrackProfileSectors(trackProfile) ||
+                    lap.sectorTimesMs.isEmpty() ||
+                    lap.sectorBoundaries != sectorBoundaries
                 lap.copy(
                     sectorBoundaries = sectorBoundaries,
-                    sectorTimesMs = if (lap.sectorTimesMs.isNotEmpty()) {
-                        lap.sectorTimesMs
-                    } else {
+                    sectorTimesMs = if (shouldRecomputeSectorTimes) {
                         SectorDetector.computeSectorTimes(lap, sectorBoundaries)
+                    } else {
+                        lap.sectorTimesMs
                     }
                 )
             }
@@ -278,9 +277,7 @@ class SessionRepository(
         val trackProfile = loadUsableTrackProfile(trackName)
         val detectionResult = lapDetector.detect(samples, trackProfile)
         val laps = classifyLaps(detectionResult.laps.map { lap ->
-            val sectorBoundaries = trackProfile?.typicalSectorBoundaries
-                ?.takeIf { boundaries -> boundaries.isNotEmpty() }
-                ?: SectorDetector.detectSectors(lap)
+            val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
             lap.copy(
                 brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
                 corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples),
@@ -327,6 +324,21 @@ class SessionRepository(
                     lap.corneringPeakIndices.size < 2
             )
         }
+    }
+
+    private fun resolveSectorBoundaries(trackProfile: TrackProfile?, lap: Lap): List<Int> {
+        val profileBoundaries = trackProfile?.typicalSectorBoundaries.orEmpty()
+        return if (profileBoundaries.size >= 2) {
+            profileBoundaries
+        } else if (lap.sectorBoundaries.isNotEmpty()) {
+            lap.sectorBoundaries
+        } else {
+            SectorDetector.detectSectors(lap)
+        }
+    }
+
+    private fun shouldForceTrackProfileSectors(trackProfile: TrackProfile?): Boolean {
+        return trackProfile?.typicalSectorBoundaries?.size ?: 0 >= 2
     }
 
     private fun loadUsableTrackProfile(trackName: String): TrackProfile? {

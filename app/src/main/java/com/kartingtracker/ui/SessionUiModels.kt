@@ -36,6 +36,8 @@ data class ComparisonUiState(
     val lateralCornerMarkersB: List<Entry> = emptyList(),
     val timeLossEntries: List<Entry> = emptyList(),
     val sectorComparisonLines: List<String> = emptyList(),
+    val idealLapLabel: String = "",
+    val idealLapSectorLines: List<String> = emptyList(),
     val insights: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
 )

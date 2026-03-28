@@ -35,11 +35,13 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Outlap-Markierung fuer eine instabile erste Runde
 - Disturbed-Lap-Klassifikation fuer spaete oder unplausible Runden
 - automatische Sektor-Erkennung pro Lap
+- stabile Sektorverwendung ueber `TrackProfile.typicalSectorBoundaries`
 - Sektorzeiten pro Lap
 - Peak-Detection fuer Bremsen und Cornering
 - lineare Interpolation fuer Lap-Normalisierung
 - Comparison Screen mit Overlay-Charts und Zeitverlust-Chart
 - Sektorvergleich zwischen zwei Laps
+- Ideal-Lap-Berechnung aus Best-Sektoren
 - einfache textliche Fahrstil-Insights
 - persistente Session-Speicherung als JSON
 - periodisches Autosave waehrend Recording
@@ -54,7 +56,6 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 
 - Exportfunktion nach CSV
 - Teilen von Sessions ausserhalb des App-Verzeichnisses
-- ideal lap / best-sector-Auswertung ueber mehrere Laps oder Sessions
 - echte Wiederaufnahme einer bereits laufenden Sensoraufnahme nach Prozess-Tod oder Reboot
 - vollstaendig orientierungsunabhaengige Richtungsdiagramme
 - Sensorfusion mit echter Pose-/Orientierungsrekonstruktion
@@ -468,6 +469,12 @@ Rueckgabe:
 - `sectorBoundaries` enthaelt nur die internen Grenzpunkte
 - Start `0` und Ende `100` werden implizit angenommen
 
+Stabile Nutzung ueber Track-Profil:
+
+- wenn `TrackProfile.typicalSectorBoundaries` mindestens 2 interne Grenzpunkte enthaelt, werden diese fuer alle Laps dieses Tracks verwendet
+- in diesem Fall findet keine erneute lap-spezifische Sektor-Erkennung statt
+- dadurch bleiben Sektorvergleich und Ideal Lap konsistent ueber mehrere Laps und Sessions
+
 ## Sektorzeiten
 
 `SectorDetector.computeSectorTimes(...)` berechnet aus den Prozent-Grenzen reale Abschnittszeiten:
@@ -517,6 +524,8 @@ Der Comparison Screen zeigt:
 - Lateral-Overlay
 - Time-Loss-Graph
 - Sektorvergleich als Textblock
+- Ideal-Lap-Zeit
+- Best-Sektoren des Ideal Laps
 - Peak-Marker
 - Summary-Text
 - 2 bis 4 einfache Insights
@@ -578,6 +587,39 @@ Bedeutung:
 
 - positives Delta: Lap A ist in diesem Sektor langsamer
 - negatives Delta: Lap A ist in diesem Sektor schneller
+
+## Ideal Lap
+
+`IdealLapCalculator` erzeugt eine Referenzrunde aus den besten Sektoren gueltiger Laps.
+
+Eingang:
+
+- Laps des aktuellen Tracks aus aktueller und gespeicherter Session-Historie
+
+Gueltige Laps:
+
+- nicht `isOutlap`
+- nicht `isDisturbed`
+- `confidenceScore >= 0.6`
+- vorhandene `sectorTimesMs`
+
+Berechnung:
+
+1. haeufigste Sektoranzahl ueber die gueltigen Laps bestimmen
+2. nur Laps mit dieser Sektoranzahl vergleichen
+3. pro Sektor den kleinsten gemessenen Sektorwert nehmen
+4. alle Bestzeiten summieren
+
+Ausgabe:
+
+- `IdealLap.sectorBestTimes`
+- `IdealLap.totalTimeMs`
+
+Nutzung in der UI:
+
+- Comparison Screen zeigt `Ideal Lap: XX.XX`
+- darunter die besten Einzel-Sektoren
+- die Berechnung laeuft trackweit ueber gespeicherte Sessions, nicht nur ueber die aktuell geladene Session
 
 ## Driving Insights
 
@@ -714,13 +756,22 @@ Profilaufbau:
 4. `totalAcceleration` und `yawRateAbs` aller gueltigen Laps auf 101 Punkte normalisieren
 5. Mittelkurven bilden
 6. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
-7. typische Sektorgrenzen aus historischen Laps mitteln
+7. typische Sektorgrenzen aus historischen Laps ableiten
 8. Mittelwert und Standardabweichung der Lap-Time speichern
+
+Verbesserung der Sektorgrenzen:
+
+- vorhandene `typicalSectorBoundaries` werden nicht hart ueberschrieben
+- neue Grenzen werden geglaettet:
+  - `0.8 * alt + 0.2 * neu`
+- Update nur wenn:
+  - mindestens 3 gueltige Laps vorhanden sind
+  - der Disturbed-Anteil ausreichend niedrig ist
 
 Nutzung in neuer Session:
 
 - falls Profil vorhanden, wird die Lap-Detection frueh und enger um die erwartete Rundenzeit gesucht
-- falls Profil vorhanden, werden typische Sektorgrenzen fuer neue Laps wiederverwendet
+- falls `typicalSectorBoundaries.size >= 2`, werden diese festen Sektorgrenzen fuer alle Laps wiederverwendet
 - Profile mit `sessionCount < 2` wirken absichtlich schwacher, um Ueberanpassung zu vermeiden
 
 UI:
@@ -821,13 +872,14 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Betrieb | Foreground Service | Erfuellt | `RecordingForegroundService` mit Notification und Wake-Lock |
 | Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
 | Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
-| Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | `typicalSectorBoundaries` im Track-Profil |
+| Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | feste Nutzung von `typicalSectorBoundaries` bei ausreichender Profilstaerke |
 | Track Management | Track auswaehlen/anlegen | Erfuellt | Main Screen + `TrackManager` |
 | Session Browsing | Liste, Filter, Laden | Erfuellt | `SessionListFragment` |
 | Visualisierung | Lap-Overlay | Erfuellt | Comparison Screen |
 | Visualisierung | Time-Loss-Graph | Erfuellt | `TimeLossCalculator` + Comparison Screen |
 | Visualisierung | Sektorvergleich | Erfuellt | Sektor-Deltas im Comparison Screen |
 | Visualisierung | Sektorzeiten pro Lap | Erfuellt | Lap-Liste zeigt Abschnittszeiten |
+| Visualisierung | Ideal Lap | Erfuellt | `IdealLapCalculator` + Comparison Screen |
 | Visualisierung | Peak-Marker | Erfuellt | Bremsen und Cornering |
 | Insights | Text-Feedback | Erfuellt | `DrivingInsightsGenerator` |
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
@@ -854,7 +906,6 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 - robustere Erkennung von Inlaps und Unterbrechungen
 - streckenspezifische Nutzung historischer Sessions fuer bessere Lap-Detection
-- ideal lap / best sectors ueber mehrere Sessions
 - genauere Zeitverlustanalyse ueber echte Distanz- oder Geschwindigkeitsreferenzen
 - moegliche alternative Vergleichsmodi auf Basis von `totalAcceleration` und `yawRateAbs`
 
@@ -915,6 +966,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
 - `app/src/main/java/com/kartingtracker/domain/TimeLossCalculator.kt`
+- `app/src/main/java/com/kartingtracker/domain/IdealLapCalculator.kt`
 - `app/src/main/java/com/kartingtracker/domain/DrivingInsightsGenerator.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionViewModel.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionUiModels.kt`

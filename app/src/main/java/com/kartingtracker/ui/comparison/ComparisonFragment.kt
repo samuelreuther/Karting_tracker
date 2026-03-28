@@ -74,6 +74,10 @@ class ComparisonFragment : Fragment() {
                     binding.summaryLabel.text = state.summaryLabel
                     binding.lapATimeLabel.text = state.lapATimeLabel
                     binding.lapBTimeLabel.text = state.lapBTimeLabel
+                    binding.idealLapLabel.text = state.idealLapLabel
+                    binding.idealLapLabel.visibility = if (state.idealLapLabel.isBlank()) View.GONE else View.VISIBLE
+                    binding.idealLapSectorLabel.text = state.idealLapSectorLines.joinToString(separator = "\n")
+                    binding.idealLapSectorLabel.visibility = if (state.idealLapSectorLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.sectorComparisonLabel.text = state.sectorComparisonLines.joinToString(separator = "\n")
                     binding.sectorComparisonLabel.visibility = if (state.sectorComparisonLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.insightsLabel.text = state.insights.joinToString(separator = "\n")

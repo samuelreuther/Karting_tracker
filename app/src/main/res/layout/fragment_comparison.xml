@@ -97,6 +97,23 @@
                 android:textColor="@color/karting_muted"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/idealLapLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/idealLapSectorLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/karting_muted"
+                android:visibility="gone" />
+
             <com.github.mikephil.charting.charts.LineChart
                 android:id="@+id/longitudinalChart"
                 android:layout_width="match_parent"

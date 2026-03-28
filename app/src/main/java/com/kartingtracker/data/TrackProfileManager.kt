@@ -35,6 +35,11 @@ class TrackProfileManager(
     }
 
     fun updateProfile(trackName: String, sessions: List<Session>): TrackProfile {
+        val existingProfile = loadProfile(trackName)
+        val totalLapCount = sessions.sumOf { session -> session.laps.size }
+        val disturbedLapCount = sessions.sumOf { session -> session.laps.count { lap -> lap.isDisturbed } }
+        val disturbedRatio = if (totalLapCount == 0) 0f else disturbedLapCount.toFloat() / totalLapCount.toFloat()
+
         val qualifyingLapsBySession = sessions.mapNotNull { session ->
             val validLaps = session.laps.filter { lap ->
                 !lap.isOutlap && !lap.isDisturbed && lap.confidenceScore >= minimumLapConfidence
@@ -49,7 +54,6 @@ class TrackProfileManager(
             validLaps
         }
 
-        val existingProfile = loadProfile(trackName)
         if (qualifyingLapsBySession.isEmpty()) {
             return existingProfile ?: emptyProfile(trackName)
         }
@@ -69,7 +73,13 @@ class TrackProfileManager(
                 LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.yawRateAbs }
             }
         )
-        val typicalSectorBoundaries = computeTypicalSectorBoundaries(validLaps, averageTotalAcceleration, averageYawRateAbs)
+        val detectedSectorBoundaries = computeTypicalSectorBoundaries(validLaps, averageTotalAcceleration, averageYawRateAbs)
+        val typicalSectorBoundaries = stabilizeSectorBoundaries(
+            existingProfile = existingProfile,
+            detectedBoundaries = detectedSectorBoundaries,
+            validLapCount = validLaps.size,
+            disturbedRatio = disturbedRatio
+        )
 
         val lapTimes = validLaps.map { lap -> lap.lapTimeMs.toDouble() }
         val meanLapTimeMs = lapTimes.average()
@@ -212,11 +222,36 @@ class TrackProfileManager(
         }
     }
 
+    private fun stabilizeSectorBoundaries(
+        existingProfile: TrackProfile?,
+        detectedBoundaries: List<Int>,
+        validLapCount: Int,
+        disturbedRatio: Float
+    ): List<Int> {
+        val existingBoundaries = existingProfile?.typicalSectorBoundaries.orEmpty()
+        if (validLapCount < minimumLapsForSectorUpdate || disturbedRatio > maximumDisturbedRatioForSectorUpdate) {
+            return existingBoundaries.ifEmpty { detectedBoundaries }
+        }
+        if (existingBoundaries.isEmpty() || existingBoundaries.size != detectedBoundaries.size) {
+            return detectedBoundaries
+        }
+
+        return existingBoundaries.mapIndexed { index, oldBoundary ->
+            val detectedBoundary = detectedBoundaries[index]
+            (((oldBoundary * sectorBoundarySmoothingOldWeight) + (detectedBoundary * sectorBoundarySmoothingNewWeight)).toInt())
+                .coerceIn(1, 99)
+        }
+    }
+
     companion object {
         private const val TAG = "TrackProfileManager"
         const val PROFILE_POINT_COUNT = 101
         private const val minimumLapConfidence = 0.6f
         private const val minimumZoneSpacing = 6
         private const val maximumStoredZones = 6
+        private const val minimumLapsForSectorUpdate = 3
+        private const val maximumDisturbedRatioForSectorUpdate = 0.35f
+        private const val sectorBoundarySmoothingOldWeight = 0.8f
+        private const val sectorBoundarySmoothingNewWeight = 0.2f
     }
 }
