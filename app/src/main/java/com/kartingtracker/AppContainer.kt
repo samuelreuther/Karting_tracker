@@ -1,6 +1,7 @@
 package com.kartingtracker
 
 import android.content.Context
+import com.kartingtracker.data.SimulatedSessionGenerator
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.SessionStorageManager
 import com.kartingtracker.data.TrackManager
@@ -13,6 +14,16 @@ class AppContainer(context: Context) {
     private val peakDetector = PeakDetector()
     private val sessionStorageManager = SessionStorageManager(context.applicationContext)
     private val trackManager = TrackManager(context.applicationContext)
+
+    init {
+        if (BuildConfig.DEBUG) {
+            SimulatedSessionGenerator.seedDebugSessionIfNeeded(
+                context = context.applicationContext,
+                sessionStorageManager = sessionStorageManager,
+                trackManager = trackManager
+            )
+        }
+    }
 
     val sessionRepository = SessionRepository(
         lapDetector = lapDetector,

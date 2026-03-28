@@ -23,6 +23,7 @@ Implemented today:
 - track management
 - session browser with filter and reload
 - load-last-session shortcut
+- debug seeding of one simulated test session
 
 Not implemented yet:
 
@@ -162,6 +163,17 @@ When a saved session is loaded:
 - the lap list is refreshed
 - comparison state is recomputed
 - default lap selection prefers non-outlap laps
+
+## Simulated Test Data
+
+For debug builds, the app seeds one simulated session once on app start:
+
+- track name: `Test Track`
+- persistent JSON save through `SessionStorageManager`
+- slower first lap marked as outlap
+- multiple laps with braking and cornering markers
+
+This is intended for UI and chart validation when no real kart session has been recorded yet.
 
 ## Project Structure
 

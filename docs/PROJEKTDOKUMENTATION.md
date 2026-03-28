@@ -42,6 +42,7 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Session-Browsing mit Filter
 - Laden der letzten Session
 - Laden gespeicherter Sessions in den aktiven App-State
+- Debug-Erzeugung einer simulierten Test-Session
 
 ### Nicht implementiert
 
@@ -53,6 +54,27 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Sensorfusion mit echter Pose-/Orientierungsrekonstruktion
 - automatisierte Tests
 - Laufvalidierung in dieser lokalen Umgebung
+
+## Simulationsdaten fuer Debug
+
+Es gibt jetzt einen zusaetzlichen Utility-Pfad fuer Entwicklung und Demo:
+
+- `SimulatedSessionGenerator.generateSession(trackName)`
+- erzeugt eine vollstaendige `Session` mit kompatiblen `SensorSample`-, `Lap`- und `Session`-Strukturen
+- schreibt im Debug-Build einmalig eine Session fuer `Test Track` in den bestehenden JSON-Speicherpfad
+
+Ziel:
+
+- Session-Browser ohne echte Fahrdaten pruefbar machen
+- Lap-Liste, Comparison, Charts und Marker mit realistischeren Testdaten pruefbar machen
+
+Aktuelles Verhalten:
+
+- Sampling alle 50 ms
+- etwa 8 bis 9 Laps
+- erste Lap langsamer und als Outlap markiert
+- simulierte Bremszonen, Straights und Cornering-Zonen
+- gespeicherte Session wird von der App wie eine normale Session geladen
 
 ## Architektur
 
@@ -421,6 +443,11 @@ Gespeicherte Inhalte:
 - geschatzte Rundenzeit
 
 Die App nutzt derzeit keine Datenbank.
+
+Zusatz fuer Debug:
+
+- simulierte Sessions werden ueber denselben `SessionStorageManager.saveSession(...)`-Pfad gespeichert
+- dadurch landen sie im normalen Session-Verzeichnis und erscheinen direkt in `SessionListFragment`
 
 ## SessionRepository
 
