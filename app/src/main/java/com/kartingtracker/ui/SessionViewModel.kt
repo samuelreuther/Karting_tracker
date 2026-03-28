@@ -138,6 +138,7 @@ class SessionViewModel(
             lateralCornerMarkersA = normalizedA.corneringMarkerEntries,
             lateralCornerMarkersB = normalizedB.corneringMarkerEntries,
             timeLossEntries = timeLossEntries,
+            sectorComparisonLines = createSectorComparisonLines(lapA, lapB),
             insights = DrivingInsightsGenerator.generate(normalizedA, normalizedB),
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
@@ -217,6 +218,24 @@ class SessionViewModel(
         return timeLoss.mapIndexed { index, value ->
             val x = (index.toFloat() / (pointCount - 1).coerceAtLeast(1)) * 100f
             Entry(x, value)
+        }
+    }
+
+    private fun createSectorComparisonLines(lapA: Lap, lapB: Lap): List<String> {
+        val sectorCount = minOf(lapA.sectorTimesMs.size, lapB.sectorTimesMs.size)
+        if (sectorCount == 0) {
+            return emptyList()
+        }
+
+        return List(sectorCount) { index ->
+            val sectorNumber = index + 1
+            val deltaMs = lapA.sectorTimesMs[index] - lapB.sectorTimesMs[index]
+            val prefix = "S$sectorNumber: "
+            when {
+                deltaMs == 0L -> prefix + "even"
+                deltaMs > 0L -> prefix + "+${formatLapTime(deltaMs)}"
+                else -> prefix + "-${formatLapTime(abs(deltaMs))}"
+            }
         }
     }
 

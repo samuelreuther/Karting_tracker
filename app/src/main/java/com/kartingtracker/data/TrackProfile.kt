@@ -9,5 +9,6 @@ data class TrackProfile(
     val averageYawRateAbs: List<Float>,
     val typicalBrakingZones: List<Int>,
     val typicalCorneringZones: List<Int>,
+    val typicalSectorBoundaries: List<Int>,
     val sessionCount: Int
 )

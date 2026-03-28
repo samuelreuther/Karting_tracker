@@ -17,8 +17,9 @@ Implemented today:
 - derived signals for both chart compatibility and pocket-tolerant detection
 - hybrid lap detection with correlation, event detection, confidence scoring, track-profile biasing, and outlap handling
 - distinction between `OUTLAP` and `DISTURBED` laps
+- automatic sector detection and sector time calculation without GPS
 - braking and cornering peak markers
-- lap comparison with overlay charts, a time loss chart, and simple text insights
+- lap comparison with overlay charts, a time loss chart, sector deltas, and simple text insights
 - persistent session storage as JSON
 - periodic autosave during recording
 - track management
@@ -32,7 +33,7 @@ Not implemented yet:
 - foreground service for long background-safe recording
 - export to CSV or external share target
 - fully orientation-invariant directional charts
-- sector timing
+- best-sector or ideal-lap analysis across many laps
 - automated tests
 - verified build/run in this environment
 
@@ -129,6 +130,7 @@ The comparison screen shows:
 - Lap A and Lap B overlay for longitudinal acceleration
 - Lap A and Lap B overlay for lateral acceleration
 - time loss graph for `Lap A - Lap B`
+- sector-by-sector delta lines
 - braking markers
 - cornering markers
 - short heuristic driving insights
@@ -141,6 +143,15 @@ Time loss:
 - compares both laps point by point
 - positive values mean Lap A is slower at that point
 - negative values mean Lap A is faster
+
+Sector detection:
+
+- uses normalized `totalAcceleration` and `yawRateAbs`
+- detects strong braking dips and cornering peaks
+- reduces them to 1-3 stable internal boundaries
+- yields 2-4 sectors per lap
+- falls back to a simple midpoint split if too few stable events are found
+- if a track profile exists, the app reuses learned sector boundaries for consistency across sessions
 
 ## Persistence
 
@@ -162,11 +173,14 @@ Each saved session contains:
 - detected laps
 - lap times
 - braking and cornering peak indices
+- disturbed and outlap flags
+- sector boundaries and sector times
 
 Crash protection:
 
 - during recording, autosave runs every 5 seconds
 - if a session was saved only partially and has no laps yet, the repository reprocesses it on load
+- if an older saved session has laps but no sector metadata yet, the repository enriches it on load
 
 ## Track Management
 
@@ -192,6 +206,7 @@ What is stored per track:
 - average normalized `yawRateAbs`
 - typical braking zones
 - typical cornering zones
+- typical sector boundaries
 - number of sessions used for learning
 
 How it is used:
@@ -199,6 +214,7 @@ How it is used:
 - the profile is saved under `filesDir/track_profiles`
 - after a session stops, the profile for that track is rebuilt from historical sessions
 - new sessions on the same track use that profile immediately during lap detection
+- new laps on the same track reuse learned sector boundaries when available
 - profiles with fewer than 2 sessions have lower influence
 
 ## Session Browser
@@ -218,6 +234,7 @@ When a saved session is loaded:
 - the lap list is refreshed
 - comparison state is recomputed
 - default lap selection prefers laps that are neither outlap nor disturbed
+- missing sector metadata is enriched on load
 
 ## Simulated Test Data
 
@@ -234,11 +251,11 @@ This is intended for UI and chart validation when no real kart session has been 
 ## Project Structure
 
 - `app/src/main/java/com/kartingtracker/data`
-  - data models, repository, session storage, track manager
+  - data models, repository, session storage, track manager, track profiles, simulated data
 - `app/src/main/java/com/kartingtracker/sensor`
   - sensor capture, calibration, low-pass filter
 - `app/src/main/java/com/kartingtracker/domain`
-  - lap detection, peak detection, normalization, insights
+  - lap detection, sector detection, peak detection, normalization, time loss, insights
 - `app/src/main/java/com/kartingtracker/ui`
   - shared view model and UI state
 - `app/src/main/java/com/kartingtracker/ui/main`
@@ -324,15 +341,17 @@ Practical advice:
 - no foreground service, so Android may interrupt longer sessions if the app is backgrounded aggressively
 - no export outside app storage
 - no database
-- no sector or split analysis
+- no ideal-lap or best-sector aggregation across sessions
 - no fully sensor-fused 3D orientation estimation
 - lap detection is heuristic and not validated against reference timing hardware
 - comparison charts still use derived longitudinal/lateral axes, not purely orientation-invariant signals
 - time loss is a lightweight approximation from acceleration, not a GPS or transponder-based ground truth
+- sector boundaries are heuristic and not beacon or GPS sectors
 
 ## Documentation
 
 - detailed technical documentation: `docs/PROJEKTDOKUMENTATION.md`
+- illustrative example assets: `docs/images/`
 
 ## Documentation Policy
 

@@ -89,6 +89,14 @@
                 android:layout_marginTop="12dp"
                 android:textColor="@color/karting_muted" />
 
+            <TextView
+                android:id="@+id/sectorComparisonLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="@color/karting_muted"
+                android:visibility="gone" />
+
             <com.github.mikephil.charting.charts.LineChart
                 android:id="@+id/longitudinalChart"
                 android:layout_width="match_parent"

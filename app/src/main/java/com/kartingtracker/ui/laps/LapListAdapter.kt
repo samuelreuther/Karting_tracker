@@ -46,8 +46,17 @@ class LapListAdapter : RecyclerView.Adapter<LapListAdapter.LapViewHolder>() {
                 }
             }
             binding.lapTime.text = formatLapTime(lap.lapTimeMs)
+            val sectorSummary = lap.sectorTimesMs
+                .mapIndexed { index, sectorTimeMs -> "S${index + 1} ${formatLapTime(sectorTimeMs)}" }
+                .joinToString(separator = " | ")
             binding.lapMeta.text =
-                "${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks - ${lap.corneringPeakIndices.size} cornering peaks - confidence ${"%.2f".format(lap.confidenceScore)}"
+                buildString {
+                    append("${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks - ${lap.corneringPeakIndices.size} cornering peaks - confidence ${"%.2f".format(lap.confidenceScore)}")
+                    if (sectorSummary.isNotBlank()) {
+                        append("\n")
+                        append(sectorSummary)
+                    }
+                }
         }
     }
 }

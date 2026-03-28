@@ -2,6 +2,7 @@ package com.kartingtracker.data
 
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
+import com.kartingtracker.domain.SectorDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -232,7 +233,23 @@ class SessionRepository(
             return session
         }
         if (session.laps.isNotEmpty()) {
-            val classifiedSession = session.copy(laps = classifyLaps(session.laps))
+            val trackProfile = loadUsableTrackProfile(session.trackName)
+            val enrichedLaps = session.laps.map { lap ->
+                val sectorBoundaries = when {
+                    lap.sectorBoundaries.isNotEmpty() -> lap.sectorBoundaries
+                    trackProfile?.typicalSectorBoundaries?.isNotEmpty() == true -> trackProfile.typicalSectorBoundaries
+                    else -> SectorDetector.detectSectors(lap)
+                }
+                lap.copy(
+                    sectorBoundaries = sectorBoundaries,
+                    sectorTimesMs = if (lap.sectorTimesMs.isNotEmpty()) {
+                        lap.sectorTimesMs
+                    } else {
+                        SectorDetector.computeSectorTimes(lap, sectorBoundaries)
+                    }
+                )
+            }
+            val classifiedSession = session.copy(laps = classifyLaps(enrichedLaps))
             if (classifiedSession != session) {
                 sessionStorageManager.saveSession(classifiedSession)
                 refreshStoredSessions()
@@ -258,11 +275,17 @@ class SessionRepository(
         sourceSession: Session? = null
     ): Session {
         val trackName = sourceSession?.trackName ?: _currentTrackName.value
-        val detectionResult = lapDetector.detect(samples, loadUsableTrackProfile(trackName))
+        val trackProfile = loadUsableTrackProfile(trackName)
+        val detectionResult = lapDetector.detect(samples, trackProfile)
         val laps = classifyLaps(detectionResult.laps.map { lap ->
+            val sectorBoundaries = trackProfile?.typicalSectorBoundaries
+                ?.takeIf { boundaries -> boundaries.isNotEmpty() }
+                ?: SectorDetector.detectSectors(lap)
             lap.copy(
                 brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
-                corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples)
+                corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples),
+                sectorBoundaries = sectorBoundaries,
+                sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
             )
         })
 

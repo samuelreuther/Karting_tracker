@@ -33,9 +33,12 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Lap-Detection mit Sliding Window, Korrelation, Event-Erkennung und Confidence
 - Outlap-Markierung fuer eine instabile erste Runde
 - Disturbed-Lap-Klassifikation fuer spaete oder unplausible Runden
+- automatische Sektor-Erkennung pro Lap
+- Sektorzeiten pro Lap
 - Peak-Detection fuer Bremsen und Cornering
 - lineare Interpolation fuer Lap-Normalisierung
 - Comparison Screen mit Overlay-Charts und Zeitverlust-Chart
+- Sektorvergleich zwischen zwei Laps
 - einfache textliche Fahrstil-Insights
 - persistente Session-Speicherung als JSON
 - periodisches Autosave waehrend Recording
@@ -51,7 +54,7 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - Foreground Service fuer robuste Langzeit- oder Hintergrundaufnahme
 - Exportfunktion nach CSV
 - Teilen von Sessions ausserhalb des App-Verzeichnisses
-- Sektor- oder Splitzeiten
+- ideal lap / best-sector-Auswertung ueber mehrere Laps oder Sessions
 - vollstaendig orientierungsunabhaengige Richtungsdiagramme
 - Sensorfusion mit echter Pose-/Orientierungsrekonstruktion
 - automatisierte Tests
@@ -94,6 +97,7 @@ Aktuelles Verhalten:
   - `LowPassFilter` fuer einfache Signalglaettung
 - `domain`
   - `LapDetector` fuer heuristische Rundenerkennung
+  - `SectorDetector` fuer heuristische Sektorgrenzen und Sektorzeiten
   - `PeakDetector` fuer Brems- und Cornering-Peaks
   - `LapNormalizer` fuer interpolierte Vergleichskurven
   - `TimeLossCalculator` fuer leichte Zeitverlust-Approximation
@@ -146,6 +150,8 @@ Wichtig:
 - `endTimestampNs`
 - `brakingPeakIndices`
 - `corneringPeakIndices`
+- `sectorBoundaries`
+- `sectorTimesMs`
 - `confidenceScore`
 - `isOutlap`
 - `isDisturbed`
@@ -155,6 +161,8 @@ Bedeutung:
 - `confidenceScore` stammt aus der Rundenerkennung
 - `isOutlap` markiert aktuell nur eine als instabil erkannte erste Runde
 - `isDisturbed` markiert unplausible oder fahrerisch/verkehrsbedingt gestoerte Runden
+- `sectorBoundaries` speichert interne Grenzpunkte auf 0-100-Skala
+- `sectorTimesMs` speichert die daraus berechneten Abschnittszeiten
 
 ## Session
 
@@ -190,6 +198,7 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 - `averageYawRateAbs`
 - `typicalBrakingZones`
 - `typicalCorneringZones`
+- `typicalSectorBoundaries`
 - `sessionCount`
 
 ## Datenfluss
@@ -205,10 +214,11 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 9. Beim Stop ruft `SessionRepository.stopSession(...)` die Verarbeitung auf.
 10. `LapDetector` erzeugt Laps.
 11. `PeakDetector` berechnet Peak-Indizes pro Lap.
-12. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
-13. `SessionStorageManager` speichert die finale Session als JSON.
-14. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
-15. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+12. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
+13. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
+14. `SessionStorageManager` speichert die finale Session als JSON.
+15. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
+16. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 
@@ -388,6 +398,45 @@ Ergebnis:
 - Marker werden in den Charts angezeigt
 - die Insight-Logik nutzt die normalisierten Markerpositionen
 
+## Sektor-Erkennung
+
+`SectorDetector` teilt eine Lap ohne GPS in 2 bis 4 Abschnitte.
+
+Verwendete Signale:
+
+- normalisierte `totalAcceleration`
+- normalisierte `yawRateAbs`
+
+Strategie:
+
+1. `LapNormalizer.normalizeSignal(...)` bringt beide Signale auf dieselbe 0-100-Skala.
+2. starke Minima in `totalAcceleration` werden als Bremszonen interpretiert.
+3. starke Maxima in `yawRateAbs` werden als Cornering-Zonen interpretiert.
+4. beide Punktmengen werden zusammengelegt.
+5. zu nahe Punkte werden ueber Mindestabstand entfernt.
+6. es bleiben 1 bis 3 interne Grenzpunkte.
+7. daraus entstehen 2 bis 4 Sektoren pro Lap.
+8. wenn keine stabilen Event-Punkte bleiben, verwendet der Detektor als Fallback eine mittige Grenze bei 50 Prozent.
+
+Rueckgabe:
+
+- `sectorBoundaries` enthaelt nur die internen Grenzpunkte
+- Start `0` und Ende `100` werden implizit angenommen
+
+## Sektorzeiten
+
+`SectorDetector.computeSectorTimes(...)` berechnet aus den Prozent-Grenzen reale Abschnittszeiten:
+
+1. Prozentgrenzen werden auf Sample-Indizes der Original-Lap abgebildet.
+2. Start und Ende der Lap werden hinzugefuegt.
+3. die Zeitdifferenz zwischen den Timestamp-Grenzen ergibt die Sektorzeit in Millisekunden.
+
+Wichtig:
+
+- die Zeit kommt aus den originalen Sample-Timestamps
+- die Grenzen kommen aus dem sensorbasierten Pattern
+- dadurch bleibt die Loesung indoor-tauglich und GPS-frei
+
 ## Lap-Normalisierung und Comparison
 
 ## LapNormalizer
@@ -422,6 +471,7 @@ Der Comparison Screen zeigt:
 - Longitudinal-Overlay
 - Lateral-Overlay
 - Time-Loss-Graph
+- Sektorvergleich als Textblock
 - Peak-Marker
 - Summary-Text
 - 2 bis 4 einfache Insights
@@ -456,6 +506,19 @@ Grenzen:
 - keine absolute Fahrzeuggeschwindigkeit
 - keine echte Distanzmessung
 - sinnvoller als das bisherige Signal-Delta, aber keine Referenzmessung
+
+## Sektorvergleich
+
+Der Comparison Screen erzeugt zusaetzlich kompakte Sektor-Deltas:
+
+- `S1: +0.12s`
+- `S2: -0.08s`
+- `S3: +0.30s`
+
+Bedeutung:
+
+- positives Delta: Lap A ist in diesem Sektor langsamer
+- negatives Delta: Lap A ist in diesem Sektor schneller
 
 ## Driving Insights
 
@@ -495,6 +558,8 @@ Gespeicherte Inhalte:
 - alle Rohsamples
 - alle berechneten Laps
 - Peak-Indizes
+- Outlap- und Disturbed-Flags
+- Sektorgrenzen und Sektorzeiten
 - geschatzte Rundenzeit
 
 Die App nutzt derzeit keine Datenbank.
@@ -550,6 +615,8 @@ Finalisierung:
 Recovery:
 
 - wenn eine gespeicherte Session Samples, aber noch keine Laps enthaelt, verarbeitet das Repository sie beim Laden nach
+- wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten enthaelt, werden diese beim Laden nacherzeugt
+- geladene Laps werden beim Laden erneut klassifiziert, damit `isDisturbed` auch fuer aeltere Dateien konsistent bleibt
 
 Grenze:
 
@@ -583,15 +650,17 @@ Profilaufbau:
 
 1. Sessions des Tracks laden
 2. Nur Sessions mit mindestens 2 brauchbaren Laps verwenden
-3. Outlaps und Laps mit geringer Confidence ignorieren
+3. Outlaps, Disturbed-Laps und Laps mit geringer Confidence ignorieren
 4. `totalAcceleration` und `yawRateAbs` aller gueltigen Laps auf 101 Punkte normalisieren
 5. Mittelkurven bilden
 6. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
-7. Mittelwert und Standardabweichung der Lap-Time speichern
+7. typische Sektorgrenzen aus historischen Laps mitteln
+8. Mittelwert und Standardabweichung der Lap-Time speichern
 
 Nutzung in neuer Session:
 
 - falls Profil vorhanden, wird die Lap-Detection frueh und enger um die erwartete Rundenzeit gesucht
+- falls Profil vorhanden, werden typische Sektorgrenzen fuer neue Laps wiederverwendet
 - Profile mit `sessionCount < 2` wirken absichtlich schwacher, um Ueberanpassung zu vermeiden
 
 UI:
@@ -634,6 +703,7 @@ Aktuelle Darstellung pro Lap:
 - Sample-Anzahl
 - Anzahl Brems-Peaks
 - Anzahl Cornering-Peaks
+- Sektorzeiten je Lap
 - Confidence-Wert
 
 ## SessionListFragment
@@ -681,16 +751,20 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Lap Detection | Confidence | Erfuellt | Similarity * Event * Dauer-Konsistenz |
 | Lap Detection | Outlap-Erkennung | Erfuellt | erste instabile Runde wird markiert |
 | Lap Detection | Disturbed-Lap-Klassifikation | Erfuellt | spaete, unplausible oder peak-arme Laps werden markiert |
+| Lap Detection | Sektor-Erkennung | Erfuellt | `SectorDetector` findet interne Grenzpunkte aus Brems- und Cornering-Zonen |
 | Lap Detection | Fallback | Erfuellt | einzelne Lap bei instabiler Segmentierung |
 | Persistenz | JSON-Speicherung | Erfuellt | `SessionStorageManager` |
 | Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
 | Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
 | Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
+| Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | `typicalSectorBoundaries` im Track-Profil |
 | Track Management | Track auswaehlen/anlegen | Erfuellt | Main Screen + `TrackManager` |
 | Session Browsing | Liste, Filter, Laden | Erfuellt | `SessionListFragment` |
 | Visualisierung | Lap-Overlay | Erfuellt | Comparison Screen |
 | Visualisierung | Time-Loss-Graph | Erfuellt | `TimeLossCalculator` + Comparison Screen |
+| Visualisierung | Sektorvergleich | Erfuellt | Sektor-Deltas im Comparison Screen |
+| Visualisierung | Sektorzeiten pro Lap | Erfuellt | Lap-Liste zeigt Abschnittszeiten |
 | Visualisierung | Peak-Marker | Erfuellt | Bremsen und Cornering |
 | Insights | Text-Feedback | Erfuellt | `DrivingInsightsGenerator` |
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
@@ -708,6 +782,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - Insights sind heuristisch
 - Lap-Detection ist heuristisch und nicht gegen Referenz-Transponder validiert
 - Time-Loss ist eine Approximation aus Beschleunigung, nicht echte Fahrzeugzeitmessung
+- Sektorgrenzen sind heuristisch aus Musterpunkten abgeleitet, nicht physisch vermessen
 - keine Exportfunktion
 - keine Tests im Projekt
 
@@ -717,7 +792,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 - robustere Erkennung von Inlaps und Unterbrechungen
 - streckenspezifische Nutzung historischer Sessions fuer bessere Lap-Detection
-- Sektoren und Splitzeiten
+- ideal lap / best sectors ueber mehrere Sessions
 - genauere Zeitverlustanalyse ueber echte Distanz- oder Geschwindigkeitsreferenzen
 - moegliche alternative Vergleichsmodi auf Basis von `totalAcceleration` und `yawRateAbs`
 
@@ -766,10 +841,13 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/data/SessionStorageManager.kt`
 - `app/src/main/java/com/kartingtracker/data/TrackManager.kt`
 - `app/src/main/java/com/kartingtracker/data/TrackProfileManager.kt`
+- `app/src/main/java/com/kartingtracker/data/SimulatedSessionGenerator.kt`
+- `app/src/main/java/com/kartingtracker/AppContainer.kt`
 - `app/src/main/java/com/kartingtracker/sensor/SensorRecorder.kt`
 - `app/src/main/java/com/kartingtracker/sensor/CalibrationManager.kt`
 - `app/src/main/java/com/kartingtracker/sensor/LowPassFilter.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapDetector.kt`
+- `app/src/main/java/com/kartingtracker/domain/SectorDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
 - `app/src/main/java/com/kartingtracker/domain/TimeLossCalculator.kt`

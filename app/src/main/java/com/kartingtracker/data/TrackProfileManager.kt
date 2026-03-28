@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.kartingtracker.domain.LapNormalizer
+import com.kartingtracker.domain.SectorDetector
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -36,7 +37,7 @@ class TrackProfileManager(
     fun updateProfile(trackName: String, sessions: List<Session>): TrackProfile {
         val qualifyingLapsBySession = sessions.mapNotNull { session ->
             val validLaps = session.laps.filter { lap ->
-                !lap.isOutlap && lap.confidenceScore >= minimumLapConfidence
+                !lap.isOutlap && !lap.isDisturbed && lap.confidenceScore >= minimumLapConfidence
             }
             if (validLaps.size < 2) {
                 return@mapNotNull null
@@ -68,6 +69,7 @@ class TrackProfileManager(
                 LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.yawRateAbs }
             }
         )
+        val typicalSectorBoundaries = computeTypicalSectorBoundaries(validLaps, averageTotalAcceleration, averageYawRateAbs)
 
         val lapTimes = validLaps.map { lap -> lap.lapTimeMs.toDouble() }
         val meanLapTimeMs = lapTimes.average()
@@ -86,6 +88,7 @@ class TrackProfileManager(
             averageYawRateAbs = averageYawRateAbs,
             typicalBrakingZones = detectLocalMinima(averageTotalAcceleration),
             typicalCorneringZones = detectLocalMaxima(averageYawRateAbs),
+            typicalSectorBoundaries = typicalSectorBoundaries,
             sessionCount = qualifyingLapsBySession.size
         )
 
@@ -171,8 +174,42 @@ class TrackProfileManager(
             averageYawRateAbs = emptyList(),
             typicalBrakingZones = emptyList(),
             typicalCorneringZones = emptyList(),
+            typicalSectorBoundaries = emptyList(),
             sessionCount = 0
         )
+    }
+
+    private fun computeTypicalSectorBoundaries(
+        validLaps: List<Lap>,
+        averageTotalAcceleration: List<Float>,
+        averageYawRateAbs: List<Float>
+    ): List<Int> {
+        val lapSectorCandidates = validLaps
+            .map { lap ->
+                lap.sectorBoundaries.takeIf { boundaries -> boundaries.isNotEmpty() }
+                    ?: SectorDetector.detectSectors(lap)
+            }
+            .filter { boundaries -> boundaries.isNotEmpty() }
+
+        if (lapSectorCandidates.isEmpty()) {
+            return SectorDetector.detectSectors(averageTotalAcceleration, averageYawRateAbs)
+        }
+
+        val targetBoundaryCount = lapSectorCandidates
+            .groupingBy { boundaries -> boundaries.size }
+            .eachCount()
+            .maxByOrNull { entry -> entry.value }
+            ?.key
+            ?: return SectorDetector.detectSectors(averageTotalAcceleration, averageYawRateAbs)
+
+        val comparableBoundaries = lapSectorCandidates.filter { boundaries -> boundaries.size == targetBoundaryCount }
+        if (comparableBoundaries.isEmpty()) {
+            return SectorDetector.detectSectors(averageTotalAcceleration, averageYawRateAbs)
+        }
+
+        return List(targetBoundaryCount) { index ->
+            comparableBoundaries.map { boundaries -> boundaries[index] }.average().toInt()
+        }
     }
 
     companion object {
