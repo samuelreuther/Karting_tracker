@@ -32,4 +32,14 @@
     <string name="session_filter_label">Filter by track</string>
     <string name="no_saved_sessions">No saved sessions found.</string>
     <string name="accel_value_format">%.2f m/s^2</string>
+    <string name="recording_channel_name">Karting recording</string>
+    <string name="recording_channel_description">Active telemetry recording for karting sessions</string>
+    <string name="recording_notification_title">%1$s recording</string>
+    <string name="recording_notification_text">%1$s • %2$s • %3$s</string>
+    <string name="recording_notification_big_text">Track: %1$s\nStatus: %2$s\nDuration: %3$s\n%4$s</string>
+    <string name="recording_notification_stats_samples">%1$d samples</string>
+    <string name="recording_notification_stats_laps">%1$d laps • %2$d samples</string>
+    <string name="recording_phase_starting">Starting</string>
+    <string name="recording_phase_calibrating">Calibrating</string>
+    <string name="recording_phase_recording">Recording</string>
 </resources>

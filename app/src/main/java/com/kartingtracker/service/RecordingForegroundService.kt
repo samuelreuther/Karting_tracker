@@ -1,0 +1,209 @@
+package com.kartingtracker.service
+
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Binder
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import com.kartingtracker.KartingApplication
+import com.kartingtracker.R
+import com.kartingtracker.sensor.RecorderPhase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+class RecordingForegroundService : Service() {
+    private val binder = LocalBinder()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private val appContainer by lazy {
+        (application as KartingApplication).appContainer
+    }
+    private val sessionRepository by lazy { appContainer.sessionRepository }
+    private val sensorRecorder by lazy { appContainer.sensorRecorder }
+    private val notificationHelper by lazy { RecordingNotificationHelper(this) }
+    private val wakeLock by lazy { createWakeLock() }
+
+    private var notificationJob: Job? = null
+    private var serviceStartedAtMs: Long = 0L
+
+    override fun onCreate() {
+        super.onCreate()
+        notificationHelper.ensureChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> stopRecordingAndService()
+            ACTION_START -> handleStart(intent)
+            null -> handleRestart()
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    override fun onDestroy() {
+        notificationJob?.cancel()
+        notificationJob = null
+        if (sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) {
+            sensorRecorder.stopRecording()
+        }
+        releaseWakeLock()
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    fun getElapsedTimeMs(): Long {
+        return if (serviceStartedAtMs == 0L) 0L else (System.currentTimeMillis() - serviceStartedAtMs).coerceAtLeast(0L)
+    }
+
+    private fun handleStart(intent: Intent?) {
+        val requestedTrackName = intent?.getStringExtra(EXTRA_TRACK_NAME)?.trim().orEmpty()
+        promoteToForeground()
+        startNotificationUpdates()
+
+        if (!sensorRecorder.hasRequiredSensors) {
+            stopRecordingAndService()
+            return
+        }
+
+        if (sensorRecorder.recorderPhase.value == RecorderPhase.IDLE) {
+            if (requestedTrackName.isNotBlank()) {
+                sessionRepository.selectTrack(requestedTrackName)
+            }
+            serviceStartedAtMs = System.currentTimeMillis()
+            acquireWakeLock()
+            sensorRecorder.startRecording()
+        } else if (serviceStartedAtMs == 0L) {
+            serviceStartedAtMs = System.currentTimeMillis()
+            acquireWakeLock()
+        }
+    }
+
+    private fun handleRestart() {
+        if (sensorRecorder.isActive || sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) {
+            promoteToForeground()
+            startNotificationUpdates()
+            if (serviceStartedAtMs == 0L) {
+                serviceStartedAtMs = System.currentTimeMillis()
+            }
+            acquireWakeLock()
+            return
+        }
+        stopSelf()
+    }
+
+    private fun promoteToForeground() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST
+            }
+            ServiceCompat.startForeground(
+                this,
+                RecordingNotificationHelper.NOTIFICATION_ID,
+                notification,
+                serviceType
+            )
+        } else {
+            startForeground(RecordingNotificationHelper.NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun startNotificationUpdates() {
+        if (notificationJob != null) {
+            return
+        }
+
+        notificationJob = serviceScope.launch {
+            while (isActive) {
+                notificationHelper.notify(buildNotification())
+                delay(NOTIFICATION_UPDATE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopRecordingAndService() {
+        notificationJob?.cancel()
+        notificationJob = null
+        sensorRecorder.stopRecording()
+        releaseWakeLock()
+        serviceStartedAtMs = 0L
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun buildNotification() = notificationHelper.buildNotification(
+        trackName = sessionRepository.currentTrackName.value,
+        phaseLabel = when (sensorRecorder.recorderPhase.value) {
+            RecorderPhase.CALIBRATING -> getString(R.string.recording_phase_calibrating)
+            RecorderPhase.RECORDING -> getString(R.string.recording_phase_recording)
+            RecorderPhase.IDLE -> getString(R.string.recording_phase_starting)
+        },
+        elapsedMs = getElapsedTimeMs(),
+        sampleCount = sessionRepository.sampleCount.value,
+        lapCount = sessionRepository.currentSession.value?.laps?.size ?: 0
+    )
+
+    private fun createWakeLock(): PowerManager.WakeLock {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "$packageName:recording"
+        ).apply {
+            setReferenceCounted(false)
+        }
+    }
+
+    private fun acquireWakeLock() {
+        if (!wakeLock.isHeld) {
+            wakeLock.acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
+    }
+
+    inner class LocalBinder : Binder() {
+        fun getService(): RecordingForegroundService = this@RecordingForegroundService
+    }
+
+    companion object {
+        const val ACTION_START = "com.kartingtracker.action.START_RECORDING"
+        const val ACTION_STOP = "com.kartingtracker.action.STOP_RECORDING"
+        const val EXTRA_TRACK_NAME = "extra_track_name"
+
+        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
+    }
+}
+
+fun Context.startRecordingService(trackName: String) {
+    val intent = Intent(applicationContext, RecordingForegroundService::class.java).apply {
+        action = RecordingForegroundService.ACTION_START
+        putExtra(RecordingForegroundService.EXTRA_TRACK_NAME, trackName)
+    }
+    ContextCompat.startForegroundService(applicationContext, intent)
+}
+
+fun Context.stopRecordingService() {
+    val intent = Intent(applicationContext, RecordingForegroundService::class.java).apply {
+        action = RecordingForegroundService.ACTION_STOP
+    }
+    applicationContext.startService(intent)
+}

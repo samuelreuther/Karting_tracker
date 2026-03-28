@@ -11,6 +11,7 @@ This is a practical usable app version, not a throwaway prototype.
 Implemented today:
 
 - recording with accelerometer and gyroscope at `SENSOR_DELAY_FASTEST`
+- foreground service based recording with persistent notification
 - 2-second calibration before recording
 - low-pass filtering
 - gravity removal
@@ -30,10 +31,10 @@ Implemented today:
 
 Not implemented yet:
 
-- foreground service for long background-safe recording
 - export to CSV or external share target
 - fully orientation-invariant directional charts
 - best-sector or ideal-lap analysis across many laps
+- full live recording recovery after process death or device reboot
 - automated tests
 - verified build/run in this environment
 
@@ -55,6 +56,14 @@ These are illustrative example images generated from the app's simulated telemet
 
 When you press `Start`, recording does not begin immediately.
 
+The app first starts a foreground service:
+
+- the service promotes itself with a persistent notification within the required startup window
+- the notification shows the current track, elapsed time, and sample count
+- a stop action in the notification stops recording cleanly
+- the service keeps running when the UI goes to background
+- a partial wake lock is held while recording to improve reliability when the screen turns off
+
 The app first enters a calibration phase for about 2 seconds:
 
 - it assumes the kart is stationary
@@ -67,6 +76,7 @@ After calibration:
 - accelerometer and gyroscope events are filtered
 - gravity is removed from accelerometer readings
 - the app stores timestamped `SensorSample` entries
+- sensor ownership stays in the foreground service, not in the activity lifecycle
 
 Stored signals include:
 
@@ -138,11 +148,15 @@ The comparison screen shows:
 Time loss:
 
 - uses normalized `totalAcceleration`
-- integrates a simple velocity estimate
-- derives a cumulative time curve
-- compares both laps point by point
+- smooths the signal first
+- normalizes each lap to zero mean and unit variance
+- integrates a bounded velocity estimate with drift correction
+- builds time over the same normalized distance axis for both laps
+- compares both laps point by point on that aligned axis
 - positive values mean Lap A is slower at that point
 - negative values mean Lap A is faster
+- falls back toward a pattern-alignment curve when signal confidence is low
+- internally also exposes a `TimeLossResult` with `deltaCurve` and `confidence`
 
 Sector detection:
 
@@ -181,6 +195,7 @@ Crash protection:
 - during recording, autosave runs every 5 seconds
 - if a session was saved only partially and has no laps yet, the repository reprocesses it on load
 - if an older saved session has laps but no sector metadata yet, the repository enriches it on load
+- the foreground service keeps recording active while the app is backgrounded or the screen is off
 
 ## Track Management
 
@@ -235,6 +250,7 @@ When a saved session is loaded:
 - comparison state is recomputed
 - default lap selection prefers laps that are neither outlap nor disturbed
 - missing sector metadata is enriched on load
+- older lap classifications are refreshed on load when needed
 
 ## Simulated Test Data
 
@@ -254,6 +270,8 @@ This is intended for UI and chart validation when no real kart session has been 
   - data models, repository, session storage, track manager, track profiles, simulated data
 - `app/src/main/java/com/kartingtracker/sensor`
   - sensor capture, calibration, low-pass filter
+- `app/src/main/java/com/kartingtracker/service`
+  - foreground service, notification helper, start/stop helpers
 - `app/src/main/java/com/kartingtracker/domain`
   - lap detection, sector detection, peak detection, normalization, time loss, insights
 - `app/src/main/java/com/kartingtracker/ui`
@@ -302,15 +320,17 @@ This is intended for UI and chart validation when no real kart session has been 
 Recommended practical flow:
 
 1. Open the app.
-2. Select an existing track or create a new one.
-3. Place the phone in the kart mount or in a consistent pocket position.
-4. Keep the kart still.
-5. Press `Start`.
-6. Wait through the calibration phase.
-7. Drive the session.
-8. Press `Stop`.
-9. Open `View detected laps` to inspect detected laps.
-10. Open `Compare laps` to compare stable laps.
+2. Allow notifications on Android 13+ when prompted.
+3. Select an existing track or create a new one.
+4. Place the phone in the kart mount or in a consistent pocket position.
+5. Keep the kart still.
+6. Press `Start`.
+7. Wait through the calibration phase.
+8. Drive the session.
+9. If needed, leave the app in background while the foreground notification stays visible.
+10. Press `Stop` in the app or from the notification action.
+11. Open `View detected laps` to inspect detected laps.
+12. Open `Compare laps` to compare stable laps.
 
 ## Pocket Usage Notes
 
@@ -334,15 +354,17 @@ Practical advice:
 - keep phone placement consistent between sessions
 - avoid moving the phone after calibration
 - keep the kart fully still during calibration
+- keep notification permission enabled so the recording service remains user-visible
 - expect lap detection to be more robust than directional chart interpretation when the phone is loose in a pocket
 
 ## Known Limitations
 
-- no foreground service, so Android may interrupt longer sessions if the app is backgrounded aggressively
 - no export outside app storage
 - no database
 - no ideal-lap or best-sector aggregation across sessions
 - no fully sensor-fused 3D orientation estimation
+- recording continuity is greatly improved in background, but a killed process cannot fully reconstruct a live sensor stream mid-session
+- background behavior still depends partly on OEM battery policies despite the foreground service
 - lap detection is heuristic and not validated against reference timing hardware
 - comparison charts still use derived longitudinal/lateral axes, not purely orientation-invariant signals
 - time loss is a lightweight approximation from acceleration, not a GPS or transponder-based ground truth

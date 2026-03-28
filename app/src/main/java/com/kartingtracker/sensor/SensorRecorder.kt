@@ -7,8 +7,6 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +23,7 @@ enum class RecorderPhase {
 class SensorRecorder(
     context: Context,
     private val sessionRepository: SessionRepository
-) : SensorEventListener, DefaultLifecycleObserver {
+) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -49,6 +47,9 @@ class SensorRecorder(
 
     val hasRequiredSensors: Boolean
         get() = accelerometer != null && gyroscope != null
+
+    val isActive: Boolean
+        get() = active
 
     fun startRecording() {
         if (!hasRequiredSensors || active) {
@@ -77,20 +78,6 @@ class SensorRecorder(
             sessionRepository.stopSession(lastTimestamp)
         }
         calibrationManager.reset()
-    }
-
-    override fun onStart(owner: LifecycleOwner) {
-        if (active) {
-            registerListeners()
-        }
-    }
-
-    override fun onStop(owner: LifecycleOwner) {
-        unregisterListeners()
-    }
-
-    override fun onDestroy(owner: LifecycleOwner) {
-        unregisterListeners()
     }
 
     override fun onSensorChanged(event: SensorEvent) {

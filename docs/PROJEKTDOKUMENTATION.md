@@ -20,6 +20,7 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 ### Implementiert
 
 - Start- und Stop-Aufnahme
+- Foreground Service fuer Recording mit permanenter Notification
 - 2-Sekunden-Kalibrierung vor Recording
 - Aufnahme von Accelerometer und Gyroscope mit `SENSOR_DELAY_FASTEST`
 - Low-Pass-Filter fuer beide Sensorstroeme
@@ -51,10 +52,10 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 
 ### Nicht implementiert
 
-- Foreground Service fuer robuste Langzeit- oder Hintergrundaufnahme
 - Exportfunktion nach CSV
 - Teilen von Sessions ausserhalb des App-Verzeichnisses
 - ideal lap / best-sector-Auswertung ueber mehrere Laps oder Sessions
+- echte Wiederaufnahme einer bereits laufenden Sensoraufnahme nach Prozess-Tod oder Reboot
 - vollstaendig orientierungsunabhaengige Richtungsdiagramme
 - Sensorfusion mit echter Pose-/Orientierungsrekonstruktion
 - automatisierte Tests
@@ -95,12 +96,16 @@ Aktuelles Verhalten:
   - `SensorRecorder` fuer Android-Sensorzugriff und Aufnahmesteuerung
   - `CalibrationManager` fuer Gravitationsermittlung und Projektion
   - `LowPassFilter` fuer einfache Signalglaettung
+- `service`
+  - `RecordingForegroundService` fuer background-sicheres Recording
+  - `RecordingNotificationHelper` fuer Notification-Channel und laufende Status-Notification
 - `domain`
   - `LapDetector` fuer heuristische Rundenerkennung
   - `SectorDetector` fuer heuristische Sektorgrenzen und Sektorzeiten
   - `PeakDetector` fuer Brems- und Cornering-Peaks
   - `LapNormalizer` fuer interpolierte Vergleichskurven
-  - `TimeLossCalculator` fuer leichte Zeitverlust-Approximation
+  - `TimeLossCalculator` fuer stabilisierte Zeitverlust-Approximation
+  - `TimeLossResult` als internes Ergebnis mit Delta-Kurve und Confidence
   - `DrivingInsightsGenerator` fuer einfache Heuristiken
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
@@ -204,21 +209,24 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 ## Datenfluss
 
 1. Nutzer waehlt einen Track oder legt einen neuen Track an.
-2. `SessionViewModel.startRecording()` ruft `SensorRecorder.startRecording()` auf.
-3. `SensorRecorder` geht in `RecorderPhase.CALIBRATING`.
-4. `CalibrationManager` sammelt fuer ca. 2 Sekunden Accel-Werte.
-5. Nach abgeschlossener Kalibrierung startet `SessionRepository.startSession(...)`.
-6. Waehren Recording erzeugt `SensorRecorder` fortlaufend `SensorSample`.
-7. `SessionRepository.appendSample(...)` sammelt die Samples und aktualisiert Live-State.
-8. Waehren Recording speichert das Repository alle 5 Sekunden einen Session-Snapshot.
-9. Beim Stop ruft `SessionRepository.stopSession(...)` die Verarbeitung auf.
-10. `LapDetector` erzeugt Laps.
-11. `PeakDetector` berechnet Peak-Indizes pro Lap.
-12. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
-13. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
-14. `SessionStorageManager` speichert die finale Session als JSON.
-15. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
-16. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+2. `SessionViewModel.startRecording()` ruft `Context.startRecordingService(trackName)` auf.
+3. `RecordingForegroundService` startet, erstellt den Notification-Channel und ruft `startForeground(...)`.
+4. Der Service uebernimmt die Kontrolle ueber `SensorRecorder.startRecording()`.
+5. `SensorRecorder` geht in `RecorderPhase.CALIBRATING`.
+6. `CalibrationManager` sammelt fuer ca. 2 Sekunden Accel-Werte.
+7. Nach abgeschlossener Kalibrierung startet `SessionRepository.startSession(...)`.
+8. Waehren Recording erzeugt `SensorRecorder` fortlaufend `SensorSample`.
+9. `SessionRepository.appendSample(...)` sammelt die Samples und aktualisiert Live-State.
+10. Waehren Recording speichert das Repository alle 5 Sekunden einen Session-Snapshot.
+11. Beim Stop ruft der Service `SensorRecorder.stopRecording()` auf.
+12. `SessionRepository.stopSession(...)` fuehrt die Verarbeitung aus.
+13. `LapDetector` erzeugt Laps.
+14. `PeakDetector` berechnet Peak-Indizes pro Lap.
+15. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
+16. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
+17. `SessionStorageManager` speichert die finale Session als JSON.
+18. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
+19. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 
@@ -235,16 +243,53 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
   - `CALIBRATING`
   - `RECORDING`
 
-Lifecycle-Verhalten:
+Wichtig:
 
-- bei `onStop()` werden Sensorlistener abgemeldet
-- bei `onStart()` werden sie wieder registriert, falls Recording aktiv ist
-- es gibt aber keinen Foreground Service
+- `SensorRecorder` ist nicht mehr an den Activity-Lifecycle gebunden
+- Start und Stop erfolgen jetzt ueber `RecordingForegroundService`
+- dadurch bleiben die Sensorlistener aktiv, wenn die App in den Hintergrund wechselt
 
 Konsequenz:
 
-- die App ist lifecycle-aware innerhalb der sichtbaren App
-- sie ist nicht auf echte Hintergrundrobustheit ausgelegt
+- die App ist deutlich robuster bei Hintergrundbetrieb und ausgeschaltetem Display
+- der Recorder selbst bleibt aber weiterhin eine einfache Sensor-Komponente ohne eigene Service-Logik
+
+## RecordingForegroundService
+
+Der neue `RecordingForegroundService` kapselt den background-sicheren Recording-Betrieb.
+
+Verantwortung:
+
+- Starten und Stoppen des eigentlichen Recordings
+- sofortige Promotion zu einem Foreground Service
+- laufende Status-Notification
+- Wake-Lock waehrend aktiver Aufnahme
+- sauberes Stoppen mit `stopForeground(...)` und `stopSelf()`
+
+Notification:
+
+- permanenter Notification-Channel
+- zeigt Trackname, Status, Dauer und Sample-Anzahl
+- enthaelt eine Stop-Aktion
+- wird etwa jede Sekunde aktualisiert
+
+Android-Anforderungen:
+
+- Manifest-Permissions:
+  - `FOREGROUND_SERVICE`
+  - `FOREGROUND_SERVICE_HEALTH`
+  - `HIGH_SAMPLING_RATE_SENSORS`
+  - `POST_NOTIFICATIONS`
+  - `WAKE_LOCK`
+- Service-Deklaration mit `android:foregroundServiceType="health"`
+- `stopWithTask="false"` fuer fortlaufendes Recording auch nach Verlassen der Activity
+
+Restart-Verhalten:
+
+- der Service verwendet `START_STICKY`
+- ein bereits laufender Service bleibt bei UI-Wechseln stabil
+- nach echtem Prozess-Tod kann jedoch kein lueckenloser Live-Sensorstream rekonstruiert werden
+- OEM-spezifische Battery-Optimierungen koennen trotz Foreground Service weiterhin aggressiv sein
 
 ## Low-Pass-Filter
 
@@ -495,17 +540,31 @@ Interpretation:
 Implementierung in `TimeLossCalculator`:
 
 1. `LapNormalizer.normalizeSignal(...)` normalisiert `totalAcceleration` beider Laps auf dieselbe Punktzahl.
-2. Die normierte Beschleunigung wird mit festem `dt = 0.1 s` zu einer einfachen Geschwindigkeitskurve integriert.
-3. Aus der Geschwindigkeitskurve wird eine kumulative Zeitkurve mit konstantem Distanzschritt abgeleitet.
-4. Die Zeitkurven werden auf die reale Lap-Time skaliert.
-5. `timeA - timeB` ergibt den Zeitverlust entlang der Runde.
+2. Ein leichter Moving-Average glattet das Eingangssignal.
+3. Jede Lap wird per Z-Score normalisiert:
+   - `(accel - mean) / stdDev`
+4. Die daraus entstehende relative Beschleunigung wird zu einer kuenstlichen Geschwindigkeitskurve integriert.
+5. Die Geschwindigkeit wird dabei begrenzt:
+   - Minimum `1.0 m/s`
+   - Maximum `32.0 m/s`
+6. Alle 10 Schritte wird eine Drift-Korrektur mit Faktor `0.98` angewendet.
+7. Aus der positiven Geschwindigkeitskurve wird eine monotone Distanzkurve aufgebaut.
+8. Die Zeitkurve wird anschliessend ueber dieselbe normalisierte Distanzachse fuer beide Laps interpoliert.
+9. Die Kurven werden auf die reale Lap-Time skaliert.
+10. `timeA - timeB` ergibt den Zeitverlust entlang der Runde.
+11. Bei niedriger Confidence wird zusaetzlich ein einfacher Pattern-Alignment-Fallback beigemischt.
+
+Interne API:
+
+- `computeTimeLoss(lapA, lapB): List<Float>` bleibt fuer die UI der Hauptzugang
+- `computeTimeLossResult(lapA, lapB): TimeLossResult` liefert zusaetzlich eine Confidence fuer spaetere Erweiterungen
 
 Grenzen:
 
-- das ist eine leichte Approximation
+- das ist weiterhin eine leichte Approximation
 - keine absolute Fahrzeuggeschwindigkeit
 - keine echte Distanzmessung
-- sinnvoller als das bisherige Signal-Delta, aber keine Referenzmessung
+- deutlich stabiler als die fruehere rohe Integration, aber keine Referenzmessung
 
 ## Sektorvergleich
 
@@ -617,11 +676,12 @@ Recovery:
 - wenn eine gespeicherte Session Samples, aber noch keine Laps enthaelt, verarbeitet das Repository sie beim Laden nach
 - wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten enthaelt, werden diese beim Laden nacherzeugt
 - geladene Laps werden beim Laden erneut klassifiziert, damit `isDisturbed` auch fuer aeltere Dateien konsistent bleibt
+- der Foreground Service reduziert Session-Verlust bei Hintergrundbetrieb deutlich
 
 Grenze:
 
 - Autosave reduziert Datenverlust
-- es ersetzt keinen Foreground Service und keine garantierte Hintergrundausfuehrung
+- es ersetzt keine vollstaendige Recovery nach Prozess-Tod und keine OEM-unabhaengige Hintergrundgarantie
 
 ## Track Management
 
@@ -687,10 +747,12 @@ Aktuelle Funktionen:
 - `Load last session`
 - `Browse sessions`
 - Navigation zu Lap-Liste und Comparison
+- Notification-Permission-Request auf Android 13+
 
 Hinweis:
 
 - die Live-Werte zeigen nur die kompatiblen Richtungswerte, nicht `totalAcceleration` oder `yawRateAbs`
+- die Track-Auswahl wird waehrend Kalibrierung und Recording deaktiviert, damit der Session-Track stabil bleibt
 
 ## Lap Screen
 
@@ -756,6 +818,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Persistenz | JSON-Speicherung | Erfuellt | `SessionStorageManager` |
 | Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
+| Betrieb | Foreground Service | Erfuellt | `RecordingForegroundService` mit Notification und Wake-Lock |
 | Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
 | Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
 | Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | `typicalSectorBoundaries` im Track-Profil |
@@ -769,13 +832,11 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Insights | Text-Feedback | Erfuellt | `DrivingInsightsGenerator` |
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
 | Robustheit | Voll orientierungsfreie Richtungsdiagramme | Nicht erfuellt | Charts nutzen weiterhin angenaeherten Richtungsbezug |
-| Betrieb | Foreground Service | Nicht erfuellt | derzeit nicht vorhanden |
 | Export | CSV/Share | Nicht erfuellt | derzeit nicht vorhanden |
 | Qualitaet | Automatisierte Tests | Nicht erfuellt | derzeit nicht vorhanden |
 
 ## Bekannte Grenzen
 
-- kein Foreground Service
 - keine garantierte Hintergrundaufnahme bei aggressivem Android-App-Management
 - keine vollstaendige Pose-/Orientierungsrekonstruktion
 - `longitudinalAccel` und `lateralAccel` bleiben bei wechselnder Telefonlage nur angenaehert interpretierbar
@@ -783,6 +844,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - Lap-Detection ist heuristisch und nicht gegen Referenz-Transponder validiert
 - Time-Loss ist eine Approximation aus Beschleunigung, nicht echte Fahrzeugzeitmessung
 - Sektorgrenzen sind heuristisch aus Musterpunkten abgeleitet, nicht physisch vermessen
+- ein bereits laufendes Recording kann nach Prozess-Tod nicht nahtlos live fortgesetzt werden
 - keine Exportfunktion
 - keine Tests im Projekt
 
@@ -798,10 +860,10 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 ## Technisch offen
 
-- Foreground Service fuer Recording
 - Exportfunktion
 - Loeschen und Umbenennen von Tracks
 - Loeschen oder Archivieren alter Sessions
+- detailliertere Service-Recovery nach Prozess-Tod
 - Tests fuer:
   - `LapDetector`
   - `SessionRepository`
@@ -826,8 +888,8 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 1. Projekt in Android Studio auf echtem Android-Geraet bauen und testen.
 2. Mehrere Sessions mit fester und loser Telefonlage aufzeichnen.
 3. Schwellenwerte der Lap- und Peak-Erkennung anhand echter Fahrdaten feinjustieren.
-4. Foreground Service ergaenzen.
-5. Exportfunktion einfuehren.
+4. Exportfunktion einfuehren.
+5. Service-Recovery und OEM-Verhalten im Feldtest pruefen.
 6. Tests fuer Persistenz und Lap-Detection nachziehen.
 
 ## Relevante Dateien
@@ -846,6 +908,8 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/sensor/SensorRecorder.kt`
 - `app/src/main/java/com/kartingtracker/sensor/CalibrationManager.kt`
 - `app/src/main/java/com/kartingtracker/sensor/LowPassFilter.kt`
+- `app/src/main/java/com/kartingtracker/service/RecordingForegroundService.kt`
+- `app/src/main/java/com/kartingtracker/service/RecordingNotificationHelper.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/SectorDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`

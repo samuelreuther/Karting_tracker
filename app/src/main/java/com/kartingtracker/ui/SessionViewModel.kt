@@ -10,6 +10,8 @@ import com.kartingtracker.data.TrackProfile
 import com.kartingtracker.domain.DrivingInsightsGenerator
 import com.kartingtracker.domain.LapNormalizer
 import com.kartingtracker.domain.TimeLossCalculator
+import com.kartingtracker.service.startRecordingService
+import com.kartingtracker.service.stopRecordingService
 import com.kartingtracker.sensor.RecorderPhase
 import com.kartingtracker.sensor.SensorRecorder
 import com.kartingtracker.ui.common.formatLapTime
@@ -165,11 +167,11 @@ class SessionViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ComparisonUiState())
 
     fun startRecording() {
-        sensorRecorder.startRecording()
+        getApplication<Application>().startRecordingService(sessionRepository.currentTrackName.value)
     }
 
     fun stopRecording() {
-        sensorRecorder.stopRecording()
+        getApplication<Application>().stopRecordingService()
     }
 
     fun selectLapA(index: Int) {
@@ -210,7 +212,7 @@ class SessionViewModel(
     }
 
     private fun createTimeLossEntries(lapA: Lap, lapB: Lap): List<Entry> {
-        val timeLoss = TimeLossCalculator.calculateTimeLoss(lapA, lapB)
+        val timeLoss = TimeLossCalculator.computeTimeLoss(lapA, lapB)
         val pointCount = timeLoss.size
         if (pointCount == 0) {
             return emptyList()
