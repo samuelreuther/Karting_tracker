@@ -5,10 +5,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.navigation.findNavController
+import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
@@ -17,9 +16,6 @@ import com.kartingtracker.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private val sessionViewModel: SessionViewModel by viewModels {
-        AppViewModelFactory(application)
-    }
     private val requestNotificationsPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -31,13 +27,17 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         requestNotificationsPermissionIfNeeded()
 
-        val navController = findNavController(R.id.nav_host_fragment)
+        val navHostFragment = supportFragmentManager
+            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
+        val navController = navHostFragment.navController
         val appBarConfiguration = AppBarConfiguration(setOf(R.id.mainFragment))
         setupActionBarWithNavController(navController, appBarConfiguration)
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        val navController = findNavController(R.id.nav_host_fragment)
+        val navHostFragment = supportFragmentManager
+            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
+        val navController = navHostFragment.navController
         return navController.navigateUp() || super.onSupportNavigateUp()
     }
 
