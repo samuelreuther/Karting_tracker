@@ -78,6 +78,7 @@ class SessionViewModel(
             estimatedLapTimeMs = session?.estimatedLapTimeMs,
             trackOptions = tracks.map { track -> track.name },
             selectedTrackName = currentTrackName,
+            hasValidSelectedTrack = currentTrackName.isNotBlank(),
             usingTrackProfile = trackProfile != null,
             trackProfileSummary = formatTrackProfileSummary(trackProfile),
             canLoadLastSession = storedSessions.isNotEmpty(),
@@ -85,6 +86,7 @@ class SessionViewModel(
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
                 recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
                 recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording"
+                currentTrackName.isBlank() -> "Select a track to start recording"
                 session == null -> "Ready"
                 session.laps.isEmpty() -> "Stopped"
                 else -> "Stopped - ${session.laps.size} laps detected"
@@ -203,6 +205,9 @@ class SessionViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ComparisonUiState())
 
     fun startRecording() {
+        if (sessionRepository.currentTrackName.value.isBlank()) {
+            return
+        }
         getApplication<Application>().startRecordingService(sessionRepository.currentTrackName.value)
     }
 
@@ -219,6 +224,9 @@ class SessionViewModel(
     }
 
     fun selectTrack(trackName: String) {
+        if (trackName.isBlank()) {
+            return
+        }
         sessionRepository.selectTrack(trackName)
         selectedSessionFilter.value = trackName
     }
@@ -227,6 +235,14 @@ class SessionViewModel(
         val track = sessionRepository.createTrack(trackName) ?: return null
         selectedSessionFilter.value = track.name
         return track.name
+    }
+
+    fun normalizeTrackName(trackName: String): String {
+        return sessionRepository.normalizeTrackName(trackName)
+    }
+
+    fun trackExists(trackName: String): Boolean {
+        return sessionRepository.trackExists(trackName)
     }
 
     fun loadLastSession(): Boolean {
@@ -349,6 +365,5 @@ class SessionViewModel(
 
     companion object {
         const val ALL_TRACKS_FILTER = "All tracks"
-        const val CREATE_TRACK_OPTION = "Create new track..."
     }
 }

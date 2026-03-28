@@ -7,9 +7,13 @@
     <string name="start_recording">Start</string>
     <string name="stop_recording">Stop</string>
     <string name="track_selection_label">Track</string>
+    <string name="select_track_hint">Select track</string>
+    <string name="add_new_track_option">+ Add new track</string>
     <string name="create_new_track">Create new track</string>
     <string name="save_track">Save track</string>
     <string name="new_track_hint">Track name</string>
+    <string name="track_name_required">Enter a track name.</string>
+    <string name="track_name_exists">That track already exists.</string>
     <string name="live_telemetry">Live telemetry</string>
     <string name="samples_label">Samples</string>
     <string name="detected_laps_label">Detected laps</string>

@@ -26,7 +26,7 @@ Implemented today:
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
 - persistent session storage as JSON
 - periodic autosave during recording
-- track management
+- dropdown-based track management with duplicate-safe creation flow
 - track-specific learning with reusable profiles, quality guards, and weighted updates
 - session browser with filter and reload
 - load-last-session shortcut
@@ -255,12 +255,19 @@ Crash protection:
 
 Before starting a session, the user can:
 
-- select an existing track
-- create a new track from a dialog
+- select an existing track from a dropdown
+- use the final `+ Add new track` dropdown item to open a dialog
+- create a new track from that dialog
 
 Tracks are stored in `SharedPreferences`.
 
-The currently selected track is also persisted, so the app reopens with the previous selection.
+Track-name handling:
+
+- entered names are normalized by trimming and collapsing repeated whitespace
+- duplicate names are rejected case-insensitively
+- the last selected track is persisted and restored on the next app start
+- there is no implicit fallback like `General Track`
+- recording cannot start until a valid track is selected
 
 ## Track-Specific Learning
 
@@ -388,7 +395,7 @@ Recommended practical flow:
 
 1. Open the app.
 2. Allow notifications on Android 13+ when prompted.
-3. Select an existing track or create a new one.
+3. Select an existing track from the dropdown, or choose `+ Add new track`.
 4. Place the phone in the kart mount or in a consistent pocket position.
 5. Keep the kart still.
 6. Press `Start`.

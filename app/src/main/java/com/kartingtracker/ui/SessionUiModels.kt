@@ -14,6 +14,7 @@ data class SessionUiState(
     val estimatedLapTimeMs: Long? = null,
     val trackOptions: List<String> = emptyList(),
     val selectedTrackName: String = "",
+    val hasValidSelectedTrack: Boolean = false,
     val usingTrackProfile: Boolean = false,
     val trackProfileSummary: String = "No learned track profile yet.",
     val canLoadLastSession: Boolean = false,

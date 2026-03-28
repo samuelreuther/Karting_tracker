@@ -57,6 +57,7 @@ Wichtig fuer dieses Dokument:
 - persistente Session-Speicherung als JSON
 - periodisches Autosave waehrend Recording
 - Track-Verwaltung
+- dropdown-basierte Track-Auswahl mit persistierter Letztwahl und Duplicate-Schutz
 - Track-spezifisches Lernen ueber `TrackProfile`
 - geschuetztes Track-Learning mit Quality-Guard, Ausreisserfilter und Profil-Reifegrad
 - Session-Browsing mit Filter
@@ -254,25 +255,26 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 ## Datenfluss
 
 1. Nutzer waehlt einen Track oder legt einen neuen Track an.
-2. `SessionViewModel.startRecording()` ruft `Context.startRecordingService(trackName)` auf.
-3. `RecordingForegroundService` startet, erstellt den Notification-Channel und ruft `startForeground(...)`.
-4. Der Service uebernimmt die Kontrolle ueber `SensorRecorder.startRecording()`.
-5. `SensorRecorder` geht in `RecorderPhase.CALIBRATING`.
-6. `CalibrationManager` sammelt fuer ca. 2 Sekunden Accel-Werte.
-7. Nach abgeschlossener Kalibrierung startet `SessionRepository.startSession(...)`.
-8. Waehren Recording erzeugt `SensorRecorder` fortlaufend `SensorSample`.
-9. `SessionRepository.appendSample(...)` sammelt die Samples und aktualisiert Live-State.
-10. Waehren Recording speichert das Repository alle 5 Sekunden einen Session-Snapshot.
-11. Beim Stop ruft der Service `SensorRecorder.stopRecording()` auf.
-12. `SessionRepository.stopSession(...)` fuehrt die Verarbeitung aus.
-13. `LapDetector` erzeugt Laps.
-14. `PeakDetector` berechnet Peak-Indizes pro Lap.
-15. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
-16. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
-17. `SessionQualityEvaluator` berechnet die Session-Qualitaet.
-18. `SessionStorageManager` speichert die finale Session als JSON.
-19. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
-20. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+2. Die Auswahl erfolgt ueber ein Dropdown; neue Tracks werden ueber einen Dialog erzeugt und nach dem Speichern direkt selektiert.
+3. `SessionViewModel.startRecording()` ruft nur bei gueltigem `currentTrackName` `Context.startRecordingService(trackName)` auf.
+4. `RecordingForegroundService` startet, erstellt den Notification-Channel und ruft `startForeground(...)`.
+5. Der Service uebernimmt die Kontrolle ueber `SensorRecorder.startRecording()`.
+6. `SensorRecorder` geht in `RecorderPhase.CALIBRATING`.
+7. `CalibrationManager` sammelt fuer ca. 2 Sekunden Accel-Werte.
+8. Nach abgeschlossener Kalibrierung startet `SessionRepository.startSession(...)`.
+9. Waehren Recording erzeugt `SensorRecorder` fortlaufend `SensorSample`.
+10. `SessionRepository.appendSample(...)` sammelt die Samples und aktualisiert Live-State.
+11. Waehren Recording speichert das Repository alle 5 Sekunden einen Session-Snapshot.
+12. Beim Stop ruft der Service `SensorRecorder.stopRecording()` auf.
+13. `SessionRepository.stopSession(...)` fuehrt die Verarbeitung aus.
+14. `LapDetector` erzeugt Laps.
+15. `PeakDetector` berechnet Peak-Indizes pro Lap.
+16. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
+17. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
+18. `SessionQualityEvaluator` berechnet die Session-Qualitaet.
+19. `SessionStorageManager` speichert die finale Session als JSON.
+20. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
+21. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 
@@ -888,14 +890,19 @@ Grenze:
 Aktuelles Verhalten:
 
 - Tracks werden als String-Set gehalten
-- der zuletzt ausgewaehlte Track wird gespeichert
-- Standardwert ist `General Track`
+- Tracknamen werden vor Speicherung normalisiert:
+  - `trim()`
+  - mehrere Whitespaces werden zu einem Leerzeichen zusammengefasst
+- neue Tracks werden ueber `addTrackSafe(...)` case-insensitive gegen Duplikate geprueft
+- `getTracksList()` liefert eine sortierte Liste fuer die Dropdown-UI
+- der zuletzt ausgewaehlte Track wird gespeichert und beim App-Start wiederhergestellt
+- es gibt keinen impliziten Default wie `General Track`
 
 Aktuell nicht vorhanden:
 
 - Track-Loeschen
 - Umbenennen
-- Reihenfolge/Sortierung nach letzter Nutzung
+- Reihenfolge/Sortierung nach echter letzter Nutzung ausserhalb der aktuellen Letztwahl-Priorisierung
 - Streckenprofile oder Metadaten
 
 ## Track-spezifisches Lernen
@@ -965,8 +972,9 @@ UI:
 
 Aktuelle Funktionen:
 
-- Track-Spinner
-- neuen Track anlegen
+- Track-Dropdown mit bestehender Trackliste
+- letzter Eintrag `+ Add new track`
+- Dialog fuer neuen Track mit Validierung und Duplicate-Schutz
 - Start
 - Stop
 - Live-Status
@@ -985,6 +993,8 @@ Hinweis:
 
 - die Live-Werte zeigen nur die kompatiblen Richtungswerte, nicht `totalAcceleration` oder `yawRateAbs`
 - die Track-Auswahl wird waehrend Kalibrierung und Recording deaktiviert, damit der Session-Track stabil bleibt
+- Start Recording bleibt deaktiviert, solange kein gueltiger Track ausgewaehlt ist
+- die freie Texteingabe fuer Tracknamen wurde durch eine dropdown-basierte Auswahl ersetzt
 
 ## Lap Screen
 
@@ -1063,7 +1073,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
 | Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
 | Track Learning | Sektorgrenzen wiederverwenden | Erfuellt | feste Nutzung von `typicalSectorBoundaries` bei ausreichender Profilstaerke |
-| Track Management | Track auswaehlen/anlegen | Erfuellt | Main Screen + `TrackManager` |
+| Track Management | Track auswaehlen/anlegen | Erfuellt | Dropdown im Main Screen + Dialog + `TrackManager` |
 | Session Browsing | Liste, Filter, Laden | Erfuellt | `SessionListFragment` |
 | Visualisierung | Lap-Overlay | Erfuellt | Comparison Screen |
 | Visualisierung | Time-Loss-Graph | Erfuellt | `TimeLossCalculator` + Comparison Screen |

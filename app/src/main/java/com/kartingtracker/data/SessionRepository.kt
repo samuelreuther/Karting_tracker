@@ -54,7 +54,7 @@ class SessionRepository(
     private val _availableTracks = MutableStateFlow(trackManager.getTracks())
     val availableTracks: StateFlow<List<Track>> = _availableTracks.asStateFlow()
 
-    private val _currentTrackName = MutableStateFlow(trackManager.getSelectedTrackName())
+    private val _currentTrackName = MutableStateFlow(trackManager.getSelectedTrackName().orEmpty())
     val currentTrackName: StateFlow<String> = _currentTrackName.asStateFlow()
 
     private val _currentTrackProfile = MutableStateFlow(loadUsableTrackProfile(_currentTrackName.value))
@@ -137,18 +137,38 @@ class SessionRepository(
     }
 
     fun createTrack(trackName: String): Track? {
-        val track = trackManager.saveTrack(trackName) ?: return null
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (!trackManager.addTrackSafe(normalizedName)) {
+            return null
+        }
+        val track = Track(normalizedName)
         refreshTracks()
         selectTrack(track.name)
         return track
     }
 
     fun selectTrack(trackName: String) {
-        trackManager.setSelectedTrack(trackName)
-        _currentTrackName.value = trackName
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return
+        }
+        trackManager.setSelectedTrack(normalizedName)
+        _currentTrackName.value = normalizedName
         refreshTracks()
         refreshStoredSessions()
-        refreshCurrentTrackProfile(trackName)
+        refreshCurrentTrackProfile(normalizedName)
+    }
+
+    fun normalizeTrackName(trackName: String): String {
+        return trackManager.normalizeTrackName(trackName)
+    }
+
+    fun trackExists(trackName: String): Boolean {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return false
+        }
+        return trackManager.getTracksList().any { existing -> existing.equals(normalizedName, ignoreCase = true) }
     }
 
     fun loadSessionsForTrack(trackName: String): List<Session> {

@@ -47,11 +47,21 @@
             android:text="@string/track_selection_label"
             android:textStyle="bold" />
 
-        <Spinner
-            android:id="@+id/trackSpinner"
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="8dp"
+            android:hint="@string/select_track_hint"
+            app:endIconMode="dropdown_menu">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/trackDropdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:completionThreshold="2147483647"
+                android:importantForAutofill="no"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
 
         <TextView
             android:id="@+id/trackProfileLabel"
