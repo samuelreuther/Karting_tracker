@@ -7,5 +7,7 @@ data class Lap(
     val startTimestampNs: Long,
     val endTimestampNs: Long,
     val brakingPeakIndices: List<Int> = emptyList(),
-    val corneringPeakIndices: List<Int> = emptyList()
+    val corneringPeakIndices: List<Int> = emptyList(),
+    val confidenceScore: Float = 1f,
+    val isOutlap: Boolean = false
 )

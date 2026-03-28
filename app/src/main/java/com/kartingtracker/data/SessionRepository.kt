@@ -2,9 +2,16 @@ package com.kartingtracker.data
 
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class SessionRepository(
     private val lapDetector: LapDetector,
@@ -20,6 +27,8 @@ class SessionRepository(
     private var currentStartTimestampNs: Long = 0L
     private var currentStartTimeEpochMs: Long = 0L
     private val currentSamples = mutableListOf<SensorSample>()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var autosaveJob: Job? = null
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
@@ -33,6 +42,9 @@ class SessionRepository(
     private val _latestSession = MutableStateFlow<Session?>(null)
     val latestSession: StateFlow<Session?> = _latestSession.asStateFlow()
 
+    private val _currentSession = MutableStateFlow<Session?>(null)
+    val currentSession: StateFlow<Session?> = _currentSession.asStateFlow()
+
     private val _storedSessions = MutableStateFlow(sessionStorageManager.loadAllSessions())
     val storedSessions: StateFlow<List<Session>> = _storedSessions.asStateFlow()
 
@@ -44,14 +56,17 @@ class SessionRepository(
 
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
+            stopAutosaveLocked()
             currentSessionId += 1L
             currentStartTimestampNs = startTimestampNs
             currentStartTimeEpochMs = System.currentTimeMillis()
             currentSamples.clear()
             _latestSession.value = null
+            _currentSession.value = null
             _sampleCount.value = 0
             _lastSample.value = null
             _isRecording.value = true
+            startAutosaveLocked()
         }
     }
 
@@ -73,6 +88,7 @@ class SessionRepository(
             }
 
             _isRecording.value = false
+            stopAutosaveLocked()
             if (currentSamples.isEmpty()) {
                 val emptySession = Session(
                     id = currentSessionId,
@@ -85,32 +101,19 @@ class SessionRepository(
                     laps = emptyList()
                 )
                 _latestSession.value = emptySession
+                _currentSession.value = emptySession
                 sessionStorageManager.saveSession(emptySession)
                 refreshStoredSessions()
                 return emptySession
             }
 
-            val rawSamples = currentSamples.toList()
-            val detectionResult = lapDetector.detect(rawSamples)
-            val laps = detectionResult.laps.map { lap ->
-                lap.copy(
-                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
-                    corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples)
-                )
-            }
-
-            val session = Session(
-                id = currentSessionId,
-                trackName = _currentTrackName.value,
-                startTimeEpochMs = currentStartTimeEpochMs,
-                endTimeEpochMs = System.currentTimeMillis(),
-                startTimestampNs = currentStartTimestampNs,
+            val session = buildProcessedSession(
+                samples = currentSamples.toList(),
                 endTimestampNs = endTimestampNs,
-                samples = rawSamples,
-                laps = laps,
-                estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
+                endTimeEpochMs = System.currentTimeMillis()
             )
             _latestSession.value = session
+            _currentSession.value = session
             sessionStorageManager.saveSession(session)
             refreshStoredSessions()
             return session
@@ -143,13 +146,16 @@ class SessionRepository(
 
     fun loadSession(session: Session) {
         synchronized(lock) {
+            stopAutosaveLocked()
+            val preparedSession = prepareSessionForUse(session)
             _isRecording.value = false
-            _latestSession.value = session
-            _sampleCount.value = session.samples.size
-            _lastSample.value = session.samples.lastOrNull()
-            if (session.trackName.isNotBlank()) {
-                _currentTrackName.value = session.trackName
-                trackManager.setSelectedTrack(session.trackName)
+            _latestSession.value = preparedSession
+            _currentSession.value = preparedSession
+            _sampleCount.value = preparedSession.samples.size
+            _lastSample.value = preparedSession.samples.lastOrNull()
+            if (preparedSession.trackName.isNotBlank()) {
+                _currentTrackName.value = preparedSession.trackName
+                trackManager.setSelectedTrack(preparedSession.trackName)
                 refreshTracks()
             }
         }
@@ -161,5 +167,91 @@ class SessionRepository(
 
     private fun refreshTracks() {
         _availableTracks.value = trackManager.getTracks()
+    }
+
+    private fun startAutosaveLocked() {
+        autosaveJob?.cancel()
+        autosaveJob = repositoryScope.launch {
+            while (isActive) {
+                delay(AUTOSAVE_INTERVAL_MS)
+                val partialSession = buildPartialSessionSnapshot() ?: continue
+                sessionStorageManager.saveSession(partialSession)
+            }
+        }
+    }
+
+    private fun stopAutosaveLocked() {
+        autosaveJob?.cancel()
+        autosaveJob = null
+    }
+
+    private fun buildPartialSessionSnapshot(): Session? {
+        synchronized(lock) {
+            if (!_isRecording.value || currentStartTimeEpochMs == 0L) {
+                return null
+            }
+            val snapshotSamples = currentSamples.toList()
+            val lastTimestampNs = snapshotSamples.lastOrNull()?.timestampNs ?: currentStartTimestampNs
+            val partialSession = Session(
+                id = currentSessionId,
+                trackName = _currentTrackName.value,
+                startTimeEpochMs = currentStartTimeEpochMs,
+                endTimeEpochMs = System.currentTimeMillis(),
+                startTimestampNs = currentStartTimestampNs,
+                endTimestampNs = lastTimestampNs,
+                samples = snapshotSamples,
+                laps = emptyList(),
+                estimatedLapTimeMs = null
+            )
+            _currentSession.value = partialSession
+            return partialSession
+        }
+    }
+
+    private fun prepareSessionForUse(session: Session): Session {
+        if (session.samples.isEmpty() || session.laps.isNotEmpty()) {
+            return session
+        }
+
+        val recoveredSession = buildProcessedSession(
+            sourceSession = session,
+            samples = session.samples,
+            endTimestampNs = session.endTimestampNs,
+            endTimeEpochMs = session.endTimeEpochMs
+        )
+        sessionStorageManager.saveSession(recoveredSession)
+        refreshStoredSessions()
+        return recoveredSession
+    }
+
+    private fun buildProcessedSession(
+        samples: List<SensorSample>,
+        endTimestampNs: Long,
+        endTimeEpochMs: Long,
+        sourceSession: Session? = null
+    ): Session {
+        val detectionResult = lapDetector.detect(samples)
+        val laps = detectionResult.laps.map { lap ->
+            lap.copy(
+                brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
+                corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples)
+            )
+        }
+
+        return Session(
+            id = sourceSession?.id ?: currentSessionId,
+            trackName = sourceSession?.trackName ?: _currentTrackName.value,
+            startTimeEpochMs = sourceSession?.startTimeEpochMs ?: currentStartTimeEpochMs,
+            endTimeEpochMs = endTimeEpochMs,
+            startTimestampNs = sourceSession?.startTimestampNs ?: currentStartTimestampNs,
+            endTimestampNs = endTimestampNs,
+            samples = samples,
+            laps = laps,
+            estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
+        )
+    }
+
+    companion object {
+        private const val AUTOSAVE_INTERVAL_MS = 5_000L
     }
 }

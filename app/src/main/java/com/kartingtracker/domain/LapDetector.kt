@@ -60,7 +60,11 @@ class LapDetector {
             windowSize = windowSize,
             threshold = maxOf(0.8f, bestShift.second * 0.94f)
         )
-        val laps = buildLaps(samples, boundaryTimestampsNs.map { candidate -> resampled[candidate.endIndex].timestampNs })
+        val laps = filterLapTimeOutliers(
+            markFirstLapOutlap(
+                buildLaps(samples, boundaryTimestampsNs, resampled)
+            )
+        )
         if (laps.isEmpty()) {
             Log.i(TAG, "Lap detection fallback: no stable laps for session with ${samples.size} samples")
             return fallbackLap(samples)
@@ -89,7 +93,8 @@ class LapDetector {
             samples = samples,
             lapTimeMs = ((samples.last().timestampNs - samples.first().timestampNs) / 1_000_000L).coerceAtLeast(0L),
             startTimestampNs = samples.first().timestampNs,
-            endTimestampNs = samples.last().timestampNs
+            endTimestampNs = samples.last().timestampNs,
+            confidenceScore = 0.3f
         )
         return LapDetectionResult(
             laps = listOf(lap),
@@ -191,15 +196,19 @@ class LapDetector {
             .filter { candidate -> candidate.confidence >= 0.55f }
     }
 
-    private fun buildLaps(samples: List<SensorSample>, boundaryTimestampsNs: List<Long>): List<Lap> {
-        if (boundaryTimestampsNs.size < 2) {
+    private fun buildLaps(
+        samples: List<SensorSample>,
+        boundaryCandidates: List<BoundaryCandidate>,
+        points: List<ResampledPoint>
+    ): List<Lap> {
+        if (boundaryCandidates.size < 2) {
             return emptyList()
         }
 
         val laps = mutableListOf<Lap>()
-        for (index in 0 until boundaryTimestampsNs.lastIndex) {
-            val startNs = boundaryTimestampsNs[index]
-            val endNs = boundaryTimestampsNs[index + 1]
+        for (index in 0 until boundaryCandidates.lastIndex) {
+            val startNs = points[boundaryCandidates[index].endIndex].timestampNs
+            val endNs = points[boundaryCandidates[index + 1].endIndex].timestampNs
             val lapTimeMs = ((endNs - startNs) / 1_000_000L).coerceAtLeast(0L)
             if (lapTimeMs !in 15_000L..120_000L) {
                 continue
@@ -215,16 +224,71 @@ class LapDetector {
                 samples = lapSamples,
                 lapTimeMs = lapTimeMs,
                 startTimestampNs = startNs,
-                endTimestampNs = endNs
+                endTimestampNs = endNs,
+                confidenceScore = boundaryCandidates[index + 1].confidence
             )
         }
+        return laps
+    }
+
+    private fun markFirstLapOutlap(laps: List<Lap>): List<Lap> {
+        if (laps.size < 2) {
+            return laps
+        }
+
+        val firstLap = laps.first()
+        val remainingLaps = laps.drop(1)
+        if (remainingLaps.isEmpty()) {
+            return laps
+        }
+
+        val averageRemainingLapTimeMs = remainingLaps.map { lap -> lap.lapTimeMs }.average()
+        val durationDeviation = if (averageRemainingLapTimeMs == 0.0) {
+            0.0
+        } else {
+            abs(firstLap.lapTimeMs - averageRemainingLapTimeMs) / averageRemainingLapTimeMs
+        }
+        val isOutlap = durationDeviation > 0.2 || firstLap.confidenceScore < 0.6f
+        if (!isOutlap) {
+            return laps
+        }
+
+        Log.i(
+            TAG,
+            "Marked first lap as outlap: lapTime=${firstLap.lapTimeMs}, confidence=${firstLap.confidenceScore}, deviation=$durationDeviation"
+        )
+
+        return listOf(firstLap.copy(isOutlap = true)) + remainingLaps
+    }
+
+    private fun filterLapTimeOutliers(laps: List<Lap>): List<Lap> {
         if (laps.isEmpty()) {
             return emptyList()
         }
 
-        val averageLapTimeMs = laps.map { lap -> lap.lapTimeMs }.average()
-        return laps.filter { lap ->
-            abs(lap.lapTimeMs - averageLapTimeMs) / averageLapTimeMs <= 0.3
+        val referenceLaps = laps.filterNot { lap -> lap.isOutlap }
+        if (referenceLaps.isEmpty()) {
+            return laps
+        }
+
+        val averageLapTimeMs = referenceLaps.map { lap -> lap.lapTimeMs }.average()
+        if (averageLapTimeMs == 0.0) {
+            return laps
+        }
+
+        val filteredLaps = laps.filter { lap ->
+            lap.isOutlap || abs(lap.lapTimeMs - averageLapTimeMs) / averageLapTimeMs <= 0.3
+        }
+
+        if (filteredLaps.size != laps.size) {
+            Log.i(
+                TAG,
+                "Filtered ${laps.size - filteredLaps.size} unstable laps after outlap classification"
+            )
+        }
+
+        return filteredLaps.mapIndexed { index, lap ->
+            lap.copy(id = index + 1)
         }
     }
 

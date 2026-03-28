@@ -14,7 +14,7 @@ import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.math.abs
+import kotlin.math.sqrt
 
 enum class RecorderPhase {
     IDLE,
@@ -128,7 +128,7 @@ class SensorRecorder(
                     longitudinalAccel = calibratedAcceleration.longitudinalAcceleration,
                     lateralAccel = calibratedAcceleration.lateralAcceleration,
                     totalAcceleration = calibratedAcceleration.totalAcceleration,
-                    yawRateAbs = abs(lastGyro[2])
+                    yawRateAbs = calculateGyroMagnitude(lastGyro)
                 )
                 sessionRepository.appendSample(sample)
             }
@@ -156,5 +156,13 @@ class SensorRecorder(
         }
         sensorManager.unregisterListener(this)
         listenersRegistered = false
+    }
+
+    private fun calculateGyroMagnitude(gyroValues: FloatArray): Float {
+        return sqrt(
+            (gyroValues[0] * gyroValues[0]) +
+                (gyroValues[1] * gyroValues[1]) +
+                (gyroValues[2] * gyroValues[2])
+        )
     }
 }

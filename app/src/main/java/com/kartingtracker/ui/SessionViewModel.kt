@@ -30,7 +30,7 @@ class SessionViewModel(
     private val selectedLapBIndex = MutableStateFlow(1)
     private val selectedSessionFilter = MutableStateFlow(ALL_TRACKS_FILTER)
 
-    val laps: StateFlow<List<Lap>> = sessionRepository.latestSession
+    val laps: StateFlow<List<Lap>> = sessionRepository.currentSession
         .map { session -> session?.laps.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -110,7 +110,14 @@ class SessionViewModel(
         }
 
         ComparisonUiState(
-            lapLabels = laps.mapIndexed { index, lap -> "Lap ${index + 1} - ${formatLapTime(lap.lapTimeMs)}" },
+            lapLabels = laps.mapIndexed { index, lap ->
+                buildString {
+                    append("Lap ${index + 1} - ${formatLapTime(lap.lapTimeMs)}")
+                    if (lap.isOutlap) {
+                        append(" (Outlap)")
+                    }
+                }
+            },
             selectedLapAIndex = safeA,
             selectedLapBIndex = safeB,
             lapATimeLabel = "Lap A: ${formatLapTime(lapA.lapTimeMs)}",
@@ -127,6 +134,9 @@ class SessionViewModel(
             deltaLateral = deltaLateral,
             insights = DrivingInsightsGenerator.generate(normalizedA, normalizedB),
             summaryLabel = buildString {
+                if (lapA.isOutlap || lapB.isOutlap) {
+                    append("Outlap selected. Comparison may be less stable. ")
+                }
                 append(fasterLabel)
                 append(" ")
                 append("Braking peaks: ${lapA.brakingPeakIndices.size} vs ${lapB.brakingPeakIndices.size}. ")
@@ -164,12 +174,14 @@ class SessionViewModel(
 
     fun loadLastSession(): Boolean {
         val session = sessionRepository.loadLastSession() ?: return false
+        resetLapSelection(session)
         selectedSessionFilter.value = session.trackName
         return true
     }
 
     fun loadSession(session: Session) {
         sessionRepository.loadSession(session)
+        resetLapSelection(session)
         selectedSessionFilter.value = session.trackName
     }
 
@@ -181,6 +193,28 @@ class SessionViewModel(
         val size = minOf(entriesA.size, entriesB.size)
         return List(size) { index ->
             Entry(entriesA[index].x, entriesA[index].y - entriesB[index].y)
+        }
+    }
+
+    private fun resetLapSelection(session: Session) {
+        val stableIndices = session.laps
+            .mapIndexedNotNull { index, lap -> if (!lap.isOutlap) index else null }
+
+        when {
+            stableIndices.size >= 2 -> {
+                selectedLapAIndex.value = stableIndices[0]
+                selectedLapBIndex.value = stableIndices[1]
+            }
+
+            stableIndices.size == 1 -> {
+                selectedLapAIndex.value = stableIndices[0]
+                selectedLapBIndex.value = stableIndices[0]
+            }
+
+            else -> {
+                selectedLapAIndex.value = 0
+                selectedLapBIndex.value = if (session.laps.size > 1) 1 else 0
+            }
         }
     }
 

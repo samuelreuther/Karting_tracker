@@ -30,10 +30,15 @@ class LapListAdapter : RecyclerView.Adapter<LapListAdapter.LapViewHolder>() {
         private val binding: ItemLapBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(lap: Lap, position: Int) {
-            binding.lapTitle.text = "Lap ${position + 1}"
+            binding.lapTitle.text = buildString {
+                append("Lap ${position + 1}")
+                if (lap.isOutlap) {
+                    append(" (Outlap)")
+                }
+            }
             binding.lapTime.text = formatLapTime(lap.lapTimeMs)
             binding.lapMeta.text =
-                "${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks - ${lap.corneringPeakIndices.size} cornering peaks"
+                "${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks - ${lap.corneringPeakIndices.size} cornering peaks - confidence ${"%.2f".format(lap.confidenceScore)}"
         }
     }
 }
