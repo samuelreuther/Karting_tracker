@@ -15,6 +15,11 @@ Die App:
 
 Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, aber keine vollstaendig validierte Rennanalyse-Plattform.
 
+Wichtig fuer dieses Dokument:
+
+- Abschnitte mit "aktueller Stand" beschreiben den heute implementierten Code
+- explizit als "offen" markierte Abschnitte beschreiben noch nicht umgesetzte Weiterentwicklungen
+
 ## Zusammenfassung des Ist-Stands
 
 ### Implementiert
@@ -31,8 +36,13 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
 - robuste pocket-taugliche Signale:
   - `totalAcceleration`
   - `yawRateAbs`
-- Lap-Detection mit Sliding Window, Korrelation, Event-Erkennung und Confidence
-- Outlap-Markierung fuer eine instabile erste Runde
+- globale Lap-Detection mit Boundary-Generierung, Segment-Scoring und dynamischer Optimierung ueber die gesamte Session
+- explizite Lap-Phasen:
+  - `NORMAL`
+  - `OUTLAP`
+  - `INLAP`
+  - `INTERRUPTED`
+- kalibriertes Lap-Confidence-Modell mit normalisierten Teil-Scores
 - Disturbed-Lap-Klassifikation fuer spaete oder unplausible Runden
 - Session-Quality-Bewertung pro verarbeiteter Session
 - automatische Sektor-Erkennung pro Lap
@@ -103,7 +113,10 @@ Aktuelles Verhalten:
   - `RecordingForegroundService` fuer background-sicheres Recording
   - `RecordingNotificationHelper` fuer Notification-Channel und laufende Status-Notification
 - `domain`
-  - `LapDetector` fuer heuristische Rundenerkennung
+  - `LapDetector` als oeffentlicher Einstiegspunkt fuer Rundenerkennung
+  - `LapDetector2` fuer globale Segmentierung und kalibrierte Lap-Confidence
+  - `BoundaryGenerator` fuer Boundary-Evidenz und Boundary-Kandidaten
+  - `GlobalSegmenter` fuer globale Session-Segmentierung per Dynamic-Programming-artiger Optimierung
   - `SectorDetector` fuer heuristische Sektorgrenzen und Sektorzeiten
   - `PeakDetector` fuer Brems- und Cornering-Peaks
   - `LapNormalizer` fuer interpolierte Vergleichskurven
@@ -162,14 +175,20 @@ Wichtig:
 - `sectorBoundaries`
 - `sectorTimesMs`
 - `confidenceScore`
+- `lapPhase`
 - `isOutlap`
 - `isDisturbed`
 
 Bedeutung:
 
-- `confidenceScore` stammt aus der Rundenerkennung
-- `isOutlap` markiert aktuell nur eine als instabil erkannte erste Runde
-- `isDisturbed` markiert unplausible oder fahrerisch/verkehrsbedingt gestoerte Runden
+- `confidenceScore` stammt aus dem kalibrierten Confidence-Modell der Rundenerkennung
+- `lapPhase` kann aktuell sein:
+  - `NORMAL`
+  - `OUTLAP`
+  - `INLAP`
+  - `INTERRUPTED`
+- `isOutlap` bleibt als kompatibles Ableitungsfeld erhalten
+- `isDisturbed` markiert unplausible, gestoerte oder fuer Vergleiche/Learning ungeeignete Runden bzw. Segmente
 - `sectorBoundaries` speichert interne Grenzpunkte auf 0-100-Skala
 - `sectorTimesMs` speichert die daraus berechneten Abschnittszeiten
 
@@ -378,30 +397,49 @@ Die Vergleichscharts nutzen dagegen weiterhin `longitudinalAccel` und `lateralAc
 
 ## Algorithmus im aktuellen Code
 
-1. Resampling der Session in 100-ms-Buckets.
-2. Sliding Window ueber 60 Buckets, also etwa 6 Sekunden.
-3. Test mehrerer Shift-Werte als Rundendauer-Kandidaten.
-4. Kosinus-Aehnlichkeit zwischen aktuellem und historischem Fenster.
-5. Event-Pruefung im Fenster:
-   - braking-like: markanter Abfall in `totalAcceleration`
-   - cornering-like: erhoehte `yawRateAbs` plus erhoehte `totalAcceleration`
-6. Lokale Maxima der Aehnlichkeit werden als Boundary-Kandidaten betrachtet.
-7. Kandidaten mit zu geringem Abstand werden dedupliziert.
-8. Confidence wird berechnet aus:
-   - Similarity
-   - Event-Praesenz
-   - Dauer-Konsistenz zum erwarteten Shift
-9. Wenn ein `TrackProfile` existiert:
-   - wird der Shift-Suchraum um die erwartete Rundenzeit verengt
-   - wird historische Fenster-Aehnlichkeit mit Profil-Aehnlichkeit gemischt
-   - werden bekannte Brems- und Cornering-Zonen leicht bevorzugt
-10. Zwischen Boundary-Kandidaten werden Laps gebildet.
-11. Laps ausserhalb von 15 bis 120 Sekunden werden verworfen.
-12. Erste Runde wird separat als moegliche Outlap klassifiziert.
-13. Danach werden weitere instabile Laps gegen den Mittelwert der nicht-Outlaps gefiltert.
-14. Wenn keine stabile Segmentierung bleibt, faellt das System auf eine einzelne Lap zurueck.
+Die aktuelle Rundenerkennung verwendet bereits die globale `LapDetector2`-Pipeline.
 
-## Outlap-Behandlung
+Verarbeitungsschritte:
+
+1. Resampling der Session in 100-ms-Buckets.
+2. Bildung von `ResampledFrame`-Werten mit:
+   - `totalAcceleration`
+   - `yawRateAbs`
+   - abgeleitetem `activity`-Signal
+3. Prior-Schaetzung fuer die Rundendauer:
+   - bevorzugt aus `TrackProfile.averageLapTimeMs`
+   - sonst aus sessionspezifischer Wiederholungsstruktur
+4. `BoundaryGenerator` erzeugt Boundary-Kandidaten aus:
+   - Repeat-Evidenz
+   - Boundary-Schaerfe
+   - Pause-Edges
+   - Anchor-Punkten entlang der erwarteten Rundenzeit
+5. `GlobalSegmenter` baut Segment-Hypothesen zwischen Boundary-Kandidaten.
+6. Jedes Segment wird ueber mehrere Merkmale bewertet:
+   - `durationScore`
+   - `templateMatchScore`
+   - Event-Plausibilitaet
+   - Boundary-Schaerfe
+   - Aktivitaetsverhaeltnis
+7. Die Session wird als globale Folge solcher Segmente optimiert.
+8. Jedes gewaehlte Segment wird als:
+   - `NORMAL`
+   - `OUTLAP`
+   - `INLAP`
+   - `INTERRUPTED`
+   klassifiziert.
+9. Fuer jedes Segment wird ein kalibrierter `confidenceScore` berechnet.
+10. Falls die globale Loesung instabil ist, faellt das System auf ein einzelnes Low-Confidence-Segment zurueck.
+
+Zielfunktion:
+
+- jede moegliche Segmentkante zwischen zwei Boundary-Kandidaten bekommt einen Segment-Score
+- zusaetzlich werden Uebergaenge zwischen aufeinanderfolgenden Segmenten bewertet
+- optimiert wird die gesamte Session als konsistenter Pfad durch den Kandidatenraum
+
+Damit wird die Rundenerkennung nicht mehr ueber lokale Maxima entschieden, sondern ueber die beste Gesamtsegmentierung der Session.
+
+## Outlap-, Inlap- und Unterbrechungsbehandlung
 
 Warum:
 
@@ -409,31 +447,26 @@ Warum:
 
 Aktuelles Verhalten:
 
-- nur die erste erkannte Runde wird speziell betrachtet
-- Kriterien:
-  - starke Abweichung der Rundendauer gegenueber den folgenden Runden
-  - oder niedriger `confidenceScore`
-- wenn auffaellig:
-  - `isOutlap = true`
-  - Runde bleibt sichtbar
-  - sie wird aber standardmaessig nicht fuer Lap A oder Lap B vorausgewaehlt
-
-Was noch nicht umgesetzt ist:
-
-- explizite Erkennung von Inlaps
-- Mehrfach-Outlaps
-- getrennte Behandlung von Boxenstopps oder Unterbrechungen
+- `OUTLAP` wird als eigene Phase bevorzugt am Session-Anfang oder direkt nach Unterbrechung gewaehlt
+- `INLAP` wird als eigene Phase bevorzugt am Session-Ende oder direkt vor einer laengeren Pause gewaehlt
+- `INTERRUPTED` markiert Segmente mit deutlicher Niedrigaktivitaet oder pauseartigem Verlauf
+- alle diese Segmente bleiben sichtbar und persistent gespeichert
+- fuer Default-Vergleiche bevorzugt die UI weiterhin saubere `NORMAL`-Laps
+- `INTERRUPTED`-Segmente werden nicht als normale Runden behandelt und nicht fuer Track-Learning verwendet
 
 ## Disturbed-Lap-Behandlung
 
 Zusatzlogik in `SessionRepository.classifyLaps(...)`:
 
 - Referenz-Lap-Time wird nur aus Laps berechnet, die:
-  - nicht Outlap sind
-  - `confidenceScore >= 0.6` haben
+  - `lapPhase == NORMAL` haben
+  - nicht `isDisturbed` sind
+  - `confidenceScore >= 0.7` haben
 - eine Lap wird als `isDisturbed = true` markiert, wenn mindestens eines gilt:
+  - `lapPhase == INLAP`
+  - `lapPhase == INTERRUPTED`
   - `lapTimeMs > avgLapTime * 1.15`
-  - `confidenceScore < 0.5`
+  - `confidenceScore < 0.55`
   - weniger als 2 Brems-Peaks
   - weniger als 2 Cornering-Peaks
 
@@ -451,11 +484,13 @@ Kennzahlen:
 
 - `validLapRatio`
   - Laps mit:
-    - nicht `isOutlap`
+    - `lapPhase == NORMAL`
     - nicht `isDisturbed`
-    - `confidenceScore >= 0.6`
+    - `confidenceScore >= 0.7`
 - `avgConfidence`
   - Mittelwert aller `confidenceScore`
+- `highConfidenceLapRatio`
+  - Anteil normaler, nicht gestoerter Laps mit `confidenceScore >= 0.85`
 - `disturbedLapRatio`
   - Anteil gestoerter Laps
 - `lapTimeVariance`
@@ -465,15 +500,70 @@ Gesamtscore:
 
 - `overallScore =`
   - `0.35 * validLapRatio`
-  - `+ 0.25 * avgConfidence`
-  - `+ 0.20 * (1 - disturbedLapRatio)`
-  - `+ 0.20 * (1 - lapTimeVariance)`
+  - `+ 0.30 * avgConfidence`
+  - `+ 0.15 * highConfidenceLapRatio`
+  - `+ 0.10 * (1 - disturbedLapRatio)`
+  - `+ 0.10 * (1 - lapTimeVariance)`
 
 Nutzung:
 
 - wird in `Session.quality` persistiert
 - wird beim Laden alter Sessions bei Bedarf neu berechnet
 - steuert, ob eine Session das `TrackProfile` ueberhaupt beeinflussen darf
+
+## Lap-Confidence-Modell
+
+Der aktuelle `confidenceScore` ist als kalibriertes, deterministisches Modell implementiert.
+
+Bedeutung:
+
+- `confidenceScore` bleibt im Bereich `0.0` bis `1.0`
+- Bedeutung: "Wie wahrscheinlich ist es, dass dieses Segment eine korrekt erkannte Runde ist?"
+- der Score ist zwischen Sessions besser vergleichbar als die fruehere lokale Heuristik
+
+Normalisierte Teil-Scores:
+
+- `durationScore`
+  - Uebereinstimmung der Lap-Time mit erwarteter Rundendauer
+- `similarityScore`
+  - Aehnlichkeit zur vorherigen nicht-unterbrochenen Lap
+- `templateMatchScore`
+  - Aehnlichkeit zum Track-Template aus `TrackProfile`
+- `eventScore`
+  - Plausibilitaet der Brems- und Cornering-Ereignisse
+- `boundarySharpnessScore`
+  - Plausibilitaet der Start- und Endgrenzen im Signal
+
+Normalisierung:
+
+- alle Teil-Scores werden auf `0.0` bis `1.0` normiert
+- Dauer verwendet eine gaussfoermige Normierung relativ zu erwarteter Lap-Time und Standardabweichung
+- Aehnlichkeiten basieren auf normierten Kosinus-Scores
+- Event-Plausibilitaet basiert auf Peak-Anzahl und -Konsistenz
+- Boundary-Schaerfe basiert auf Boundary-Evidenz des globalen Segmentierers
+
+Kombination:
+
+- gewichtetes geometrisches Mittel statt roher Multiplikation einzelner Heuristiken
+- fehlende Merkmale werden ueber die verbleibenden Gewichte aufgefangen
+- zusaetzlich wirken:
+  - Phasen-Anpassung fuer `OUTLAP`, `INLAP`, `INTERRUPTED`
+  - Source-Reliability-Anpassung je nach Reife des `TrackProfile`
+
+Gewichte:
+
+- `durationScore`: `0.30`
+- `similarityScore`: `0.25`
+- `templateMatchScore`: `0.20`
+- `eventScore`: `0.15`
+- `boundarySharpnessScore`: `0.10`
+
+Interpretation:
+
+- `> 0.85`: sehr verlaesslich
+- `0.70 bis 0.85`: gut nutzbar
+- `0.55 bis 0.70`: grenzwertig
+- `< 0.55`: vermutlich falsch segmentiert
 
 ## Peak-Detection
 
@@ -501,6 +591,7 @@ Ergebnis:
 - Peak-Indizes werden in `Lap` gespeichert
 - Marker werden in den Charts angezeigt
 - die Insight-Logik nutzt die normalisierten Markerpositionen
+- die Peak-Anzahl ist ausserdem Bestandteil des kalibrierten Lap-Confidence-Modells
 
 ## Sektor-Erkennung
 
@@ -656,9 +747,9 @@ Eingang:
 
 Gueltige Laps:
 
-- nicht `isOutlap`
+- `lapPhase == NORMAL`
 - nicht `isDisturbed`
-- `confidenceScore >= 0.6`
+- `confidenceScore >= 0.75`
 - vorhandene `sectorTimesMs`
 
 Berechnung:
@@ -721,6 +812,11 @@ Gespeicherte Inhalte:
 - Sektorgrenzen und Sektorzeiten
 - geschatzte Rundenzeit
 - Session-Quality-Metriken
+
+Aktueller Stand:
+
+- `Lap` speichert explizite Segmenttypen ueber `lapPhase`
+- bestehende Kompatibilitaetsfelder wie `isOutlap` bleiben erhalten
 
 Die App nutzt derzeit keine Datenbank.
 
@@ -812,20 +908,27 @@ Profilaufbau:
 
 1. Sessions des Tracks laden
 2. Nur Sessions mit ausreichender `SessionQuality` verwenden:
-   - `overallScore >= 0.6`
-   - `validLapRatio >= 0.5`
+   - bei jungen Profilen:
+     - `overallScore >= 0.65`
+     - `validLapRatio >= 0.55`
+   - bei reifen Profilen:
+     - `overallScore >= 0.75`
+     - `validLapRatio >= 0.6`
    - mindestens 3 gueltige Laps
 3. Bei reifen Profilen mit hoher `confidenceScore` werden die Schwellwerte weiter verschaerft
-4. Outlaps, Disturbed-Laps und Laps mit geringer Confidence ignorieren
+4. Nur normale, nicht gestoerte Laps werden beruecksichtigt
 5. Lap-Ausreisser innerhalb einer Session verwerfen, wenn:
    - `lapTimeMs` ausserhalb `mean +- 2 * stddev`
-   - oder `confidenceScore < 0.5`
+   - oder `confidenceScore < 0.75`
    - oder zu wenige Peaks vorhanden sind
 6. `totalAcceleration` und `yawRateAbs` der verbleibenden Laps auf 101 Punkte normalisieren
-7. Session-Mittelkurven bilden und ueber Sessions qualitaetsgewichtet aggregieren
-8. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
-9. typische Sektorgrenzen aus historischen Laps ableiten
-10. Mittelwert und Standardabweichung der Lap-Time speichern
+7. Lap-Beitraege confidence-gewichtet aggregieren:
+   - Gewicht pro Lap = `confidenceScore^2`
+8. Session-Mittelkurven bilden und ueber Sessions qualitaetsgewichtet aggregieren
+9. `INLAP`- und `INTERRUPTED`-Segmente generell vom Profil-Update ausschliessen
+10. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
+11. typische Sektorgrenzen aus historischen Laps ableiten
+12. Mittelwert und Standardabweichung der Lap-Time speichern
 
 Verbesserung der Sektorgrenzen:
 
@@ -889,6 +992,8 @@ Aktuelle Darstellung pro Lap:
 
 - Lap-Nummer
 - Outlap-Markierung
+- Inlap-Markierung
+- Interrupted-Markierung
 - Disturbed-Markierung
 - Rundendauer
 - Sample-Anzahl
@@ -938,10 +1043,13 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Datenmodell | `SensorSample`, `Lap`, `Session`, `Track` | Erfuellt | vorhanden und persistent speicherbar |
 | Datenmodell | `SessionQuality` | Erfuellt | wird pro verarbeiteter Session gespeichert |
 | Datenmodell | `TrackProfile` | Erfuellt | gespeichert als JSON pro Track |
-| Lap Detection | Sliding Window + Korrelation | Erfuellt | `LapDetector` |
+| Lap Detection | Globale Segmentierung ueber ganze Session | Erfuellt | `LapDetector2`, `BoundaryGenerator`, `GlobalSegmenter` |
 | Lap Detection | Event-Erkennung | Erfuellt | braking/cornering checks |
-| Lap Detection | Confidence | Erfuellt | Similarity * Event * Dauer-Konsistenz |
-| Lap Detection | Outlap-Erkennung | Erfuellt | erste instabile Runde wird markiert |
+| Lap Detection | Confidence | Erfuellt | kalibriertes Modell aus Duration-, Similarity-, Template-, Event- und Boundary-Scores |
+| Lap Detection | Outlap-Erkennung | Erfuellt | explizite Phase `OUTLAP` |
+| Lap Detection | Inlap-Erkennung | Erfuellt | explizite Phase `INLAP` |
+| Lap Detection | Unterbrechungs-Segmentierung | Erfuellt | explizite Phase `INTERRUPTED` |
+| Lap Detection | kalibriertes Confidence-Modell | Erfuellt | gewichtetes geometrisches Mittel plus Phasen-/Profil-Anpassung |
 | Lap Detection | Disturbed-Lap-Klassifikation | Erfuellt | spaete, unplausible oder peak-arme Laps werden markiert |
 | Lap Detection | Sektor-Erkennung | Erfuellt | `SectorDetector` findet interne Grenzpunkte aus Brems- und Cornering-Zonen |
 | Lap Detection | Fallback | Erfuellt | einzelne Lap bei instabiler Segmentierung |
@@ -987,7 +1095,6 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 ## Fachlich offen
 
-- robustere Erkennung von Inlaps und Unterbrechungen
 - streckenspezifische Nutzung historischer Sessions fuer bessere Lap-Detection
 - genauere Zeitverlustanalyse ueber echte Distanz- oder Geschwindigkeitsreferenzen
 - moegliche alternative Vergleichsmodi auf Basis von `totalAcceleration` und `yawRateAbs`
@@ -1021,7 +1128,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 1. Projekt in Android Studio auf echtem Android-Geraet bauen und testen.
 2. Mehrere Sessions mit fester und loser Telefonlage aufzeichnen.
-3. Schwellenwerte der Lap- und Peak-Erkennung anhand echter Fahrdaten feinjustieren.
+3. Schwellenwerte der globalen Segmentierung und Confidence-Berechnung anhand echter Fahrdaten feinjustieren.
 4. Exportfunktion einfuehren.
 5. Service-Recovery und OEM-Verhalten im Feldtest pruefen.
 6. Tests fuer Persistenz und Lap-Detection nachziehen.
@@ -1030,6 +1137,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 - `app/src/main/java/com/kartingtracker/data/SensorSample.kt`
 - `app/src/main/java/com/kartingtracker/data/Lap.kt`
+- `app/src/main/java/com/kartingtracker/data/LapPhase.kt`
 - `app/src/main/java/com/kartingtracker/data/Session.kt`
 - `app/src/main/java/com/kartingtracker/data/SessionQuality.kt`
 - `app/src/main/java/com/kartingtracker/data/Track.kt`
@@ -1046,6 +1154,9 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/service/RecordingForegroundService.kt`
 - `app/src/main/java/com/kartingtracker/service/RecordingNotificationHelper.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapDetector.kt`
+- `app/src/main/java/com/kartingtracker/domain/LapDetector2.kt`
+- `app/src/main/java/com/kartingtracker/domain/BoundaryGenerator.kt`
+- `app/src/main/java/com/kartingtracker/domain/GlobalSegmenter.kt`
 - `app/src/main/java/com/kartingtracker/domain/SectorDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`

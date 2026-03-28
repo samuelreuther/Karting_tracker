@@ -2,7 +2,7 @@
 
 Android app for indoor karting telemetry with smartphone sensors only. No GPS is required.
 
-The app records accelerometer and gyroscope data, processes the signal on-device, detects laps heuristically, stores sessions as JSON files, and lets you compare laps visually.
+The app records accelerometer and gyroscope data, processes the signal on-device, segments laps deterministically from IMU patterns, stores sessions as JSON files, and lets you compare laps visually.
 
 ## Current Scope
 
@@ -16,8 +16,9 @@ Implemented today:
 - low-pass filtering
 - gravity removal
 - derived signals for both chart compatibility and pocket-tolerant detection
-- hybrid lap detection with correlation, event detection, confidence scoring, track-profile biasing, and outlap handling
+- global lap detection with boundary generation, segment scoring, dynamic-programming style segmentation, calibrated confidence scoring, and track-profile biasing
 - distinction between `OUTLAP` and `DISTURBED` laps
+- explicit lap phases: `NORMAL`, `OUTLAP`, `INLAP`, `INTERRUPTED`
 - session quality scoring for processed sessions
 - automatic sector detection and sector time calculation without GPS
 - track-profile driven stable sector usage when learned sector boundaries exist
@@ -102,36 +103,80 @@ Lap detection uses orientation-tolerant signals:
 Current detection flow:
 
 1. resample the session into 100 ms buckets
-2. compare sliding windows with cosine similarity
-3. require braking-like and cornering-like events
-4. if a learned track profile exists, restrict the search range around the expected lap time
-5. bias the score with similarity to the learned average track pattern
-6. boost likely candidates when detected events align with learned braking and cornering zones
-7. compute a confidence score from correlation, event presence, and duration consistency
-8. reject implausible lap lengths outside 15-120 seconds
-9. mark an unstable first lap as outlap if needed
-10. classify bad laps as disturbed if they are too slow, low-confidence, or missing enough peaks
-11. filter unstable remaining laps
-12. fall back to a single lap if detection is not reliable
+2. normalize `totalAcceleration` and `yawRateAbs` into activity-oriented frames
+3. estimate a lap-time prior from the learned `TrackProfile` or from session repeat structure
+4. generate boundary candidates from repeat evidence, boundary sharpness, pause edges, and lap-time anchors
+5. build candidate segments between boundaries
+6. score each segment by duration, template match, event density, activity level, and boundary sharpness
+7. optimize the full session globally with a dynamic-programming style segmenter instead of local boundary picking
+8. label segments as `NORMAL`, `OUTLAP`, `INLAP`, or `INTERRUPTED`
+9. map the chosen segments back to raw `Lap` objects
+10. fall back to a single low-confidence segment if the global solution is unstable
+
+Current confidence behavior:
+
+- each detected lap receives a `confidenceScore` in `[0, 1]`
+- confidence is derived from normalized evidence:
+  - duration score
+  - similarity to previous segment
+  - template match to the current `TrackProfile`
+  - event consistency from braking and cornering peaks
+  - boundary sharpness
+- the final score uses a weighted geometric mean plus phase/profile adjustments
+- practical interpretation:
+  - `> 0.85`: very reliable
+  - `0.70 - 0.85`: reliable and usable
+  - `0.55 - 0.70`: borderline
+  - `< 0.55`: likely incorrect
 
 Outlap handling:
 
-- the first detected lap is checked separately
-- if its duration differs strongly from later laps, or its confidence is low, it is marked as outlap
+- outlaps are now an explicit lap phase chosen by the global segmenter
+- they are favored near session start or directly after an interruption
 - outlaps remain visible in the app
 - outlaps are excluded from default comparison selection when stable laps exist
+
+Inlap and interruption handling:
+
+- `INLAP` is an explicit lap phase for a late or shutdown-style segment near session end
+- `INTERRUPTED` marks low-activity or pause-like segments that should not be treated as normal laps
+- interrupted segments remain stored and visible, but are treated as disturbed and excluded from track learning
 
 Disturbed lap handling:
 
 - disturbed laps are separate from outlaps
-- a lap is marked disturbed when it is much slower than the session reference, has low confidence, or contains too few braking/cornering peaks
+- a lap is marked disturbed when it is an `INLAP`/`INTERRUPTED` segment, much slower than the session reference, too low-confidence, or missing enough braking/cornering peaks
 - disturbed laps stay visible in the session, but the app avoids auto-selecting them for comparison when cleaner laps exist
 
 Session quality:
 
-- every processed session gets a quality score derived from valid-lap ratio, average confidence, disturbed ratio, and lap-time variance
+- every processed session gets a quality score derived from valid normal-lap ratio, average confidence, high-confidence lap ratio, disturbed ratio, and lap-time variance
 - low-quality sessions are still stored and viewable
 - low-quality sessions are excluded from track-profile learning so bad runs do not poison the learned profile
+
+### Lap Detector 2.0
+
+The current code already uses the new global segmentation architecture.
+
+Implemented processing stages:
+
+1. preprocess and normalize the resampled session
+2. generate boundary candidates from repeat structure, pause edges, and lap-time anchors
+3. score candidate segments with duration, similarity, template, event, and boundary features
+4. solve the full-session segmentation with a dynamic-programming style optimizer
+5. label resulting segments as `NORMAL`, `OUTLAP`, `INLAP`, or `INTERRUPTED`
+6. fall back to a single low-confidence segment if the global solution is unstable
+
+### Confidence Model
+
+The current code also uses the calibrated confidence model described above.
+
+Implementation notes:
+
+- confidence is deterministic and uses no ML libraries
+- missing evidence is handled by reweighting the available feature set
+- track-profile maturity influences the maximum certainty via source-reliability scaling
+- `INTERRUPTED` segments are strongly penalized even if they align locally with a boundary
 
 ### Comparison
 
@@ -246,6 +291,13 @@ How it is used:
 - sector boundary updates are damped or rejected when they deviate too far from the existing learned layout
 - mature profiles become harder to change than young profiles
 
+Current profile-learning behavior:
+
+- track-profile updates weight lap contributions by calibrated confidence
+- contribution weights are confidence-squared to favor very reliable laps
+- `INLAP` and `INTERRUPTED` segments are excluded from profile building
+- mature profiles require stronger session quality than young profiles
+
 ## Session Browser
 
 The app includes a session list screen with:
@@ -288,7 +340,7 @@ This is intended for UI and chart validation when no real kart session has been 
 - `app/src/main/java/com/kartingtracker/service`
   - foreground service, notification helper, start/stop helpers
 - `app/src/main/java/com/kartingtracker/domain`
-  - lap detection, sector detection, peak detection, normalization, time loss, ideal lap, session quality evaluation, insights
+  - lap detection, boundary generation, global segmentation, sector detection, peak detection, normalization, time loss, ideal lap, session quality evaluation, insights
 - `app/src/main/java/com/kartingtracker/ui`
   - shared view model and UI state
 - `app/src/main/java/com/kartingtracker/ui/main`
@@ -388,6 +440,8 @@ Practical advice:
 
 - detailed technical documentation: `docs/PROJEKTDOKUMENTATION.md`
 - illustrative example assets: `docs/images/`
+
+The detailed documentation covers both the implemented `LapDetector 2.0` pipeline and the calibrated lap-confidence model.
 
 ## Documentation Policy
 

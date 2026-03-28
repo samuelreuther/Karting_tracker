@@ -308,7 +308,7 @@ class SessionRepository(
         }
 
         val validLaps = laps.filter { lap ->
-            !lap.isOutlap && lap.confidenceScore >= 0.6f
+            lap.isNormalPhase && !lap.isDisturbed && lap.confidenceScore >= minimumReferenceConfidence
         }
         val averageLapTimeMs = validLaps
             .map { lap -> lap.lapTimeMs }
@@ -319,12 +319,15 @@ class SessionRepository(
             val exceededReferenceLapTime = averageLapTimeMs?.let { referenceLapTime ->
                 lap.lapTimeMs > (referenceLapTime * 1.15)
             } ?: false
+            val isPhaseDisturbed = lap.isInlap || lap.isInterrupted
+            val hasTooFewPeaks = !lap.isInterrupted &&
+                (lap.brakingPeakIndices.size < minimumPeaksPerType || lap.corneringPeakIndices.size < minimumPeaksPerType)
 
             lap.copy(
-                isDisturbed = exceededReferenceLapTime ||
-                    lap.confidenceScore < 0.5f ||
-                    lap.brakingPeakIndices.size < 2 ||
-                    lap.corneringPeakIndices.size < 2
+                isDisturbed = isPhaseDisturbed ||
+                    exceededReferenceLapTime ||
+                    lap.confidenceScore < minimumDisturbedConfidence ||
+                    hasTooFewPeaks
             )
         }
     }
@@ -373,5 +376,8 @@ class SessionRepository(
     companion object {
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
+        private const val minimumReferenceConfidence = 0.7f
+        private const val minimumDisturbedConfidence = 0.55f
+        private const val minimumPeaksPerType = 2
     }
 }

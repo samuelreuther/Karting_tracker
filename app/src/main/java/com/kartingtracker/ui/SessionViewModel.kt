@@ -141,6 +141,12 @@ class SessionViewModel(
                     if (lap.isOutlap) {
                         append(" (Outlap)")
                     }
+                    if (lap.isInlap) {
+                        append(" (Inlap)")
+                    }
+                    if (lap.isInterrupted) {
+                        append(" (Interrupted)")
+                    }
                     if (lap.isDisturbed) {
                         append(" (Disturbed)")
                     }
@@ -166,6 +172,12 @@ class SessionViewModel(
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
                     append("Outlap selected. Comparison may be less stable. ")
+                }
+                if (lapA.isInlap || lapB.isInlap) {
+                    append("Inlap selected. Comparison may be less stable. ")
+                }
+                if (lapA.isInterrupted || lapB.isInterrupted) {
+                    append("Interrupted segment selected. Comparison is likely not meaningful. ")
                 }
                 if (lapA.isDisturbed || lapB.isDisturbed) {
                     append("Disturbed lap selected. Time loss and insights may be less reliable. ")
@@ -280,6 +292,8 @@ class SessionViewModel(
                     null
                 }
             }
+        val fallbackNormalPhaseIndices = session.laps
+            .mapIndexedNotNull { index, lap -> if (lap.isNormalPhase) index else null }
         val fallbackNonOutlapIndices = session.laps
             .mapIndexedNotNull { index, lap -> if (!lap.isOutlap) index else null }
         val fallbackNonDisturbedIndices = session.laps
@@ -293,9 +307,15 @@ class SessionViewModel(
 
             stableIndices.size == 1 -> {
                 selectedLapAIndex.value = stableIndices[0]
-                selectedLapBIndex.value = fallbackNonOutlapIndices.firstOrNull { index -> index != stableIndices[0] }
+                selectedLapBIndex.value = fallbackNormalPhaseIndices.firstOrNull { index -> index != stableIndices[0] }
+                    ?: fallbackNonOutlapIndices.firstOrNull { index -> index != stableIndices[0] }
                     ?: fallbackNonDisturbedIndices.firstOrNull { index -> index != stableIndices[0] }
                     ?: stableIndices[0]
+            }
+
+            fallbackNormalPhaseIndices.size >= 2 -> {
+                selectedLapAIndex.value = fallbackNormalPhaseIndices[0]
+                selectedLapBIndex.value = fallbackNormalPhaseIndices[1]
             }
 
             fallbackNonOutlapIndices.size >= 2 -> {

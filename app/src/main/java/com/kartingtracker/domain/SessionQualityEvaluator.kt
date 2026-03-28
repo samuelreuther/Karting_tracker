@@ -1,6 +1,7 @@
 package com.kartingtracker.domain
 
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.LapPhase
 import com.kartingtracker.data.SessionQuality
 import kotlin.math.sqrt
 
@@ -12,14 +13,16 @@ object SessionQualityEvaluator {
 
         val validLapRatio = laps.count(::isValidLap).toFloat() / laps.size.toFloat()
         val avgConfidence = laps.map { lap -> lap.confidenceScore }.average().toFloat().coerceIn(0f, 1f)
+        val highConfidenceLapRatio = laps.count(::isHighConfidenceLap).toFloat() / laps.size.toFloat()
         val disturbedLapRatio = laps.count { lap -> lap.isDisturbed }.toFloat() / laps.size.toFloat()
         val normalizedVariance = computeNormalizedVariance(laps)
 
         val overallScore = (
             (0.35f * validLapRatio) +
-                (0.25f * avgConfidence) +
-                (0.20f * (1f - disturbedLapRatio)) +
-                (0.20f * (1f - normalizedVariance))
+                (0.30f * avgConfidence) +
+                (0.15f * highConfidenceLapRatio) +
+                (0.10f * (1f - disturbedLapRatio)) +
+                (0.10f * (1f - normalizedVariance))
             ).coerceIn(0f, 1f)
 
         return SessionQuality(
@@ -32,7 +35,15 @@ object SessionQualityEvaluator {
     }
 
     fun isValidLap(lap: Lap): Boolean {
-        return !lap.isOutlap && !lap.isDisturbed && lap.confidenceScore >= minimumValidConfidence
+        return lap.phase == LapPhase.NORMAL &&
+            !lap.isDisturbed &&
+            lap.confidenceScore >= minimumValidConfidence
+    }
+
+    fun isHighConfidenceLap(lap: Lap): Boolean {
+        return lap.phase == LapPhase.NORMAL &&
+            !lap.isDisturbed &&
+            lap.confidenceScore >= minimumHighConfidence
     }
 
     private fun computeNormalizedVariance(laps: List<Lap>): Float {
@@ -49,5 +60,6 @@ object SessionQualityEvaluator {
         return (standardDeviation / averageLapTime).toFloat().coerceIn(0f, 1f)
     }
 
-    private const val minimumValidConfidence = 0.6f
+    private const val minimumValidConfidence = 0.7f
+    private const val minimumHighConfidence = 0.85f
 }

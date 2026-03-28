@@ -36,6 +36,12 @@ class LapListAdapter : RecyclerView.Adapter<LapListAdapter.LapViewHolder>() {
                 if (lap.isOutlap) {
                     tags += "OUTLAP"
                 }
+                if (lap.isInlap) {
+                    tags += "INLAP"
+                }
+                if (lap.isInterrupted) {
+                    tags += "INTERRUPTED"
+                }
                 if (lap.isDisturbed) {
                     tags += "DISTURBED"
                 }

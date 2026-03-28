@@ -310,7 +310,10 @@ class TrackProfileManager(
         }
 
         val candidateLaps = session.laps.filter { lap ->
-            SessionQualityEvaluator.isValidLap(lap) && hasEnoughPeaks(lap)
+            SessionQualityEvaluator.isValidLap(lap) &&
+                !lap.isInlap &&
+                !lap.isInterrupted &&
+                hasEnoughPeaks(lap)
         }
         if (candidateLaps.size < minimumValidLapsPerSession) {
             return null
@@ -321,30 +324,38 @@ class TrackProfileManager(
             return null
         }
 
-        val averageLapTimeMs = filteredLaps.map { lap -> lap.lapTimeMs }.average()
+        val lapWeights = filteredLaps.map { lap -> lapContributionWeight(lap) }
+        val averageLapTimeMs = weightedAverage(
+            filteredLaps.mapIndexed { index, lap -> lap.lapTimeMs.toDouble() to lapWeights[index] }
+        )
         if (averageLapTimeMs !in minimumLapTimeMs.toDouble()..maximumLapTimeMs.toDouble()) {
             return null
         }
 
-        val averageTotalAcceleration = averageSignals(
-            filteredLaps.map { lap ->
-                LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.totalAcceleration }
+        val averageTotalAcceleration = weightedAverageSignals(
+            filteredLaps.mapIndexed { index, lap ->
+                LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.totalAcceleration } to lapWeights[index]
             }
         )
-        val averageYawRateAbs = averageSignals(
-            filteredLaps.map { lap ->
-                LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.yawRateAbs }
+        val averageYawRateAbs = weightedAverageSignals(
+            filteredLaps.mapIndexed { index, lap ->
+                LapNormalizer.normalizeSignal(lap, PROFILE_POINT_COUNT) { sample -> sample.yawRateAbs } to lapWeights[index]
             }
         )
+        val averageLapConfidence = filteredLaps.mapIndexed { index, lap -> lap.confidenceScore * lapWeights[index] }
+            .sum()
+            .div(lapWeights.sum().coerceAtLeast(1e-6f))
 
         return SessionContribution(
             quality = quality,
-            weight = quality.overallScore.coerceIn(0f, 1f),
+            weight = (quality.overallScore * averageLapConfidence).coerceIn(0f, 1f),
             averageTotalAcceleration = averageTotalAcceleration,
             averageYawRateAbs = averageYawRateAbs,
             averageLapTimeMs = averageLapTimeMs,
             lapTimeStdDevMs = computeLapTimeStdDevMs(filteredLaps),
-            averageLapLengthSamples = filteredLaps.map { lap -> lap.samples.size }.average(),
+            averageLapLengthSamples = weightedAverage(
+                filteredLaps.mapIndexed { index, lap -> lap.samples.size.toDouble() to lapWeights[index] }
+            ),
             detectedSectorBoundaries = computeSessionSectorBoundaries(filteredLaps, averageTotalAcceleration, averageYawRateAbs)
         )
     }
@@ -370,6 +381,8 @@ class TrackProfileManager(
             }
             withinLapTimeWindow &&
                 lap.confidenceScore >= minimumOutlierConfidence &&
+                !lap.isInlap &&
+                !lap.isInterrupted &&
                 hasEnoughPeaks(lap)
         }
     }
@@ -471,15 +484,20 @@ class TrackProfileManager(
             lap.corneringPeakIndices.size >= minimumPeaksPerType
     }
 
+    private fun lapContributionWeight(lap: Lap): Float {
+        val confidence = lap.confidenceScore.coerceIn(0f, 1f)
+        return (confidence * confidence).coerceAtLeast(minimumLapContributionWeight)
+    }
+
     private fun resolveUpdateThresholds(profileConfidence: Float): UpdateThresholds {
         return when {
             profileConfidence > matureProfileThreshold -> UpdateThresholds(
-                minimumOverallScore = 0.7f,
+                minimumOverallScore = 0.75f,
                 minimumValidLapRatio = 0.6f
             )
             else -> UpdateThresholds(
-                minimumOverallScore = 0.6f,
-                minimumValidLapRatio = 0.5f
+                minimumOverallScore = 0.65f,
+                minimumValidLapRatio = 0.55f
             )
         }
     }
@@ -522,7 +540,8 @@ class TrackProfileManager(
         private const val maximumLapTimeMs = 120_000L
         private const val minimumValidLapsPerSession = 3
         private const val minimumPeaksPerType = 2
-        private const val minimumOutlierConfidence = 0.5f
+        private const val minimumOutlierConfidence = 0.75f
+        private const val minimumLapContributionWeight = 0.10f
         private const val minimumBoundarySpacingPercent = 10
         private const val reducedWeightSectorDeviationPercent = 15
         private const val maximumAcceptedSectorDeviationPercent = 30

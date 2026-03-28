@@ -117,6 +117,7 @@ object SimulatedSessionGenerator {
                 brakingPeakIndices = brakingPeakIndices,
                 corneringPeakIndices = corneringPeakIndices,
                 confidenceScore = confidenceScore,
+                lapPhase = if (isOutlap) LapPhase.OUTLAP else LapPhase.NORMAL,
                 isOutlap = isOutlap
             )
             allSamples += lapSamples

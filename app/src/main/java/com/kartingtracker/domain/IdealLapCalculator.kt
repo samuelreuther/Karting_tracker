@@ -1,6 +1,7 @@
 package com.kartingtracker.domain
 
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.LapPhase
 
 data class IdealLap(
     val sectorBestTimes: List<Long>,
@@ -8,11 +9,11 @@ data class IdealLap(
 )
 
 object IdealLapCalculator {
-    private const val minimumConfidence = 0.6f
+    private const val minimumConfidence = 0.75f
 
     fun calculate(laps: List<Lap>): IdealLap? {
         val validLaps = laps.filter { lap ->
-            !lap.isOutlap &&
+            lap.phase == LapPhase.NORMAL &&
                 !lap.isDisturbed &&
                 lap.confidenceScore >= minimumConfidence &&
                 lap.sectorTimesMs.isNotEmpty()
