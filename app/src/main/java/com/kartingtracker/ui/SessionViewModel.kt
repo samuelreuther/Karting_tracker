@@ -259,12 +259,8 @@ class SessionViewModel(
         selectedSessionFilter.value = preparedSession.trackName
     }
 
-    fun reprocessSession(session: Session): Session {
-        val reprocessedSession = sessionRepository.reprocessSession(session)
-        if (sessionRepository.currentSession.value?.id == reprocessedSession.id) {
-            resetLapSelection(reprocessedSession)
-        }
-        return reprocessedSession
+    fun reprocessSession(session: Session) {
+        sessionRepository.reprocessSessionAsync(session)
     }
 
     fun selectSessionFilter(filter: String) {

@@ -26,7 +26,7 @@ Implemented today:
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
 - persistent session storage as JSON
 - processing-versioned session reanalysis from stored raw sensor data
-- periodic autosave during recording
+- periodic autosave during recording with separate partial-session files
 - dropdown-based track management with duplicate-safe creation flow
 - track-specific learning with reusable profiles, quality guards, and weighted updates
 - session browser with filter and reload
@@ -146,7 +146,8 @@ Inlap and interruption handling:
 Disturbed lap handling:
 
 - disturbed laps are separate from outlaps
-- a lap is marked disturbed when it is an `INLAP`/`INTERRUPTED` segment, much slower than the session reference, too low-confidence, or missing enough braking/cornering peaks
+- baseline lap-time reference is computed in a separate first pass from normal high-confidence laps
+- a lap is marked disturbed in a second pass when it is an `INLAP`/`INTERRUPTED` segment, much slower than that baseline, too low-confidence, or missing enough braking/cornering peaks
 - disturbed laps stay visible in the session, but the app avoids auto-selecting them for comparison when cleaner laps exist
 
 Session quality:
@@ -199,6 +200,12 @@ The comparison screen shows:
 - cornering markers
 - short heuristic driving insights
 
+Peak detection robustness:
+
+- braking and cornering peak detection now runs on a lightly smoothed version of `totalAcceleration` and `yawRateAbs`
+- the smoothing uses a simple moving average with window `5`
+- this reduces false peaks and lowers the chance of false disturbed-lap classification from noisy samples
+
 Time loss:
 
 - uses normalized `totalAcceleration`
@@ -228,8 +235,9 @@ Sessions are stored permanently on the device as JSON files.
 Storage details:
 
 - location: app-specific storage under `filesDir/sessions`
-- file naming: `session_<trackName>_<startTimeEpochMs>.json`
-- each recording overwrites the same session file during autosave
+- final file naming: `session_<trackName>_<startTimeEpochMs>.json`
+- partial autosave file naming: `session_<trackName>_<startTimeEpochMs>_partial.json`
+- autosave writes partial snapshots into the partial file and never overwrites the final processed session file
 - a final save happens again when recording stops
 
 Each saved session contains:
@@ -245,10 +253,12 @@ Each saved session contains:
 - sector boundaries and sector times
 - session quality metrics when laps were processed
 - processing version for algorithm upgrades
+- partial-session marker for autosave snapshots
 
 Crash protection:
 
 - during recording, autosave runs every 5 seconds
+- autosave snapshots are stored separately from final processed sessions
 - if a session was saved only partially and has no laps yet, the repository fully reprocesses it on load
 - if an older saved session has laps but no sectors or no quality yet, the repository fully reprocesses it on load
 - if a saved session was processed with an older algorithm version, it is automatically reprocessed from raw samples on load
@@ -258,6 +268,7 @@ Session reprocessing:
 
 - stored raw `SensorSample` data remains the source of truth
 - reprocessing reruns lap detection, peak detection, sector detection, disturbed-lap classification, and session quality
+- automatic reprocessing on load runs asynchronously so large sessions do not block the UI thread
 - fresh recordings are saved with the current processing version
 - older JSON files remain readable because missing `processingVersion` defaults to version `1`
 
@@ -331,6 +342,7 @@ When a saved session is loaded:
 
 - the repository sets it as `currentSession`
 - older or incomplete sessions are reprocessed automatically when needed
+- automatic reprocessing is scheduled asynchronously and the UI can continue immediately
 - the lap list is refreshed
 - comparison state is recomputed
 - default lap selection prefers laps that are neither outlap nor disturbed

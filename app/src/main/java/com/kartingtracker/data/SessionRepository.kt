@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 class SessionRepository(
     private val lapDetector: LapDetector,
@@ -185,7 +186,10 @@ class SessionRepository(
     fun loadSession(session: Session) {
         synchronized(lock) {
             stopAutosaveLocked()
-            val preparedSession = prepareSessionForUse(session)
+            val preparedSession = session
+            if (shouldReprocessSession(session)) {
+                reprocessSessionAsync(session)
+            }
             _isRecording.value = false
             _latestSession.value = preparedSession
             _currentSession.value = preparedSession
@@ -246,6 +250,17 @@ class SessionRepository(
         return updated
     }
 
+    fun reprocessSessionAsync(session: Session) {
+        repositoryScope.launch {
+            Log.i(TAG, "Async reprocessing start for session ${session.id}")
+            try {
+                reprocessSession(session)
+            } finally {
+                Log.i(TAG, "Async reprocessing end for session ${session.id}")
+            }
+        }
+    }
+
     private fun refreshTracks() {
         _availableTracks.value = trackManager.getTracks()
     }
@@ -286,22 +301,12 @@ class SessionRepository(
                 endTimestampNs = lastTimestampNs,
                 samples = snapshotSamples,
                 laps = emptyList(),
-                estimatedLapTimeMs = null
+                estimatedLapTimeMs = null,
+                processingVersion = 0,
+                isPartial = true
             )
             _currentSession.value = partialSession
             return partialSession
-        }
-    }
-
-    private fun prepareSessionForUse(session: Session): Session {
-        if (session.samples.isEmpty()) {
-            return session
-        }
-
-        return if (shouldReprocessSession(session)) {
-            reprocessSession(session)
-        } else {
-            session
         }
     }
 
@@ -325,7 +330,8 @@ class SessionRepository(
         )
 
         return processSessionInternal(baseSession).copy(
-            processingVersion = CURRENT_PROCESSING_VERSION
+            processingVersion = CURRENT_PROCESSING_VERSION,
+            isPartial = false
         )
     }
 
@@ -334,10 +340,10 @@ class SessionRepository(
             return emptyList()
         }
 
-        val validLaps = laps.filter { lap ->
-            lap.isNormalPhase && !lap.isDisturbed && lap.confidenceScore >= minimumReferenceConfidence
+        val baselineLaps = laps.filter { lap ->
+            lap.isNormalPhase && lap.confidenceScore >= minimumReferenceConfidence
         }
-        val averageLapTimeMs = validLaps
+        val averageLapTimeMs = baselineLaps
             .map { lap -> lap.lapTimeMs }
             .average()
             .takeIf { average -> !average.isNaN() && average > 0.0 }
@@ -402,9 +408,15 @@ class SessionRepository(
         val laps = classifyLaps(
             detectionResult.laps.map { lap ->
                 val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
+                val smoothedAcceleration = smoothSignal(lap.samples.map { sample -> sample.totalAcceleration })
+                val smoothedYawRate = smoothSignal(lap.samples.map { sample -> sample.yawRateAbs })
                 lap.copy(
-                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
-                    corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples),
+                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples, smoothedAcceleration),
+                    corneringPeakIndices = peakDetector.findCorneringPeaks(
+                        samples = lap.samples,
+                        yawRateAbs = smoothedYawRate,
+                        totalAcceleration = smoothedAcceleration
+                    ),
                     sectorBoundaries = sectorBoundaries,
                     sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
                 )
@@ -414,8 +426,26 @@ class SessionRepository(
         return session.copy(
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
-            quality = null
+            quality = null,
+            isPartial = false
         ).withQuality()
+    }
+
+    private fun smoothSignal(values: List<Float>): List<Float> {
+        if (values.isEmpty()) {
+            return emptyList()
+        }
+
+        val radius = smoothingWindowSize / 2
+        return values.indices.map { index ->
+            val start = max(0, index - radius)
+            val end = minOf(values.lastIndex, index + radius)
+            var sum = 0f
+            for (sampleIndex in start..end) {
+                sum += values[sampleIndex]
+            }
+            sum / (end - start + 1)
+        }
     }
 
     private fun shouldReprocessSession(session: Session): Boolean {
@@ -444,5 +474,6 @@ class SessionRepository(
         private const val minimumReferenceConfidence = 0.7f
         private const val minimumDisturbedConfidence = 0.55f
         private const val minimumPeaksPerType = 2
+        private const val smoothingWindowSize = 5
     }
 }

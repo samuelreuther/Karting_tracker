@@ -11,7 +11,8 @@ data class Session(
     val laps: List<Lap>,
     val estimatedLapTimeMs: Long? = null,
     val quality: SessionQuality? = null,
-    val processingVersion: Int = DEFAULT_PROCESSING_VERSION
+    val processingVersion: Int = DEFAULT_PROCESSING_VERSION,
+    val isPartial: Boolean = false
 ) {
     companion object {
         const val DEFAULT_PROCESSING_VERSION = 1

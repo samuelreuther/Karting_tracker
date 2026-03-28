@@ -56,7 +56,7 @@ Wichtig fuer dieses Dokument:
 - einfache textliche Fahrstil-Insights
 - persistente Session-Speicherung als JSON
 - Reprocessing gespeicherter Sessions aus Rohdaten mit Processing-Versionierung
-- periodisches Autosave waehrend Recording
+- periodisches Autosave waehrend Recording mit separaten Partial-Snapshots
 - Track-Verwaltung
 - dropdown-basierte Track-Auswahl mit persistierter Letztwahl und Duplicate-Schutz
 - Track-spezifisches Lernen ueber `TrackProfile`
@@ -209,10 +209,13 @@ Bedeutung:
 - `estimatedLapTimeMs`
 - `quality`
 - `processingVersion`
+- `isPartial`
 
 `quality` ist optional, weil rohe Autosave-Snapshots noch keine verarbeiteten Laps enthalten.
 
 `processingVersion` kennzeichnet, mit welcher Verarbeitungslogik die Session zuletzt voll analysiert wurde.
+
+`isPartial` markiert ungefinalisierte Autosave-Snapshots, die getrennt von finalen Sessions gespeichert werden.
 
 ## SessionQuality
 
@@ -464,11 +467,13 @@ Aktuelles Verhalten:
 
 Zusatzlogik in `SessionRepository.classifyLaps(...)`:
 
-- Referenz-Lap-Time wird nur aus Laps berechnet, die:
+- Pass 1:
+  - Referenz-Lap-Time wird nur aus Laps berechnet, die:
   - `lapPhase == NORMAL` haben
-  - nicht `isDisturbed` sind
   - `confidenceScore >= 0.7` haben
-- eine Lap wird als `isDisturbed = true` markiert, wenn mindestens eines gilt:
+- dadurch haengt die Baseline nicht von einem vorherigen `isDisturbed`-Status ab
+- Pass 2:
+  - eine Lap wird als `isDisturbed = true` markiert, wenn mindestens eines gilt:
   - `lapPhase == INLAP`
   - `lapPhase == INTERRUPTED`
   - `lapTimeMs > avgLapTime * 1.15`
@@ -574,6 +579,15 @@ Interpretation:
 ## Peak-Detection
 
 `PeakDetector` arbeitet ebenfalls mit pocket-tauglichen Signalen.
+
+Zur Robustheitsverbesserung werden die Eingangssignale vor der Peak-Erkennung leicht geglaettet:
+
+- Moving-Average-Fenster mit Breite `5`
+- Glaettung fuer:
+  - `totalAcceleration`
+  - `yawRateAbs`
+- die Peak-Logik selbst bleibt deterministisch und unveraendert
+- Ziel ist geringere Noise-Empfindlichkeit und weniger falsch gestoerte Laps
 
 ### Brems-Peaks
 
@@ -803,6 +817,8 @@ Speicherort:
 Dateiname:
 
 - `session_<trackName>_<startTimeEpochMs>.json`
+- fuer Partial-Snapshots:
+  - `session_<trackName>_<startTimeEpochMs>_partial.json`
 
 Sanitizing:
 
@@ -819,12 +835,14 @@ Gespeicherte Inhalte:
 - geschatzte Rundenzeit
 - Session-Quality-Metriken
 - `processingVersion`
+- `isPartial`
 
 Aktueller Stand:
 
 - `Lap` speichert explizite Segmenttypen ueber `lapPhase`
 - bestehende Kompatibilitaetsfelder wie `isOutlap` bleiben erhalten
 - fehlende `processingVersion`-Felder in aelteren JSON-Dateien werden beim Laden kompatibel als Version `1` behandelt
+- fehlende `isPartial`-Felder in aelteren JSON-Dateien werden kompatibel als `false` behandelt
 
 Die App nutzt derzeit keine Datenbank.
 
@@ -875,18 +893,21 @@ Zentrale Reprocessing-Logik:
   - Disturbed-Klassifikation
   - `SessionQualityEvaluator`
 - `reprocessSession(session)` speichert das Ergebnis wieder als JSON und aktualisiert bei Bedarf auch das zugehoerige `TrackProfile`
+- `reprocessSessionAsync(session)` startet dieselbe Verarbeitung auf `repositoryScope`, damit der UI-Pfad nicht blockiert
 
 ## Autosave
 
 Waehrend Recording:
 
 - alle 5 Sekunden wird ein Snapshot geschrieben
-- dieselbe Session-Datei wird ueberschrieben
+- Partial-Snapshots werden in eine getrennte Datei mit Suffix `_partial.json` geschrieben
+- finale Sessions und Partial-Snapshots koennen daher nicht mehr gegenseitig ueberschrieben werden
 - die Datei ist ueber `trackName + startTimeEpochMs` stabil identifizierbar
 
 Finalisierung:
 
-- bei `stopSession()` wird die Session voll verarbeitet und erneut gespeichert
+- bei `stopSession()` wird die Session voll verarbeitet und als nicht-partielle Finaldatei gespeichert
+- eine vorhandene Partial-Datei desselben Recordings wird danach entfernt
 
 Recovery:
 
@@ -894,6 +915,7 @@ Recovery:
 - wenn eine gespeicherte Session bereits Laps, aber noch keine Sektor-Metadaten oder `quality` enthaelt, wird sie ebenfalls vollstaendig reprocessiert
 - wenn `processingVersion < CURRENT_PROCESSING_VERSION` ist, wird die Session beim Laden automatisch mit der aktuellen Verarbeitungslogik neu analysiert
 - Reprocessing nutzt weiterhin die gespeicherten Rohsamples als Quelle und erzeugt neue Laps, Peaks, Sektoren, Confidence-Werte und Session-Quality
+- automatisches Reprocessing beim Laden laeuft asynchron auf `repositoryScope`
 - der Foreground Service reduziert Session-Verlust bei Hintergrundbetrieb deutlich
 
 Grenze:
@@ -1050,7 +1072,7 @@ Aktuelle Funktionen:
 Beim Laden einer Session:
 
 - `SessionRepository.loadSession(...)` setzt `currentSession`
-- falls die Session alt oder unvollstaendig verarbeitet ist, wird zuerst `reprocessSession(...)` ausgefuehrt
+- falls die Session alt oder unvollstaendig verarbeitet ist, wird `reprocessSessionAsync(...)` gestartet
 - `SessionViewModel` bezieht `laps` aus `currentSession`
 - Comparison-State wird neu berechnet
 - Standardauswahl fuer Lap A und Lap B wird zurueckgesetzt
@@ -1084,9 +1106,9 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Lap Detection | Sektor-Erkennung | Erfuellt | `SectorDetector` findet interne Grenzpunkte aus Brems- und Cornering-Zonen |
 | Lap Detection | Fallback | Erfuellt | einzelne Lap bei instabiler Segmentierung |
 | Persistenz | JSON-Speicherung | Erfuellt | `SessionStorageManager` |
-| Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
+| Persistenz | Autosave | Erfuellt | getrennte Partial-Snapshots alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
-| Persistenz | Reprocessing alter Sessions | Erfuellt | `processingVersion` + `SessionRepository.reprocessSession(...)` |
+| Persistenz | Reprocessing alter Sessions | Erfuellt | `processingVersion` + `SessionRepository.reprocessSession(...)` / `reprocessSessionAsync(...)` |
 | Betrieb | Foreground Service | Erfuellt | `RecordingForegroundService` mit Notification und Wake-Lock |
 | Track Learning | Session-Quality-Guard | Erfuellt | schlechte Sessions duerfen das Profil nicht updaten |
 | Track Learning | gewichtete Profil-Updates | Erfuellt | hohe Session-Qualitaet beeinflusst das Profil staerker |
