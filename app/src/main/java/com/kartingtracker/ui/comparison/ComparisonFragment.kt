@@ -42,6 +42,7 @@ class ComparisonFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         ChartUtils.configureLineChart(binding.longitudinalChart)
         ChartUtils.configureLineChart(binding.lateralChart)
+        ChartUtils.configureLineChart(binding.deltaChart)
 
         binding.lapASpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -73,20 +74,30 @@ class ComparisonFragment : Fragment() {
                     binding.summaryLabel.text = state.summaryLabel
                     binding.lapATimeLabel.text = state.lapATimeLabel
                     binding.lapBTimeLabel.text = state.lapBTimeLabel
+                    binding.insightsLabel.text = state.insights.joinToString(separator = "\n")
 
                     if (state.lapLabels.isNotEmpty()) {
                         updateSpinner(binding.lapASpinner, state.lapLabels, state.selectedLapAIndex)
                         updateSpinner(binding.lapBSpinner, state.lapLabels, state.selectedLapBIndex)
                         binding.longitudinalChart.data = LineData(
                             ChartUtils.createDataSet(requireContext(), "Lap A", state.longitudinalLapA, R.color.karting_green),
-                            ChartUtils.createDataSet(requireContext(), "Lap B", state.longitudinalLapB, R.color.karting_red)
+                            ChartUtils.createDataSet(requireContext(), "Lap B", state.longitudinalLapB, R.color.karting_red),
+                            ChartUtils.createMarkerDataSet(requireContext(), "A braking", state.longitudinalBrakeMarkersA, R.color.karting_red),
+                            ChartUtils.createMarkerDataSet(requireContext(), "B braking", state.longitudinalBrakeMarkersB, R.color.karting_orange)
                         )
                         binding.lateralChart.data = LineData(
                             ChartUtils.createDataSet(requireContext(), "Lap A", state.lateralLapA, R.color.karting_blue),
-                            ChartUtils.createDataSet(requireContext(), "Lap B", state.lateralLapB, R.color.karting_teal)
+                            ChartUtils.createDataSet(requireContext(), "Lap B", state.lateralLapB, R.color.karting_teal),
+                            ChartUtils.createMarkerDataSet(requireContext(), "A cornering", state.lateralCornerMarkersA, R.color.karting_blue),
+                            ChartUtils.createMarkerDataSet(requireContext(), "B cornering", state.lateralCornerMarkersB, R.color.karting_teal)
+                        )
+                        binding.deltaChart.data = LineData(
+                            ChartUtils.createDataSet(requireContext(), "Longitudinal delta", state.deltaLongitudinal, R.color.karting_green),
+                            ChartUtils.createDataSet(requireContext(), "Lateral delta", state.deltaLateral, R.color.karting_blue)
                         )
                         binding.longitudinalChart.invalidate()
                         binding.lateralChart.invalidate()
+                        binding.deltaChart.invalidate()
                     }
                 }
             }

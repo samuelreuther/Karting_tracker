@@ -53,10 +53,10 @@ class MainFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sessionViewModel.uiState.collect { state ->
-                    binding.recordingIndicator.isSelected = state.isRecording
+                    binding.recordingIndicator.isSelected = state.isRecording || state.isCalibrating
                     binding.recordingIndicator.text = state.statusLabel
-                    binding.startButton.isEnabled = !state.isRecording && state.hasRequiredSensors
-                    binding.stopButton.isEnabled = state.isRecording
+                    binding.startButton.isEnabled = !state.isRecording && !state.isCalibrating && state.hasRequiredSensors
+                    binding.stopButton.isEnabled = state.isRecording || state.isCalibrating
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.samplesValue.text = state.sampleCount.toString()
                     binding.longitudinalValue.text = getString(

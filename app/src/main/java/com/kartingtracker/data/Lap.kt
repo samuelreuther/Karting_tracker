@@ -6,5 +6,6 @@ data class Lap(
     val lapTimeMs: Long,
     val startTimestampNs: Long,
     val endTimestampNs: Long,
-    val brakingPeakIndices: List<Int> = emptyList()
+    val brakingPeakIndices: List<Int> = emptyList(),
+    val corneringPeakIndices: List<Int> = emptyList()
 )

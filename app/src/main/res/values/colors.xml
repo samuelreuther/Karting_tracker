@@ -2,6 +2,7 @@
 <resources>
     <color name="karting_green">#2E7D32</color>
     <color name="karting_red">#C62828</color>
+    <color name="karting_orange">#EF6C00</color>
     <color name="karting_blue">#1565C0</color>
     <color name="karting_teal">#00897B</color>
     <color name="karting_dark">#102027</color>

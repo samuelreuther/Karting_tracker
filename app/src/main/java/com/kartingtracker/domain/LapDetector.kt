@@ -2,6 +2,7 @@ package com.kartingtracker.domain
 
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.SensorSample
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 data class LapDetectionResult(
@@ -10,6 +11,11 @@ data class LapDetectionResult(
 )
 
 class LapDetector {
+    private data class BoundaryCandidate(
+        val endIndex: Int,
+        val similarity: Float
+    )
+
     private data class ResampledPoint(
         val timestampNs: Long,
         val longitudinalAccel: Float,
@@ -140,34 +146,36 @@ class LapDetector {
         windowSize: Int,
         threshold: Float
     ): List<Long> {
-        val candidates = mutableListOf<Pair<Int, Float>>()
+        val candidates = mutableListOf<BoundaryCandidate>()
         var endIndex = shift + windowSize
         while (endIndex < points.size) {
             val similarity = windowSimilarity(points, endIndex, shift, windowSize)
-            candidates += endIndex to similarity
+            val startIndex = (endIndex - windowSize).coerceAtLeast(0)
+            val brakingPeaks = detectBrakingPeaks(points, startIndex, endIndex)
+            val corneringEvents = detectCorneringEvents(points, startIndex, endIndex)
+            candidates += BoundaryCandidate(
+                endIndex = endIndex,
+                similarity = if (brakingPeaks.isNotEmpty() && corneringEvents.isNotEmpty()) similarity else 0f
+            )
             endIndex += 5
         }
 
-        val peaks = mutableListOf<Int>()
-        var lastPeakIndex = -shift
+        val localMaxima = mutableListOf<BoundaryCandidate>()
         for (index in 1 until candidates.lastIndex) {
             val previous = candidates[index - 1]
             val current = candidates[index]
             val next = candidates[index + 1]
-            val enoughSpacing = current.first - lastPeakIndex >= (shift * 0.7f).toInt()
             if (
-                current.second >= threshold &&
-                current.second >= previous.second &&
-                current.second >= next.second &&
-                enoughSpacing
+                current.similarity >= threshold &&
+                current.similarity >= previous.similarity &&
+                current.similarity >= next.similarity
             ) {
-                peaks += current.first
-                lastPeakIndex = current.first
+                localMaxima += current
             }
         }
 
-        return peaks
-            .map { peakIndex -> points[peakIndex].timestampNs }
+        return filterDuplicateCandidates(localMaxima, (shift * 0.7f).toInt())
+            .map { candidate -> points[candidate.endIndex].timestampNs }
             .distinct()
             .sorted()
     }
@@ -181,6 +189,10 @@ class LapDetector {
         for (index in 0 until boundaryTimestampsNs.lastIndex) {
             val startNs = boundaryTimestampsNs[index]
             val endNs = boundaryTimestampsNs[index + 1]
+            val lapTimeMs = ((endNs - startNs) / 1_000_000L).coerceAtLeast(0L)
+            if (lapTimeMs !in 15_000L..120_000L) {
+                continue
+            }
             val lapSamples = samples.filter { sample ->
                 sample.timestampNs >= startNs && sample.timestampNs < endNs
             }
@@ -190,7 +202,7 @@ class LapDetector {
             laps += Lap(
                 id = laps.size + 1,
                 samples = lapSamples,
-                lapTimeMs = ((endNs - startNs) / 1_000_000L).coerceAtLeast(0L),
+                lapTimeMs = lapTimeMs,
                 startTimestampNs = startNs,
                 endTimestampNs = endNs
             )
@@ -233,5 +245,64 @@ class LapDetector {
         }
 
         return dot / (sqrt(normA) * sqrt(normB))
+    }
+
+    private fun detectBrakingPeaks(
+        points: List<ResampledPoint>,
+        startIndex: Int,
+        endIndex: Int
+    ): List<Int> {
+        val peaks = mutableListOf<Int>()
+        val safeStart = maxOf(1, startIndex + 1)
+        val safeEnd = minOf(points.lastIndex - 1, endIndex - 1)
+        if (safeStart > safeEnd) {
+            return emptyList()
+        }
+        for (index in safeStart..safeEnd) {
+            val current = points[index].longitudinalAccel
+            if (
+                current < -2.5f &&
+                current < points[index - 1].longitudinalAccel &&
+                current <= points[index + 1].longitudinalAccel
+            ) {
+                peaks += index
+            }
+        }
+        return peaks
+    }
+
+    private fun detectCorneringEvents(
+        points: List<ResampledPoint>,
+        startIndex: Int,
+        endIndex: Int
+    ): List<Int> {
+        val events = mutableListOf<Int>()
+        val safeStart = startIndex.coerceAtLeast(0)
+        val safeEnd = endIndex.coerceAtMost(points.lastIndex)
+        if (safeStart > safeEnd) {
+            return emptyList()
+        }
+        for (index in safeStart..safeEnd) {
+            if (abs(points[index].lateralAccel) > 2.0f) {
+                events += index
+            }
+        }
+        return events
+    }
+
+    private fun filterDuplicateCandidates(
+        candidates: List<BoundaryCandidate>,
+        minimumSpacing: Int
+    ): List<BoundaryCandidate> {
+        val selected = mutableListOf<BoundaryCandidate>()
+        candidates.sortedByDescending { candidate -> candidate.similarity }.forEach { candidate ->
+            val duplicate = selected.any { selectedCandidate ->
+                abs(selectedCandidate.endIndex - candidate.endIndex) < minimumSpacing
+            }
+            if (!duplicate) {
+                selected += candidate
+            }
+        }
+        return selected.sortedBy { candidate -> candidate.endIndex }
     }
 }

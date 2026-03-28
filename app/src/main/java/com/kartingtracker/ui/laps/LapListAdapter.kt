@@ -32,7 +32,8 @@ class LapListAdapter : RecyclerView.Adapter<LapListAdapter.LapViewHolder>() {
         fun bind(lap: Lap, position: Int) {
             binding.lapTitle.text = "Lap ${position + 1}"
             binding.lapTime.text = formatLapTime(lap.lapTimeMs)
-            binding.lapMeta.text = "${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks"
+            binding.lapMeta.text =
+                "${lap.samples.size} samples - ${lap.brakingPeakIndices.size} braking peaks - ${lap.corneringPeakIndices.size} cornering peaks"
         }
     }
 }

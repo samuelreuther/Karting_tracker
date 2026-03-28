@@ -40,4 +40,22 @@ object ChartUtils {
             mode = LineDataSet.Mode.LINEAR
         }
     }
+
+    fun createMarkerDataSet(
+        context: Context,
+        label: String,
+        entries: List<Entry>,
+        colorRes: Int
+    ): LineDataSet {
+        return LineDataSet(entries, label).apply {
+            color = ContextCompat.getColor(context, colorRes)
+            setCircleColor(ContextCompat.getColor(context, colorRes))
+            lineWidth = 0f
+            circleRadius = 4f
+            setDrawCircles(true)
+            setDrawCircleHole(false)
+            setDrawValues(false)
+            setDrawHighlightIndicators(false)
+        }
+    }
 }

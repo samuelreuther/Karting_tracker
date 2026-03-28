@@ -102,6 +102,29 @@
                 android:layout_height="280dp"
                 android:layout_marginTop="16dp"
                 android:background="@color/karting_surface" />
+
+            <com.github.mikephil.charting.charts.LineChart
+                android:id="@+id/deltaChart"
+                android:layout_width="match_parent"
+                android:layout_height="280dp"
+                android:layout_marginTop="16dp"
+                android:background="@color/karting_surface" />
+
+            <TextView
+                android:id="@+id/insightsTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/insights_title"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/insightsLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="@color/karting_muted" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

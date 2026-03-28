@@ -6,6 +6,11 @@ class LowPassFilter(
     private val state = FloatArray(3)
     private var initialized = false
 
+    fun reset() {
+        state.fill(0f)
+        initialized = false
+    }
+
     fun apply(input: FloatArray): FloatArray {
         if (!initialized) {
             input.copyInto(state)

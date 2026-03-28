@@ -72,7 +72,10 @@ class SessionRepository(
             val rawSamples = currentSamples.toList()
             val detectionResult = lapDetector.detect(rawSamples)
             val laps = detectionResult.laps.map { lap ->
-                lap.copy(brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples))
+                lap.copy(
+                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
+                    corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples)
+                )
             }
 
             val session = Session(
