@@ -5,6 +5,7 @@ import com.kartingtracker.data.SimulatedSessionGenerator
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.SessionStorageManager
 import com.kartingtracker.data.TrackManager
+import com.kartingtracker.data.TrackProfileManager
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.sensor.SensorRecorder
@@ -14,6 +15,7 @@ class AppContainer(context: Context) {
     private val peakDetector = PeakDetector()
     private val sessionStorageManager = SessionStorageManager(context.applicationContext)
     private val trackManager = TrackManager(context.applicationContext)
+    private val trackProfileManager = TrackProfileManager(context.applicationContext)
 
     init {
         if (BuildConfig.DEBUG) {
@@ -29,7 +31,8 @@ class AppContainer(context: Context) {
         lapDetector = lapDetector,
         peakDetector = peakDetector,
         sessionStorageManager = sessionStorageManager,
-        trackManager = trackManager
+        trackManager = trackManager,
+        trackProfileManager = trackProfileManager
     )
 
     val sensorRecorder = SensorRecorder(

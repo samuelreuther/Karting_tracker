@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
+import com.kartingtracker.data.TrackProfile
 import com.kartingtracker.domain.DrivingInsightsGenerator
 import com.kartingtracker.domain.LapNormalizer
 import com.kartingtracker.sensor.RecorderPhase
@@ -42,8 +43,9 @@ class SessionViewModel(
         sessionRepository.latestSession,
         sessionRepository.availableTracks,
         sessionRepository.currentTrackName,
-        sessionRepository.storedSessions
-    ) { recorderPhase, isRecording, sampleCount, lastSample, session, tracks, currentTrackName, storedSessions ->
+        sessionRepository.storedSessions,
+        sessionRepository.currentTrackProfile
+    ) { recorderPhase, isRecording, sampleCount, lastSample, session, tracks, currentTrackName, storedSessions, trackProfile ->
         SessionUiState(
             isRecording = recorderPhase == RecorderPhase.RECORDING || isRecording,
             isCalibrating = recorderPhase == RecorderPhase.CALIBRATING,
@@ -55,6 +57,8 @@ class SessionViewModel(
             estimatedLapTimeMs = session?.estimatedLapTimeMs,
             trackOptions = tracks.map { track -> track.name },
             selectedTrackName = currentTrackName,
+            usingTrackProfile = trackProfile != null,
+            trackProfileSummary = formatTrackProfileSummary(trackProfile),
             canLoadLastSession = storedSessions.isNotEmpty(),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
@@ -181,8 +185,9 @@ class SessionViewModel(
 
     fun loadSession(session: Session) {
         sessionRepository.loadSession(session)
-        resetLapSelection(session)
-        selectedSessionFilter.value = session.trackName
+        val preparedSession = sessionRepository.currentSession.value ?: session
+        resetLapSelection(preparedSession)
+        selectedSessionFilter.value = preparedSession.trackName
     }
 
     fun selectSessionFilter(filter: String) {
@@ -215,6 +220,18 @@ class SessionViewModel(
                 selectedLapAIndex.value = 0
                 selectedLapBIndex.value = if (session.laps.size > 1) 1 else 0
             }
+        }
+    }
+
+    private fun formatTrackProfileSummary(trackProfile: TrackProfile?): String {
+        if (trackProfile == null) {
+            return "No learned track profile yet."
+        }
+
+        return if (trackProfile.sessionCount < 2) {
+            "Learning track profile from ${trackProfile.sessionCount} session."
+        } else {
+            "Using track profile from ${trackProfile.sessionCount} sessions."
         }
     }
 

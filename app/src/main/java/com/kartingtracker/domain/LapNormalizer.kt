@@ -30,28 +30,13 @@ object LapNormalizer {
             )
         }
 
-        val startNs = lap.samples.first().timestampNs
-        val endNs = lap.samples.last().timestampNs
-        val durationNs = (endNs - startNs).coerceAtLeast(1L)
-        val longitudinalEntries = ArrayList<Entry>(pointCount)
-        val lateralEntries = ArrayList<Entry>(pointCount)
-
-        var cursor = 0
-        for (index in 0 until pointCount) {
-            val progress = index.toFloat() / (pointCount - 1).coerceAtLeast(1)
-            val targetTimestampNs = startNs + (durationNs * progress).toLong()
-            while (cursor < lap.samples.lastIndex - 1 && lap.samples[cursor + 1].timestampNs < targetTimestampNs) {
-                cursor += 1
-            }
-
-            val interpolated = interpolate(
-                before = lap.samples[cursor],
-                after = lap.samples[(cursor + 1).coerceAtMost(lap.samples.lastIndex)],
-                targetTimestampNs = targetTimestampNs
-            )
-            val xValue = progress * 100f
-            longitudinalEntries += Entry(xValue, interpolated.longitudinalAccel)
-            lateralEntries += Entry(xValue, interpolated.lateralAccel)
+        val longitudinalValues = normalizeSamples(lap.samples, pointCount) { sample -> sample.longitudinalAccel }
+        val lateralValues = normalizeSamples(lap.samples, pointCount) { sample -> sample.lateralAccel }
+        val longitudinalEntries = longitudinalValues.mapIndexed { index, value ->
+            Entry(index.toNormalizedX(pointCount), value)
+        }
+        val lateralEntries = lateralValues.mapIndexed { index, value ->
+            Entry(index.toNormalizedX(pointCount), value)
         }
 
         return NormalizedLapSeries(
@@ -77,6 +62,49 @@ object LapNormalizer {
 
     fun maxAbsoluteLateralAcceleration(series: NormalizedLapSeries): Float {
         return series.lateralEntries.maxOfOrNull { entry -> abs(entry.y) } ?: 0f
+    }
+
+    fun normalizeSignal(
+        lap: Lap,
+        pointCount: Int = DEFAULT_POINT_COUNT,
+        selector: (SensorSample) -> Float
+    ): List<Float> {
+        return normalizeSamples(lap.samples, pointCount, selector)
+    }
+
+    fun normalizeSamples(
+        samples: List<SensorSample>,
+        pointCount: Int = DEFAULT_POINT_COUNT,
+        selector: (SensorSample) -> Float
+    ): List<Float> {
+        if (samples.isEmpty()) {
+            return emptyList()
+        }
+        if (samples.size == 1) {
+            return List(pointCount.coerceAtLeast(1)) { selector(samples.first()) }
+        }
+
+        val startNs = samples.first().timestampNs
+        val endNs = samples.last().timestampNs
+        val durationNs = (endNs - startNs).coerceAtLeast(1L)
+        val values = ArrayList<Float>(pointCount)
+        var cursor = 0
+
+        for (index in 0 until pointCount) {
+            val progress = index.toFloat() / (pointCount - 1).coerceAtLeast(1)
+            val targetTimestampNs = startNs + (durationNs * progress).toLong()
+            while (cursor < samples.lastIndex - 1 && samples[cursor + 1].timestampNs < targetTimestampNs) {
+                cursor += 1
+            }
+
+            val interpolated = interpolate(
+                before = samples[cursor],
+                after = samples[(cursor + 1).coerceAtMost(samples.lastIndex)],
+                targetTimestampNs = targetTimestampNs
+            )
+            values += selector(interpolated)
+        }
+        return values
     }
 
     private fun interpolate(before: SensorSample, after: SensorSample, targetTimestampNs: Long): SensorSample {
@@ -111,5 +139,9 @@ object LapNormalizer {
             val progress = ((sample.timestampNs - startNs).toDouble() / durationNs.toDouble()).toFloat().coerceIn(0f, 1f)
             Entry(progress * 100f, selector(sample))
         }
+    }
+
+    private fun Int.toNormalizedX(pointCount: Int): Float {
+        return (this.toFloat() / (pointCount - 1).coerceAtLeast(1)) * 100f
     }
 }

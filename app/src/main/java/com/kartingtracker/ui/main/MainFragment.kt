@@ -100,6 +100,8 @@ class MainFragment : Fragment() {
                     )
                     binding.detectedLapsValue.text = state.lapCount.toString()
                     binding.estimatedLapValue.text = state.estimatedLapTimeMs?.let(::formatLapTime) ?: "n/a"
+                    binding.trackProfileLabel.text = state.trackProfileSummary
+                    binding.trackProfileLabel.visibility = View.VISIBLE
                     binding.loadLastSessionButton.isEnabled = state.canLoadLastSession
                     updateTrackSpinner(state.trackOptions, state.selectedTrackName)
                 }

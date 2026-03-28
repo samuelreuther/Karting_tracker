@@ -17,7 +17,8 @@ class SessionRepository(
     private val lapDetector: LapDetector,
     private val peakDetector: PeakDetector,
     private val sessionStorageManager: SessionStorageManager,
-    private val trackManager: TrackManager
+    private val trackManager: TrackManager,
+    private val trackProfileManager: TrackProfileManager
 ) {
     private val lock = Any()
     private var currentSessionId: Long = sessionStorageManager
@@ -54,6 +55,9 @@ class SessionRepository(
     private val _currentTrackName = MutableStateFlow(trackManager.getSelectedTrackName())
     val currentTrackName: StateFlow<String> = _currentTrackName.asStateFlow()
 
+    private val _currentTrackProfile = MutableStateFlow(loadUsableTrackProfile(_currentTrackName.value))
+    val currentTrackProfile: StateFlow<TrackProfile?> = _currentTrackProfile.asStateFlow()
+
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
             stopAutosaveLocked()
@@ -82,6 +86,7 @@ class SessionRepository(
     }
 
     fun stopSession(endTimestampNs: Long): Session? {
+        var completedSession: Session? = null
         synchronized(lock) {
             if (!_isRecording.value) {
                 return _latestSession.value
@@ -104,20 +109,28 @@ class SessionRepository(
                 _currentSession.value = emptySession
                 sessionStorageManager.saveSession(emptySession)
                 refreshStoredSessions()
-                return emptySession
+                completedSession = emptySession
+            } else {
+                val session = buildProcessedSession(
+                    samples = currentSamples.toList(),
+                    endTimestampNs = endTimestampNs,
+                    endTimeEpochMs = System.currentTimeMillis()
+                )
+                _latestSession.value = session
+                _currentSession.value = session
+                sessionStorageManager.saveSession(session)
+                refreshStoredSessions()
+                completedSession = session
             }
-
-            val session = buildProcessedSession(
-                samples = currentSamples.toList(),
-                endTimestampNs = endTimestampNs,
-                endTimeEpochMs = System.currentTimeMillis()
-            )
-            _latestSession.value = session
-            _currentSession.value = session
-            sessionStorageManager.saveSession(session)
-            refreshStoredSessions()
-            return session
         }
+        completedSession?.trackName?.takeIf { trackName -> trackName.isNotBlank() }?.let { trackName ->
+            val sessionsForTrack = sessionStorageManager.loadSessionsForTrack(trackName)
+            val updatedProfile = trackProfileManager.updateProfile(trackName, sessionsForTrack)
+            if (updatedProfile.averageLapTimeMs > 0L && trackName == _currentTrackName.value) {
+                _currentTrackProfile.value = updatedProfile
+            }
+        }
+        return completedSession
     }
 
     fun createTrack(trackName: String): Track? {
@@ -132,6 +145,7 @@ class SessionRepository(
         _currentTrackName.value = trackName
         refreshTracks()
         refreshStoredSessions()
+        refreshCurrentTrackProfile(trackName)
     }
 
     fun loadSessionsForTrack(trackName: String): List<Session> {
@@ -141,7 +155,7 @@ class SessionRepository(
     fun loadLastSession(): Session? {
         val session = sessionStorageManager.loadLastSession() ?: return null
         loadSession(session)
-        return session
+        return _currentSession.value
     }
 
     fun loadSession(session: Session) {
@@ -157,6 +171,7 @@ class SessionRepository(
                 _currentTrackName.value = preparedSession.trackName
                 trackManager.setSelectedTrack(preparedSession.trackName)
                 refreshTracks()
+                refreshCurrentTrackProfile(preparedSession.trackName)
             }
         }
     }
@@ -167,6 +182,10 @@ class SessionRepository(
 
     private fun refreshTracks() {
         _availableTracks.value = trackManager.getTracks()
+    }
+
+    private fun refreshCurrentTrackProfile(trackName: String = _currentTrackName.value) {
+        _currentTrackProfile.value = loadUsableTrackProfile(trackName)
     }
 
     private fun startAutosaveLocked() {
@@ -230,7 +249,8 @@ class SessionRepository(
         endTimeEpochMs: Long,
         sourceSession: Session? = null
     ): Session {
-        val detectionResult = lapDetector.detect(samples)
+        val trackName = sourceSession?.trackName ?: _currentTrackName.value
+        val detectionResult = lapDetector.detect(samples, loadUsableTrackProfile(trackName))
         val laps = detectionResult.laps.map { lap ->
             lap.copy(
                 brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
@@ -240,7 +260,7 @@ class SessionRepository(
 
         return Session(
             id = sourceSession?.id ?: currentSessionId,
-            trackName = sourceSession?.trackName ?: _currentTrackName.value,
+            trackName = trackName,
             startTimeEpochMs = sourceSession?.startTimeEpochMs ?: currentStartTimeEpochMs,
             endTimeEpochMs = endTimeEpochMs,
             startTimestampNs = sourceSession?.startTimestampNs ?: currentStartTimestampNs,
@@ -249,6 +269,15 @@ class SessionRepository(
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
         )
+    }
+
+    private fun loadUsableTrackProfile(trackName: String): TrackProfile? {
+        val profile = trackProfileManager.loadProfile(trackName) ?: return null
+        return profile.takeIf { candidate ->
+            candidate.averageLapTimeMs in 15_000L..120_000L &&
+                candidate.averageTotalAcceleration.isNotEmpty() &&
+                candidate.averageYawRateAbs.isNotEmpty()
+        }
     }
 
     companion object {

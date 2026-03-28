@@ -3,7 +3,9 @@ package com.kartingtracker.domain
 import android.util.Log
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.SensorSample
+import com.kartingtracker.data.TrackProfile
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 data class LapDetectionResult(
@@ -16,7 +18,9 @@ class LapDetector {
     private data class BoundaryCandidate(
         val endIndex: Int,
         val similarity: Float,
+        val profileSimilarity: Float = 0f,
         val eventPresence: Float,
+        val zoneBoost: Float = 1f,
         val durationConsistency: Float = 1f,
         val confidence: Float = 0f
     )
@@ -27,30 +31,46 @@ class LapDetector {
         val yawRateAbs: Float
     )
 
-    fun detect(samples: List<SensorSample>): LapDetectionResult {
+    private data class ShiftSearchConfig(
+        val minShift: Int,
+        val maxShift: Int,
+        val profileWeight: Float
+    )
+
+    fun detect(samples: List<SensorSample>, trackProfile: TrackProfile? = null): LapDetectionResult {
         if (samples.size < 50) {
             return fallbackLap(samples)
         }
 
+        val usableTrackProfile = trackProfile?.takeIf { profile ->
+            profile.averageLapTimeMs in 15_000L..120_000L &&
+                profile.averageTotalAcceleration.isNotEmpty() &&
+                profile.averageYawRateAbs.isNotEmpty()
+        }
         val bucketNs = 100_000_000L
         val resampled = resample(samples, bucketNs)
-        if (resampled.size < 120) {
+        val searchConfig = buildShiftSearchConfig(resampled.size, usableTrackProfile)
+            ?: return fallbackLap(samples)
+        if (usableTrackProfile == null && resampled.size < 120) {
             return fallbackLap(samples)
         }
 
         val windowSize = 60
-        val minShift = 150
-        val maxShift = minOf(1200, resampled.size / 2)
-        if (maxShift <= minShift) {
-            return fallbackLap(samples)
-        }
-
-        val bestShift = (minShift..maxShift step 5)
-            .map { shift -> shift to scoreShift(resampled, shift, windowSize) }
+        val bestShift = (searchConfig.minShift..searchConfig.maxShift step 5)
+            .map { shift ->
+                shift to scoreShift(
+                    points = resampled,
+                    shift = shift,
+                    windowSize = windowSize,
+                    trackProfile = usableTrackProfile,
+                    profileWeight = searchConfig.profileWeight
+                )
+            }
             .maxByOrNull { it.second }
             ?: return fallbackLap(samples)
 
-        if (bestShift.second < 0.78f) {
+        val minimumScoreThreshold = if (usableTrackProfile == null) 0.78f else 0.68f
+        if (bestShift.second < minimumScoreThreshold) {
             return fallbackLap(samples)
         }
 
@@ -58,7 +78,9 @@ class LapDetector {
             points = resampled,
             shift = bestShift.first,
             windowSize = windowSize,
-            threshold = maxOf(0.8f, bestShift.second * 0.94f)
+            threshold = maxOf(if (usableTrackProfile == null) 0.8f else 0.7f, bestShift.second * 0.92f),
+            trackProfile = usableTrackProfile,
+            profileWeight = searchConfig.profileWeight
         )
         val laps = filterLapTimeOutliers(
             markFirstLapOutlap(
@@ -73,7 +95,7 @@ class LapDetector {
         val averageConfidence = if (boundaryTimestampsNs.isEmpty()) 0f else boundaryTimestampsNs.map { it.confidence }.average().toFloat()
         Log.i(
             TAG,
-            "Lap detection result: bestShift=${bestShift.first}, correlation=${bestShift.second}, candidates=${boundaryTimestampsNs.size}, laps=${laps.size}, avgConfidence=$averageConfidence"
+            "Lap detection result: bestShift=${bestShift.first}, score=${bestShift.second}, candidates=${boundaryTimestampsNs.size}, laps=${laps.size}, avgConfidence=$averageConfidence, usingProfile=${usableTrackProfile != null}, profileSessions=${usableTrackProfile?.sessionCount ?: 0}"
         )
 
         return LapDetectionResult(
@@ -141,11 +163,48 @@ class LapDetector {
         return result
     }
 
-    private fun scoreShift(points: List<ResampledPoint>, shift: Int, windowSize: Int): Float {
+    private fun buildShiftSearchConfig(
+        pointCount: Int,
+        trackProfile: TrackProfile?
+    ): ShiftSearchConfig? {
+        if (trackProfile == null) {
+            val minShift = 150
+            val maxShift = minOf(1200, pointCount / 2)
+            return if (maxShift > minShift) {
+                ShiftSearchConfig(minShift = minShift, maxShift = maxShift, profileWeight = 0f)
+            } else {
+                null
+            }
+        }
+
+        val expectedShift = (trackProfile.averageLapTimeMs / 100L).toInt().coerceAtLeast(120)
+        val minShift = (expectedShift * 0.7f).toInt().coerceAtLeast(100)
+        val maxShift = (expectedShift * 1.3f).toInt().coerceAtMost((pointCount - 61).coerceAtLeast(minShift))
+        if (maxShift <= minShift) {
+            return null
+        }
+        val profileWeight = if (trackProfile.sessionCount < 2) 0.2f else 0.4f
+        return ShiftSearchConfig(minShift = minShift, maxShift = maxShift, profileWeight = profileWeight)
+    }
+
+    private fun scoreShift(
+        points: List<ResampledPoint>,
+        shift: Int,
+        windowSize: Int,
+        trackProfile: TrackProfile?,
+        profileWeight: Float
+    ): Float {
         val scores = mutableListOf<Float>()
         var endIndex = shift + windowSize
         while (endIndex < points.size) {
-            scores += windowSimilarity(points, endIndex, shift, windowSize)
+            scores += combinedWindowScore(
+                points = points,
+                endIndex = endIndex,
+                shift = shift,
+                windowSize = windowSize,
+                trackProfile = trackProfile,
+                profileWeight = profileWeight
+            )
             endIndex += 10
         }
         if (scores.isEmpty()) {
@@ -158,20 +217,26 @@ class LapDetector {
         points: List<ResampledPoint>,
         shift: Int,
         windowSize: Int,
-        threshold: Float
+        threshold: Float,
+        trackProfile: TrackProfile?,
+        profileWeight: Float
     ): List<BoundaryCandidate> {
         val candidates = mutableListOf<BoundaryCandidate>()
         var endIndex = shift + windowSize
         while (endIndex < points.size) {
-            val similarity = windowSimilarity(points, endIndex, shift, windowSize)
-            val startIndex = (endIndex - windowSize).coerceAtLeast(0)
-            val brakingPeaks = detectBrakingEvents(points, startIndex, endIndex)
-            val corneringEvents = detectCorneringEvents(points, startIndex, endIndex)
+            val similarity = combinedWindowScore(points, endIndex, shift, windowSize, trackProfile, profileWeight)
+            val profileSimilarity = profileSimilarity(points, endIndex, shift, trackProfile)
+            val segmentStartIndex = (endIndex - shift).coerceAtLeast(0)
+            val brakingPeaks = detectBrakingEvents(points, segmentStartIndex, endIndex)
+            val corneringEvents = detectCorneringEvents(points, segmentStartIndex, endIndex)
             val eventPresence = if (brakingPeaks.isNotEmpty() && corneringEvents.isNotEmpty()) 1f else 0f
+            val zoneBoost = zoneAlignmentBoost(segmentStartIndex, endIndex, brakingPeaks, corneringEvents, trackProfile)
             candidates += BoundaryCandidate(
                 endIndex = endIndex,
                 similarity = similarity,
-                eventPresence = eventPresence
+                profileSimilarity = profileSimilarity,
+                eventPresence = eventPresence,
+                zoneBoost = zoneBoost
             )
             endIndex += 5
         }
@@ -292,6 +357,22 @@ class LapDetector {
         }
     }
 
+    private fun combinedWindowScore(
+        points: List<ResampledPoint>,
+        endIndex: Int,
+        shift: Int,
+        windowSize: Int,
+        trackProfile: TrackProfile?,
+        profileWeight: Float
+    ): Float {
+        val historicalSimilarity = windowSimilarity(points, endIndex, shift, windowSize)
+        if (trackProfile == null || profileWeight <= 0f) {
+            return historicalSimilarity
+        }
+        val trackSimilarity = profileSimilarity(points, endIndex, shift, trackProfile)
+        return ((1f - profileWeight) * historicalSimilarity) + (profileWeight * trackSimilarity)
+    }
+
     private fun windowSimilarity(
         points: List<ResampledPoint>,
         endIndex: Int,
@@ -325,6 +406,85 @@ class LapDetector {
         }
 
         return dot / (sqrt(normA) * sqrt(normB))
+    }
+
+    private fun profileSimilarity(
+        points: List<ResampledPoint>,
+        endIndex: Int,
+        shift: Int,
+        trackProfile: TrackProfile?
+    ): Float {
+        if (trackProfile == null) {
+            return 0f
+        }
+
+        val pointCount = minOf(trackProfile.averageTotalAcceleration.size, trackProfile.averageYawRateAbs.size)
+        if (pointCount < 8) {
+            return 0f
+        }
+
+        val segmentStartIndex = (endIndex - shift).coerceAtLeast(0)
+        val normalizedTotalAcceleration = normalizeSegment(points, segmentStartIndex, endIndex, pointCount) { point ->
+            point.totalAcceleration
+        }
+        val normalizedYawRate = normalizeSegment(points, segmentStartIndex, endIndex, pointCount) { point ->
+            point.yawRateAbs
+        }
+        val totalSimilarity = cosineSimilarity(normalizedTotalAcceleration, trackProfile.averageTotalAcceleration)
+        val yawSimilarity = cosineSimilarity(normalizedYawRate, trackProfile.averageYawRateAbs)
+        return ((0.6f * totalSimilarity) + (0.4f * yawSimilarity)).coerceIn(0f, 1f)
+    }
+
+    private fun normalizeSegment(
+        points: List<ResampledPoint>,
+        startIndex: Int,
+        endIndex: Int,
+        pointCount: Int,
+        selector: (ResampledPoint) -> Float
+    ): List<Float> {
+        val safeStart = startIndex.coerceAtLeast(0)
+        val safeEnd = endIndex.coerceAtMost(points.lastIndex)
+        if (safeStart >= safeEnd) {
+            return List(pointCount) { selector(points[safeStart]) }
+        }
+
+        val segmentLength = (safeEnd - safeStart).toFloat().coerceAtLeast(1f)
+        return List(pointCount) { index ->
+            val progress = index.toFloat() / (pointCount - 1).coerceAtLeast(1)
+            val rawPosition = safeStart + (segmentLength * progress)
+            val lowerIndex = rawPosition.toInt().coerceIn(safeStart, safeEnd)
+            val upperIndex = (lowerIndex + 1).coerceAtMost(safeEnd)
+            if (lowerIndex == upperIndex) {
+                selector(points[lowerIndex])
+            } else {
+                val localProgress = rawPosition - lowerIndex
+                val lowerValue = selector(points[lowerIndex])
+                val upperValue = selector(points[upperIndex])
+                lowerValue + ((upperValue - lowerValue) * localProgress)
+            }
+        }
+    }
+
+    private fun cosineSimilarity(first: List<Float>, second: List<Float>): Float {
+        if (first.isEmpty() || second.isEmpty()) {
+            return 0f
+        }
+
+        val size = minOf(first.size, second.size)
+        var dot = 0f
+        var firstNorm = 0f
+        var secondNorm = 0f
+        for (index in 0 until size) {
+            val a = first[index]
+            val b = second[index]
+            dot += a * b
+            firstNorm += a * a
+            secondNorm += b * b
+        }
+        if (firstNorm == 0f || secondNorm == 0f) {
+            return 0f
+        }
+        return dot / (sqrt(firstNorm) * sqrt(secondNorm))
     }
 
     private fun detectBrakingEvents(
@@ -373,6 +533,37 @@ class LapDetector {
         return events
     }
 
+    private fun zoneAlignmentBoost(
+        segmentStartIndex: Int,
+        segmentEndIndex: Int,
+        brakingEvents: List<Int>,
+        corneringEvents: List<Int>,
+        trackProfile: TrackProfile?
+    ): Float {
+        if (trackProfile == null) {
+            return 1f
+        }
+
+        val segmentLength = (segmentEndIndex - segmentStartIndex).coerceAtLeast(1)
+        val brakingAligned = brakingEvents.any { eventIndex ->
+            val eventPosition = (((eventIndex - segmentStartIndex).toFloat() / segmentLength.toFloat()) * 100f).roundToInt()
+            trackProfile.typicalBrakingZones.any { zone -> abs(zone - eventPosition) <= zoneTolerance }
+        }
+        val corneringAligned = corneringEvents.any { eventIndex ->
+            val eventPosition = (((eventIndex - segmentStartIndex).toFloat() / segmentLength.toFloat()) * 100f).roundToInt()
+            trackProfile.typicalCorneringZones.any { zone -> abs(zone - eventPosition) <= zoneTolerance }
+        }
+
+        var boost = 1f
+        if (brakingAligned) {
+            boost += 0.08f
+        }
+        if (corneringAligned) {
+            boost += 0.08f
+        }
+        return boost
+    }
+
     private fun filterDuplicateCandidates(
         candidates: List<BoundaryCandidate>,
         minimumSpacing: Int
@@ -405,7 +596,8 @@ class LapDetector {
                 val gap = candidate.endIndex - sortedCandidates[index - 1].endIndex
                 (1f - (abs(gap - expectedShift).toFloat() / expectedShift.toFloat())).coerceIn(0f, 1f)
             }
-            val confidence = candidate.similarity * candidate.eventPresence * durationConsistency
+            val confidence = (candidate.similarity * candidate.eventPresence * durationConsistency * candidate.zoneBoost)
+                .coerceIn(0f, 1.2f)
             candidate.copy(durationConsistency = durationConsistency, confidence = confidence)
         }
     }
@@ -424,5 +616,6 @@ class LapDetector {
 
     companion object {
         private const val TAG = "LapDetector"
+        private const val zoneTolerance = 8
     }
 }
