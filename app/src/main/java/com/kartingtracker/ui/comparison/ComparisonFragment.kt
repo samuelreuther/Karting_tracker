@@ -92,8 +92,7 @@ class ComparisonFragment : Fragment() {
                             ChartUtils.createMarkerDataSet(requireContext(), "B cornering", state.lateralCornerMarkersB, R.color.karting_teal)
                         )
                         binding.deltaChart.data = LineData(
-                            ChartUtils.createDataSet(requireContext(), "Longitudinal delta", state.deltaLongitudinal, R.color.karting_green),
-                            ChartUtils.createDataSet(requireContext(), "Lateral delta", state.deltaLateral, R.color.karting_blue)
+                            ChartUtils.createDataSet(requireContext(), "Time Loss (A vs B)", state.timeLossEntries, R.color.karting_orange)
                         )
                         binding.longitudinalChart.invalidate()
                         binding.lateralChart.invalidate()

@@ -9,5 +9,6 @@ data class Lap(
     val brakingPeakIndices: List<Int> = emptyList(),
     val corneringPeakIndices: List<Int> = emptyList(),
     val confidenceScore: Float = 1f,
-    val isOutlap: Boolean = false
+    val isOutlap: Boolean = false,
+    var isDisturbed: Boolean = false
 )

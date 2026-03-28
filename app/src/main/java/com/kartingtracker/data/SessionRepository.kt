@@ -228,8 +228,16 @@ class SessionRepository(
     }
 
     private fun prepareSessionForUse(session: Session): Session {
-        if (session.samples.isEmpty() || session.laps.isNotEmpty()) {
+        if (session.samples.isEmpty()) {
             return session
+        }
+        if (session.laps.isNotEmpty()) {
+            val classifiedSession = session.copy(laps = classifyLaps(session.laps))
+            if (classifiedSession != session) {
+                sessionStorageManager.saveSession(classifiedSession)
+                refreshStoredSessions()
+            }
+            return classifiedSession
         }
 
         val recoveredSession = buildProcessedSession(
@@ -251,12 +259,12 @@ class SessionRepository(
     ): Session {
         val trackName = sourceSession?.trackName ?: _currentTrackName.value
         val detectionResult = lapDetector.detect(samples, loadUsableTrackProfile(trackName))
-        val laps = detectionResult.laps.map { lap ->
+        val laps = classifyLaps(detectionResult.laps.map { lap ->
             lap.copy(
                 brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples),
                 corneringPeakIndices = peakDetector.findCorneringPeaks(lap.samples)
             )
-        }
+        })
 
         return Session(
             id = sourceSession?.id ?: currentSessionId,
@@ -269,6 +277,33 @@ class SessionRepository(
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs
         )
+    }
+
+    private fun classifyLaps(laps: List<Lap>): List<Lap> {
+        if (laps.isEmpty()) {
+            return emptyList()
+        }
+
+        val validLaps = laps.filter { lap ->
+            !lap.isOutlap && lap.confidenceScore >= 0.6f
+        }
+        val averageLapTimeMs = validLaps
+            .map { lap -> lap.lapTimeMs }
+            .average()
+            .takeIf { average -> !average.isNaN() && average > 0.0 }
+
+        return laps.map { lap ->
+            val exceededReferenceLapTime = averageLapTimeMs?.let { referenceLapTime ->
+                lap.lapTimeMs > (referenceLapTime * 1.15)
+            } ?: false
+
+            lap.copy(
+                isDisturbed = exceededReferenceLapTime ||
+                    lap.confidenceScore < 0.5f ||
+                    lap.brakingPeakIndices.size < 2 ||
+                    lap.corneringPeakIndices.size < 2
+            )
+        }
     }
 
     private fun loadUsableTrackProfile(trackName: String): TrackProfile? {

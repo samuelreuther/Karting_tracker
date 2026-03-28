@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="780" viewBox="0 0 1280 780" role="img" aria-labelledby="title desc">
+  <title id="title">Karting Tracker example comparison screen</title>
+  <desc id="desc">Illustrative screenshot with longitudinal, lateral and time loss charts for two laps.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4f1ea" />
+      <stop offset="100%" stop-color="#e6ddd0" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.14" />
+    </filter>
+    <style>
+      .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #1f2421; }
+      .body { font: 400 16px 'Segoe UI', Arial, sans-serif; fill: #4b5350; }
+      .small { font: 400 14px 'Segoe UI', Arial, sans-serif; fill: #69736f; }
+      .section { font: 700 20px 'Segoe UI', Arial, sans-serif; fill: #24322b; }
+      .chip { font: 700 13px 'Segoe UI', Arial, sans-serif; fill: #ffffff; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="780" fill="url(#bg)" />
+
+  <rect x="74" y="42" width="1132" height="696" rx="28" fill="#fffdfa" filter="url(#shadow)" />
+  <text x="118" y="92" class="title">Comparison Screen Example</text>
+  <text x="118" y="122" class="body">Illustrative telemetry using the built-in simulated session. Lap A is stable, Lap B is slightly slower.</text>
+
+  <rect x="118" y="144" width="212" height="64" rx="18" fill="#f0f6f1" />
+  <text x="140" y="172" class="small">Lap A</text>
+  <text x="140" y="197" class="section">00:33.21</text>
+
+  <rect x="350" y="144" width="212" height="64" rx="18" fill="#f8f1ee" />
+  <text x="372" y="172" class="small">Lap B</text>
+  <text x="372" y="197" class="section">00:33.94</text>
+
+  <rect x="584" y="144" width="274" height="64" rx="18" fill="#f6f1e4" />
+  <text x="606" y="172" class="small">Summary</text>
+  <text x="606" y="197" class="section">Lap A is 0.73 s quicker</text>
+
+  <rect x="878" y="144" width="132" height="36" rx="18" fill="#637f69" />
+  <text x="905" y="167" class="chip">USING PROFILE</text>
+  <rect x="1026" y="144" width="134" height="36" rx="18" fill="#8f4b32" />
+  <text x="1051" y="167" class="chip">TIME LOSS</text>
+
+  <g transform="translate(118,236)">
+    <text x="0" y="-12" class="section">Longitudinal Acceleration</text>
+    <rect x="0" y="0" width="1030" height="132" rx="18" fill="#f8faf7" stroke="#dde5dc" />
+    <line x1="46" y1="18" x2="46" y2="110" stroke="#c8d3cc" />
+    <line x1="46" y1="110" x2="990" y2="110" stroke="#c8d3cc" />
+    <polyline fill="none" stroke="#2f7d47" stroke-width="4" points="46,74 118,58 190,48 262,66 334,82 406,52 478,44 550,72 622,89 694,68 766,47 838,55 910,84 982,66" />
+    <polyline fill="none" stroke="#b5473f" stroke-width="4" points="46,82 118,61 190,54 262,71 334,90 406,57 478,52 550,78 622,94 694,73 766,55 838,61 910,88 982,74" />
+    <circle cx="334" cy="82" r="6" fill="#b5473f" />
+    <circle cx="694" cy="68" r="6" fill="#b5473f" />
+    <circle cx="910" cy="84" r="6" fill="#b5473f" />
+  </g>
+
+  <g transform="translate(118,418)">
+    <text x="0" y="-12" class="section">Lateral Acceleration</text>
+    <rect x="0" y="0" width="1030" height="132" rx="18" fill="#f7fafc" stroke="#d7e2eb" />
+    <line x1="46" y1="18" x2="46" y2="110" stroke="#c5d4e1" />
+    <line x1="46" y1="110" x2="990" y2="110" stroke="#c5d4e1" />
+    <polyline fill="none" stroke="#2f6aa6" stroke-width="4" points="46,88 118,42 190,66 262,92 334,48 406,68 478,92 550,54 622,82 694,44 766,71 838,90 910,56 982,82" />
+    <polyline fill="none" stroke="#3da6a0" stroke-width="4" points="46,93 118,47 190,70 262,97 334,53 406,74 478,96 550,60 622,86 694,49 766,76 838,95 910,63 982,86" />
+    <circle cx="118" cy="42" r="6" fill="#2f6aa6" />
+    <circle cx="334" cy="48" r="6" fill="#2f6aa6" />
+    <circle cx="694" cy="44" r="6" fill="#2f6aa6" />
+  </g>
+
+  <g transform="translate(118,600)">
+    <text x="0" y="-12" class="section">Time Loss (A vs B)</text>
+    <rect x="0" y="0" width="1030" height="92" rx="18" fill="#fbf8f2" stroke="#e2d7c6" />
+    <line x1="46" y1="18" x2="46" y2="70" stroke="#d4c6b0" />
+    <line x1="46" y1="44" x2="990" y2="44" stroke="#d4c6b0" stroke-dasharray="6 5" />
+    <polyline fill="none" stroke="#d9792b" stroke-width="4" points="46,48 118,51 190,49 262,46 334,43 406,39 478,35 550,30 622,24 694,21 766,16 838,12 910,9 982,6" />
+    <text x="1006" y="18" class="small" text-anchor="end">A slower</text>
+    <text x="1006" y="84" class="small" text-anchor="end">A faster</text>
+  </g>
+</svg>

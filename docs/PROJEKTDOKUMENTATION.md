@@ -32,13 +32,15 @@ Der aktuelle Stand ist eine praktisch nutzbare Version fuer reale Testfahrten, a
   - `yawRateAbs`
 - Lap-Detection mit Sliding Window, Korrelation, Event-Erkennung und Confidence
 - Outlap-Markierung fuer eine instabile erste Runde
+- Disturbed-Lap-Klassifikation fuer spaete oder unplausible Runden
 - Peak-Detection fuer Bremsen und Cornering
 - lineare Interpolation fuer Lap-Normalisierung
-- Comparison Screen mit Overlay-Charts und Delta-Charts
+- Comparison Screen mit Overlay-Charts und Zeitverlust-Chart
 - einfache textliche Fahrstil-Insights
 - persistente Session-Speicherung als JSON
 - periodisches Autosave waehrend Recording
 - Track-Verwaltung
+- Track-spezifisches Lernen ueber `TrackProfile`
 - Session-Browsing mit Filter
 - Laden der letzten Session
 - Laden gespeicherter Sessions in den aktiven App-State
@@ -81,10 +83,11 @@ Aktuelles Verhalten:
 ## Schichten
 
 - `data`
-  - Datenmodelle `SensorSample`, `Lap`, `Session`, `Track`
+  - Datenmodelle `SensorSample`, `Lap`, `Session`, `Track`, `TrackProfile`
   - `SessionRepository` als zentrale Sitzungs- und Zustandslogik
   - `SessionStorageManager` fuer JSON-Persistenz
   - `TrackManager` fuer persistente Track-Verwaltung
+  - `TrackProfileManager` fuer Profil-Persistenz und Profilaufbau aus Sessions
 - `sensor`
   - `SensorRecorder` fuer Android-Sensorzugriff und Aufnahmesteuerung
   - `CalibrationManager` fuer Gravitationsermittlung und Projektion
@@ -93,6 +96,7 @@ Aktuelles Verhalten:
   - `LapDetector` fuer heuristische Rundenerkennung
   - `PeakDetector` fuer Brems- und Cornering-Peaks
   - `LapNormalizer` fuer interpolierte Vergleichskurven
+  - `TimeLossCalculator` fuer leichte Zeitverlust-Approximation
   - `DrivingInsightsGenerator` fuer einfache Heuristiken
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
@@ -144,11 +148,13 @@ Wichtig:
 - `corneringPeakIndices`
 - `confidenceScore`
 - `isOutlap`
+- `isDisturbed`
 
 Bedeutung:
 
 - `confidenceScore` stammt aus der Rundenerkennung
 - `isOutlap` markiert aktuell nur eine als instabil erkannte erste Runde
+- `isDisturbed` markiert unplausible oder fahrerisch/verkehrsbedingt gestoerte Runden
 
 ## Session
 
@@ -172,6 +178,20 @@ Bedeutung:
 
 Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 
+## TrackProfile
+
+`TrackProfile` enthaelt pro Track:
+
+- `trackName`
+- `averageLapTimeMs`
+- `lapTimeStdDevMs`
+- `averageLapLengthSamples`
+- `averageTotalAcceleration`
+- `averageYawRateAbs`
+- `typicalBrakingZones`
+- `typicalCorneringZones`
+- `sessionCount`
+
 ## Datenfluss
 
 1. Nutzer waehlt einen Track oder legt einen neuen Track an.
@@ -185,8 +205,10 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 9. Beim Stop ruft `SessionRepository.stopSession(...)` die Verarbeitung auf.
 10. `LapDetector` erzeugt Laps.
 11. `PeakDetector` berechnet Peak-Indizes pro Lap.
-12. `SessionStorageManager` speichert die finale Session als JSON.
-13. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+12. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
+13. `SessionStorageManager` speichert die finale Session als JSON.
+14. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil aus historischen Sessions.
+15. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 
@@ -287,11 +309,15 @@ Die Vergleichscharts nutzen dagegen weiterhin `longitudinalAccel` und `lateralAc
    - Similarity
    - Event-Praesenz
    - Dauer-Konsistenz zum erwarteten Shift
-9. Zwischen Boundary-Kandidaten werden Laps gebildet.
-10. Laps ausserhalb von 15 bis 120 Sekunden werden verworfen.
-11. Erste Runde wird separat als moegliche Outlap klassifiziert.
-12. Danach werden weitere instabile Laps gegen den Mittelwert der nicht-Outlaps gefiltert.
-13. Wenn keine stabile Segmentierung bleibt, faellt das System auf eine einzelne Lap zurueck.
+9. Wenn ein `TrackProfile` existiert:
+   - wird der Shift-Suchraum um die erwartete Rundenzeit verengt
+   - wird historische Fenster-Aehnlichkeit mit Profil-Aehnlichkeit gemischt
+   - werden bekannte Brems- und Cornering-Zonen leicht bevorzugt
+10. Zwischen Boundary-Kandidaten werden Laps gebildet.
+11. Laps ausserhalb von 15 bis 120 Sekunden werden verworfen.
+12. Erste Runde wird separat als moegliche Outlap klassifiziert.
+13. Danach werden weitere instabile Laps gegen den Mittelwert der nicht-Outlaps gefiltert.
+14. Wenn keine stabile Segmentierung bleibt, faellt das System auf eine einzelne Lap zurueck.
 
 ## Outlap-Behandlung
 
@@ -315,6 +341,25 @@ Was noch nicht umgesetzt ist:
 - explizite Erkennung von Inlaps
 - Mehrfach-Outlaps
 - getrennte Behandlung von Boxenstopps oder Unterbrechungen
+
+## Disturbed-Lap-Behandlung
+
+Zusatzlogik in `SessionRepository.classifyLaps(...)`:
+
+- Referenz-Lap-Time wird nur aus Laps berechnet, die:
+  - nicht Outlap sind
+  - `confidenceScore >= 0.6` haben
+- eine Lap wird als `isDisturbed = true` markiert, wenn mindestens eines gilt:
+  - `lapTimeMs > avgLapTime * 1.15`
+  - `confidenceScore < 0.5`
+  - weniger als 2 Brems-Peaks
+  - weniger als 2 Cornering-Peaks
+
+Wichtig:
+
+- `isOutlap` bleibt davon unberuehrt
+- eine Runde kann gleichzeitig `isOutlap = true` und `isDisturbed = true` sein
+- die UI bevorzugt fuer den Vergleich Laps, die weder Outlap noch Disturbed sind
 
 ## Peak-Detection
 
@@ -376,31 +421,41 @@ Der Comparison Screen zeigt:
 - Spinner fuer Lap A und Lap B
 - Longitudinal-Overlay
 - Lateral-Overlay
-- Delta-Graph
+- Time-Loss-Graph
 - Peak-Marker
 - Summary-Text
 - 2 bis 4 einfache Insights
 
 Default-Selektion:
 
-- bevorzugt zwei nicht als Outlap markierte Laps
-- faellt auf die vorhandenen Laps zurueck, wenn keine stabileren Laps existieren
+- bevorzugt zwei Laps, die weder Outlap noch Disturbed sind
+- faellt danach auf nicht-Outlap-Laps zurueck
+- faellt danach auf nicht-Disturbed-Laps zurueck
+- faellt zuletzt auf beliebige vorhandene Laps zurueck
 
-## Delta-Graph
+## Time-Loss-Graph
 
-Aktuell werden zwei Deltas gezeigt:
-
-- longitudinales Delta
-- laterales Delta
-
-Berechnung:
-
-- an jedem normalisierten Punkt: `LapA - LapB`
+Der dritte Chart zeigt jetzt eine angenaeherte reale Zeitdifferenz statt reiner Signaldifferenz.
 
 Interpretation:
 
-- positive Werte bedeuten nur staerkere Signalintensitaet in der jeweiligen Groesse
-- das ist keine direkte Zeitverlustkurve
+- positive Werte bedeuten: Lap A ist an dieser Stelle langsamer als Lap B
+- negative Werte bedeuten: Lap A ist an dieser Stelle schneller als Lap B
+
+Implementierung in `TimeLossCalculator`:
+
+1. `LapNormalizer.normalizeSignal(...)` normalisiert `totalAcceleration` beider Laps auf dieselbe Punktzahl.
+2. Die normierte Beschleunigung wird mit festem `dt = 0.1 s` zu einer einfachen Geschwindigkeitskurve integriert.
+3. Aus der Geschwindigkeitskurve wird eine kumulative Zeitkurve mit konstantem Distanzschritt abgeleitet.
+4. Die Zeitkurven werden auf die reale Lap-Time skaliert.
+5. `timeA - timeB` ergibt den Zeitverlust entlang der Runde.
+
+Grenzen:
+
+- das ist eine leichte Approximation
+- keine absolute Fahrzeuggeschwindigkeit
+- keine echte Distanzmessung
+- sinnvoller als das bisherige Signal-Delta, aber keine Referenzmessung
 
 ## Driving Insights
 
@@ -461,9 +516,12 @@ Verantwortung:
 - letzte Session
 - gespeicherte Sessions
 - aktiver Track
+- aktuelles Track-Profil
 - Autosave
 - finale Verarbeitung bei Stop
 - Rehydration geladener Sessions
+- Lap-Klassifikation
+- Profil-Update nach Sessionende
 
 Wichtige States:
 
@@ -475,6 +533,7 @@ Wichtige States:
 - `storedSessions`
 - `availableTracks`
 - `currentTrackName`
+- `currentTrackProfile`
 
 ## Autosave
 
@@ -514,6 +573,31 @@ Aktuell nicht vorhanden:
 - Reihenfolge/Sortierung nach letzter Nutzung
 - Streckenprofile oder Metadaten
 
+## Track-spezifisches Lernen
+
+`TrackProfileManager` speichert Profile als JSON unter:
+
+- `context.filesDir/track_profiles/track_<trackName>.json`
+
+Profilaufbau:
+
+1. Sessions des Tracks laden
+2. Nur Sessions mit mindestens 2 brauchbaren Laps verwenden
+3. Outlaps und Laps mit geringer Confidence ignorieren
+4. `totalAcceleration` und `yawRateAbs` aller gueltigen Laps auf 101 Punkte normalisieren
+5. Mittelkurven bilden
+6. typische Brems- und Cornering-Zonen als Minima/Maxima extrahieren
+7. Mittelwert und Standardabweichung der Lap-Time speichern
+
+Nutzung in neuer Session:
+
+- falls Profil vorhanden, wird die Lap-Detection frueh und enger um die erwartete Rundenzeit gesucht
+- Profile mit `sessionCount < 2` wirken absichtlich schwacher, um Ueberanpassung zu vermeiden
+
+UI:
+
+- Main Screen zeigt an, ob fuer den gewaehlten Track bereits ein Profil benutzt wird
+
 ## UI und Navigation
 
 ## Main Screen
@@ -530,6 +614,7 @@ Aktuelle Funktionen:
 - Live `lateralAccel`
 - erkannte Lap-Anzahl
 - geschaetzte Rundenzeit
+- Hinweis, ob ein Track-Profil aktiv genutzt wird
 - `Load last session`
 - `Browse sessions`
 - Navigation zu Lap-Liste und Comparison
@@ -544,6 +629,7 @@ Aktuelle Darstellung pro Lap:
 
 - Lap-Nummer
 - Outlap-Markierung
+- Disturbed-Markierung
 - Rundendauer
 - Sample-Anzahl
 - Anzahl Brems-Peaks
@@ -589,18 +675,22 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Verarbeitung | Gravitation entfernen | Erfuellt | `CalibrationManager.projectAcceleration()` |
 | Verarbeitung | Pocket-taugliche Signale | Erfuellt | `totalAcceleration`, `yawRateAbs` |
 | Datenmodell | `SensorSample`, `Lap`, `Session`, `Track` | Erfuellt | vorhanden und persistent speicherbar |
+| Datenmodell | `TrackProfile` | Erfuellt | gespeichert als JSON pro Track |
 | Lap Detection | Sliding Window + Korrelation | Erfuellt | `LapDetector` |
 | Lap Detection | Event-Erkennung | Erfuellt | braking/cornering checks |
 | Lap Detection | Confidence | Erfuellt | Similarity * Event * Dauer-Konsistenz |
 | Lap Detection | Outlap-Erkennung | Erfuellt | erste instabile Runde wird markiert |
+| Lap Detection | Disturbed-Lap-Klassifikation | Erfuellt | spaete, unplausible oder peak-arme Laps werden markiert |
 | Lap Detection | Fallback | Erfuellt | einzelne Lap bei instabiler Segmentierung |
 | Persistenz | JSON-Speicherung | Erfuellt | `SessionStorageManager` |
 | Persistenz | Autosave | Erfuellt | Repository-Snapshot alle 5 Sekunden |
 | Persistenz | Session-Laden | Erfuellt | alle Sessions, Track-spezifisch, letzte Session |
+| Track Learning | Profil pro Track speichern | Erfuellt | `TrackProfileManager` |
+| Track Learning | Profil in Lap-Detection nutzen | Erfuellt | engerer Shift-Suchraum und Profil-Bias |
 | Track Management | Track auswaehlen/anlegen | Erfuellt | Main Screen + `TrackManager` |
 | Session Browsing | Liste, Filter, Laden | Erfuellt | `SessionListFragment` |
 | Visualisierung | Lap-Overlay | Erfuellt | Comparison Screen |
-| Visualisierung | Delta-Graph | Erfuellt | longitudinal + lateral |
+| Visualisierung | Time-Loss-Graph | Erfuellt | `TimeLossCalculator` + Comparison Screen |
 | Visualisierung | Peak-Marker | Erfuellt | Bremsen und Cornering |
 | Insights | Text-Feedback | Erfuellt | `DrivingInsightsGenerator` |
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
@@ -615,9 +705,9 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - keine garantierte Hintergrundaufnahme bei aggressivem Android-App-Management
 - keine vollstaendige Pose-/Orientierungsrekonstruktion
 - `longitudinalAccel` und `lateralAccel` bleiben bei wechselnder Telefonlage nur angenaehert interpretierbar
-- Delta-Charts zeigen Signaldifferenz, nicht direkt Zeitverlust
 - Insights sind heuristisch
 - Lap-Detection ist heuristisch und nicht gegen Referenz-Transponder validiert
+- Time-Loss ist eine Approximation aus Beschleunigung, nicht echte Fahrzeugzeitmessung
 - keine Exportfunktion
 - keine Tests im Projekt
 
@@ -628,7 +718,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - robustere Erkennung von Inlaps und Unterbrechungen
 - streckenspezifische Nutzung historischer Sessions fuer bessere Lap-Detection
 - Sektoren und Splitzeiten
-- genauere Zeitverlustanalyse statt nur Signalvergleich
+- genauere Zeitverlustanalyse ueber echte Distanz- oder Geschwindigkeitsreferenzen
 - moegliche alternative Vergleichsmodi auf Basis von `totalAcceleration` und `yawRateAbs`
 
 ## Technisch offen
@@ -671,15 +761,18 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/data/Lap.kt`
 - `app/src/main/java/com/kartingtracker/data/Session.kt`
 - `app/src/main/java/com/kartingtracker/data/Track.kt`
+- `app/src/main/java/com/kartingtracker/data/TrackProfile.kt`
 - `app/src/main/java/com/kartingtracker/data/SessionRepository.kt`
 - `app/src/main/java/com/kartingtracker/data/SessionStorageManager.kt`
 - `app/src/main/java/com/kartingtracker/data/TrackManager.kt`
+- `app/src/main/java/com/kartingtracker/data/TrackProfileManager.kt`
 - `app/src/main/java/com/kartingtracker/sensor/SensorRecorder.kt`
 - `app/src/main/java/com/kartingtracker/sensor/CalibrationManager.kt`
 - `app/src/main/java/com/kartingtracker/sensor/LowPassFilter.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/PeakDetector.kt`
 - `app/src/main/java/com/kartingtracker/domain/LapNormalizer.kt`
+- `app/src/main/java/com/kartingtracker/domain/TimeLossCalculator.kt`
 - `app/src/main/java/com/kartingtracker/domain/DrivingInsightsGenerator.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionViewModel.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionUiModels.kt`

@@ -15,12 +15,14 @@ Implemented today:
 - low-pass filtering
 - gravity removal
 - derived signals for both chart compatibility and pocket-tolerant detection
-- hybrid lap detection with correlation, event detection, confidence scoring, and outlap handling
+- hybrid lap detection with correlation, event detection, confidence scoring, track-profile biasing, and outlap handling
+- distinction between `OUTLAP` and `DISTURBED` laps
 - braking and cornering peak markers
-- lap comparison with overlay charts, delta charts, and simple text insights
+- lap comparison with overlay charts, a time loss chart, and simple text insights
 - persistent session storage as JSON
 - periodic autosave during recording
 - track management
+- track-specific learning with reusable profiles
 - session browser with filter and reload
 - load-last-session shortcut
 - debug seeding of one simulated test session
@@ -33,6 +35,18 @@ Not implemented yet:
 - sector timing
 - automated tests
 - verified build/run in this environment
+
+## Example Screenshots
+
+These are illustrative example images generated from the app's simulated telemetry and current UI concepts.
+
+### Comparison Example
+
+![Example comparison with longitudinal, lateral and time loss charts](docs/images/example_comparison_time_loss.svg)
+
+### Session Stats Example
+
+![Example session stats with learned track profile and lap quality tags](docs/images/example_session_stats.svg)
 
 ## How The App Works
 
@@ -78,11 +92,15 @@ Current detection flow:
 1. resample the session into 100 ms buckets
 2. compare sliding windows with cosine similarity
 3. require braking-like and cornering-like events
-4. compute a confidence score from correlation, event presence, and duration consistency
-5. reject implausible lap lengths outside 15-120 seconds
-6. mark an unstable first lap as outlap if needed
-7. filter unstable remaining laps
-8. fall back to a single lap if detection is not reliable
+4. if a learned track profile exists, restrict the search range around the expected lap time
+5. bias the score with similarity to the learned average track pattern
+6. boost likely candidates when detected events align with learned braking and cornering zones
+7. compute a confidence score from correlation, event presence, and duration consistency
+8. reject implausible lap lengths outside 15-120 seconds
+9. mark an unstable first lap as outlap if needed
+10. classify bad laps as disturbed if they are too slow, low-confidence, or missing enough peaks
+11. filter unstable remaining laps
+12. fall back to a single lap if detection is not reliable
 
 Outlap handling:
 
@@ -90,6 +108,12 @@ Outlap handling:
 - if its duration differs strongly from later laps, or its confidence is low, it is marked as outlap
 - outlaps remain visible in the app
 - outlaps are excluded from default comparison selection when stable laps exist
+
+Disturbed lap handling:
+
+- disturbed laps are separate from outlaps
+- a lap is marked disturbed when it is much slower than the session reference, has low confidence, or contains too few braking/cornering peaks
+- disturbed laps stay visible in the session, but the app avoids auto-selecting them for comparison when cleaner laps exist
 
 ### Comparison
 
@@ -104,10 +128,19 @@ The comparison screen shows:
 
 - Lap A and Lap B overlay for longitudinal acceleration
 - Lap A and Lap B overlay for lateral acceleration
-- delta graph for longitudinal and lateral difference
+- time loss graph for `Lap A - Lap B`
 - braking markers
 - cornering markers
 - short heuristic driving insights
+
+Time loss:
+
+- uses normalized `totalAcceleration`
+- integrates a simple velocity estimate
+- derives a cumulative time curve
+- compares both laps point by point
+- positive values mean Lap A is slower at that point
+- negative values mean Lap A is faster
 
 ## Persistence
 
@@ -146,6 +179,28 @@ Tracks are stored in `SharedPreferences`.
 
 The currently selected track is also persisted, so the app reopens with the previous selection.
 
+## Track-Specific Learning
+
+The app builds a `TrackProfile` for each track from previous sessions.
+
+What is stored per track:
+
+- average lap time
+- lap-time spread
+- average lap sample length
+- average normalized `totalAcceleration`
+- average normalized `yawRateAbs`
+- typical braking zones
+- typical cornering zones
+- number of sessions used for learning
+
+How it is used:
+
+- the profile is saved under `filesDir/track_profiles`
+- after a session stops, the profile for that track is rebuilt from historical sessions
+- new sessions on the same track use that profile immediately during lap detection
+- profiles with fewer than 2 sessions have lower influence
+
 ## Session Browser
 
 The app includes a session list screen with:
@@ -162,7 +217,7 @@ When a saved session is loaded:
 - the repository sets it as `currentSession`
 - the lap list is refreshed
 - comparison state is recomputed
-- default lap selection prefers non-outlap laps
+- default lap selection prefers laps that are neither outlap nor disturbed
 
 ## Simulated Test Data
 
@@ -171,6 +226,7 @@ For debug builds, the app seeds one simulated session once on app start:
 - track name: `Test Track`
 - persistent JSON save through `SessionStorageManager`
 - slower first lap marked as outlap
+- additional disturbed-lap handling still applies after load/classification
 - multiple laps with braking and cornering markers
 
 This is intended for UI and chart validation when no real kart session has been recorded yet.
@@ -272,10 +328,15 @@ Practical advice:
 - no fully sensor-fused 3D orientation estimation
 - lap detection is heuristic and not validated against reference timing hardware
 - comparison charts still use derived longitudinal/lateral axes, not purely orientation-invariant signals
+- time loss is a lightweight approximation from acceleration, not a GPS or transponder-based ground truth
 
 ## Documentation
 
 - detailed technical documentation: `docs/PROJEKTDOKUMENTATION.md`
+
+## Documentation Policy
+
+Project documentation is intended to stay in sync with code changes after each implemented feature change.
 
 ## Build Status In This Workspace
 

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="780" viewBox="0 0 1080 780" role="img" aria-labelledby="title desc">
+  <title id="title">Karting Tracker example session stats</title>
+  <desc id="desc">Illustrative screenshot showing session stats and lap list with outlap and disturbed laps.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f0e5" />
+      <stop offset="100%" stop-color="#efe4d0" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.14" />
+    </filter>
+    <style>
+      .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #1f2421; }
+      .body { font: 400 16px 'Segoe UI', Arial, sans-serif; fill: #4b5350; }
+      .label { font: 600 14px 'Segoe UI', Arial, sans-serif; fill: #5f6865; }
+      .value { font: 700 32px 'Segoe UI', Arial, sans-serif; fill: #203129; }
+      .itemTitle { font: 700 18px 'Segoe UI', Arial, sans-serif; fill: #233129; }
+      .itemMeta { font: 400 14px 'Segoe UI', Arial, sans-serif; fill: #6b7471; }
+      .chip { font: 700 12px 'Segoe UI', Arial, sans-serif; fill: #ffffff; }
+    </style>
+  </defs>
+
+  <rect width="1080" height="780" fill="url(#bg)" />
+
+  <rect x="70" y="42" width="940" height="696" rx="28" fill="#fffdfa" filter="url(#shadow)" />
+  <text x="112" y="92" class="title">Session Overview Example</text>
+  <text x="112" y="122" class="body">Illustrative view of detected laps, learned track profile and lap quality tags.</text>
+
+  <rect x="112" y="154" width="260" height="126" rx="18" fill="#eff6f0" />
+  <text x="138" y="184" class="label">Track profile</text>
+  <text x="138" y="220" class="value">6 sessions</text>
+  <text x="138" y="252" class="body">Average lap 33.5 s</text>
+
+  <rect x="392" y="154" width="260" height="126" rx="18" fill="#f4f1e8" />
+  <text x="418" y="184" class="label">Detected laps</text>
+  <text x="418" y="220" class="value">8</text>
+  <text x="418" y="252" class="body">1 outlap, 1 disturbed</text>
+
+  <rect x="672" y="154" width="296" height="126" rx="18" fill="#f8efe9" />
+  <text x="698" y="184" class="label">Estimated time gain</text>
+  <text x="698" y="220" class="value">0.73 s</text>
+  <text x="698" y="252" class="body">Lap A faster than Lap B</text>
+
+  <text x="112" y="332" class="title" style="font-size:22px;">Detected Laps</text>
+
+  <g transform="translate(112,356)">
+    <rect x="0" y="0" width="856" height="72" rx="18" fill="#f4f5f3" stroke="#dee3de" />
+    <text x="24" y="30" class="itemTitle">Lap 1</text>
+    <rect x="104" y="12" width="82" height="24" rx="12" fill="#7a7f84" />
+    <text x="122" y="29" class="chip">OUTLAP</text>
+    <text x="24" y="54" class="itemMeta">39.96 s · 800 samples · confidence 0.58 · braking peaks 3 · cornering peaks 3</text>
+  </g>
+
+  <g transform="translate(112,444)">
+    <rect x="0" y="0" width="856" height="72" rx="18" fill="#f7faf7" stroke="#d8e4d9" />
+    <text x="24" y="30" class="itemTitle">Lap 2</text>
+    <text x="24" y="54" class="itemMeta">33.21 s · 664 samples · confidence 0.91 · braking peaks 3 · cornering peaks 3</text>
+  </g>
+
+  <g transform="translate(112,532)">
+    <rect x="0" y="0" width="856" height="72" rx="18" fill="#fbf3f1" stroke="#edd3cd" />
+    <text x="24" y="30" class="itemTitle">Lap 3</text>
+    <rect x="104" y="12" width="108" height="24" rx="12" fill="#b84e46" />
+    <text x="122" y="29" class="chip">DISTURBED</text>
+    <text x="24" y="54" class="itemMeta">38.62 s · 772 samples · confidence 0.44 · braking peaks 1 · cornering peaks 2</text>
+  </g>
+
+  <g transform="translate(112,620)">
+    <rect x="0" y="0" width="856" height="72" rx="18" fill="#f7faf7" stroke="#d8e4d9" />
+    <text x="24" y="30" class="itemTitle">Lap 4</text>
+    <text x="24" y="54" class="itemMeta">33.94 s · 678 samples · confidence 0.88 · braking peaks 3 · cornering peaks 3</text>
+  </g>
+</svg>

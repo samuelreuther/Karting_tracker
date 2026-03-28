@@ -32,8 +32,17 @@ class LapListAdapter : RecyclerView.Adapter<LapListAdapter.LapViewHolder>() {
         fun bind(lap: Lap, position: Int) {
             binding.lapTitle.text = buildString {
                 append("Lap ${position + 1}")
+                val tags = mutableListOf<String>()
                 if (lap.isOutlap) {
-                    append(" (Outlap)")
+                    tags += "OUTLAP"
+                }
+                if (lap.isDisturbed) {
+                    tags += "DISTURBED"
+                }
+                if (tags.isNotEmpty()) {
+                    append(" (")
+                    append(tags.joinToString(", "))
+                    append(")")
                 }
             }
             binding.lapTime.text = formatLapTime(lap.lapTimeMs)
