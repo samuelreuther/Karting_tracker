@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Karting Tracker</string>
+    <string name="status_ready">Ready</string>
+    <string name="sensor_missing">This device is missing the required accelerometer or gyroscope.</string>
+    <string name="device_mount_note">Mount assumption: phone lies flat with the top edge pointing forward. Longitudinal uses device Y, lateral uses device X.</string>
+    <string name="start_recording">Start</string>
+    <string name="stop_recording">Stop</string>
+    <string name="live_telemetry">Live telemetry</string>
+    <string name="samples_label">Samples</string>
+    <string name="detected_laps_label">Detected laps</string>
+    <string name="longitudinal_label">Longitudinal acceleration</string>
+    <string name="lateral_label">Lateral acceleration</string>
+    <string name="estimated_lap_label">Estimated lap time</string>
+    <string name="view_detected_laps">View detected laps</string>
+    <string name="compare_laps">Compare laps</string>
+    <string name="lap_list_title">Laps</string>
+    <string name="comparison_title">Comparison</string>
+    <string name="no_laps_detected">No laps detected yet. Record a session and stop it to run lap detection.</string>
+    <string name="comparison_intro">Each lap is normalized to 0-100 percent of its duration so the traces can be overlaid directly.</string>
+    <string name="lap_a_label">Lap A</string>
+    <string name="lap_b_label">Lap B</string>
+    <string name="no_comparison_data">No laps available to compare yet.</string>
+    <string name="accel_value_format">%.2f m/s^2</string>
+</resources>

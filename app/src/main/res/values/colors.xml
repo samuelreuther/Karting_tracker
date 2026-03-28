@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="karting_green">#2E7D32</color>
+    <color name="karting_red">#C62828</color>
+    <color name="karting_blue">#1565C0</color>
+    <color name="karting_teal">#00897B</color>
+    <color name="karting_dark">#102027</color>
+    <color name="karting_surface">#F7F8F4</color>
+    <color name="karting_muted">#5F6A6A</color>
+    <color name="karting_divider">#D8DEDC</color>
+    <color name="karting_gray">#607D8B</color>
+</resources>

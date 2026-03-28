@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/mainFragment">
+
+    <fragment
+        android:id="@+id/mainFragment"
+        android:name="com.kartingtracker.ui.main.MainFragment"
+        android:label="@string/app_name">
+        <action
+            android:id="@+id/action_mainFragment_to_lapsFragment"
+            app:destination="@id/lapsFragment" />
+        <action
+            android:id="@+id/action_mainFragment_to_comparisonFragment"
+            app:destination="@id/comparisonFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/lapsFragment"
+        android:name="com.kartingtracker.ui.laps.LapsFragment"
+        android:label="@string/lap_list_title" />
+
+    <fragment
+        android:id="@+id/comparisonFragment"
+        android:name="com.kartingtracker.ui.comparison.ComparisonFragment"
+        android:label="@string/comparison_title" />
+
+</navigation>
