@@ -10,9 +10,9 @@ data class LapDetectionResult(
     val confidenceScores: List<Float> = emptyList()
 )
 
-class LapDetector(
+class LapDetector {
     private val lapDetector2: LapDetector2 = LapDetector2()
-) {
+
     fun detect(samples: List<SensorSample>, trackProfile: TrackProfile? = null): LapDetectionResult {
         return lapDetector2.detect(samples, trackProfile)
     }

@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
+import com.kartingtracker.data.Track
 import com.kartingtracker.data.TrackProfile
 import com.kartingtracker.domain.DrivingInsightsGenerator
 import com.kartingtracker.domain.IdealLap
@@ -66,7 +68,19 @@ class SessionViewModel(
         sessionRepository.currentTrackName,
         sessionRepository.storedSessions,
         sessionRepository.currentTrackProfile
-    ) { recorderPhase, isRecording, sampleCount, lastSample, session, tracks, currentTrackName, storedSessions, trackProfile ->
+    ) { args: Array<Any?> ->
+        val recorderPhase = args[0] as RecorderPhase
+        val isRecording = args[1] as Boolean
+        val sampleCount = args[2] as Int
+        val lastSample = args[3] as SensorSample?
+        val session = args[4] as Session?
+        @Suppress("UNCHECKED_CAST")
+        val tracks = args[5] as List<Track>
+        val currentTrackName = args[6] as String
+        @Suppress("UNCHECKED_CAST")
+        val storedSessions = args[7] as List<Session>
+        val trackProfile = args[8] as TrackProfile?
+
         SessionUiState(
             isRecording = recorderPhase == RecorderPhase.RECORDING || isRecording,
             isCalibrating = recorderPhase == RecorderPhase.CALIBRATING,

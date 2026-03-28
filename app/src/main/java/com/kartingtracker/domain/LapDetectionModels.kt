@@ -2,7 +2,7 @@ package com.kartingtracker.domain
 
 import com.kartingtracker.data.LapPhase
 
-internal data class ResampledFrame(
+data class ResampledFrame(
     val index: Int,
     val timestampNs: Long,
     val totalAcceleration: Float,
@@ -10,7 +10,7 @@ internal data class ResampledFrame(
     val activity: Float
 )
 
-internal data class LapPrior(
+data class LapPrior(
     val expectedLapMs: Long,
     val sigmaMs: Long,
     val minLapMs: Long,
@@ -22,19 +22,19 @@ internal data class LapPrior(
     val sourceReliability: Float
 )
 
-internal data class BoundaryCandidate(
+data class BoundaryCandidate(
     val index: Int,
     val timestampNs: Long,
     val score: Float,
     val isPauseEdge: Boolean = false
 )
 
-internal data class BoundaryGenerationResult(
+data class BoundaryGenerationResult(
     val candidates: List<BoundaryCandidate>,
     val boundaryScores: FloatArray
 )
 
-internal data class SegmentFeatures(
+data class SegmentFeatures(
     val durationMs: Long,
     val durationScore: Float,
     val templateMatchScore: Float?,
@@ -48,7 +48,7 @@ internal data class SegmentFeatures(
     val normalizedYawRateAbs: List<Float>
 )
 
-internal data class SegmentCandidate(
+data class SegmentCandidate(
     val id: Int,
     val startBoundaryIdx: Int,
     val endBoundaryIdx: Int,
@@ -59,12 +59,12 @@ internal data class SegmentCandidate(
     val unaryScores: Map<LapPhase, Float>
 )
 
-internal data class ChosenSegment(
+data class ChosenSegment(
     val segment: SegmentCandidate,
     val phase: LapPhase
 )
 
-internal data class SegmentationPath(
+data class SegmentationPath(
     val segments: List<ChosenSegment>,
     val totalScore: Float
 )
