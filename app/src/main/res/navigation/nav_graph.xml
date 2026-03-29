@@ -17,6 +17,9 @@
         <action
             android:id="@+id/action_mainFragment_to_sessionListFragment"
             app:destination="@id/sessionListFragment" />
+        <action
+            android:id="@+id/action_mainFragment_to_trackLayoutFragment"
+            app:destination="@id/trackLayoutFragment" />
     </fragment>
 
     <fragment
@@ -40,5 +43,10 @@
             android:id="@+id/action_sessionListFragment_to_comparisonFragment"
             app:destination="@id/comparisonFragment" />
     </fragment>
+
+    <fragment
+        android:id="@+id/trackLayoutFragment"
+        android:name="com.kartingtracker.ui.tracklayout.TrackLayoutFragment"
+        android:label="@string/track_layout_title" />
 
 </navigation>

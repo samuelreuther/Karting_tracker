@@ -1,6 +1,7 @@
 package com.kartingtracker.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kartingtracker.data.Lap
@@ -8,6 +9,7 @@ import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.Track
+import com.kartingtracker.data.TrackLayout
 import com.kartingtracker.data.TrackProfile
 import com.kartingtracker.domain.IdealLap
 import com.kartingtracker.domain.IdealLapCalculator
@@ -280,6 +282,18 @@ class SessionViewModel(
         return sessionRepository.trackExists(trackName)
     }
 
+    fun loadOrCreateTrackLayout(trackName: String): TrackLayout? {
+        return sessionRepository.loadOrCreateTrackLayout(trackName)
+    }
+
+    fun importTrackLayoutImage(trackName: String, imageUri: Uri): TrackLayout? {
+        return sessionRepository.importTrackLayoutImage(trackName, imageUri)
+    }
+
+    fun saveTrackLayout(layout: TrackLayout): TrackLayout {
+        return sessionRepository.saveTrackLayout(layout)
+    }
+
     fun loadLastSession(): Boolean {
         val session = sessionRepository.loadLastSession() ?: return false
         resetLapSelection(session)
@@ -364,7 +378,19 @@ class SessionViewModel(
 
     private fun createTopTimeLossLines(session: Session?): List<String> {
         return session?.topTimeLossSegments.orEmpty().map { segment ->
-            "Sector ${segment.segmentIndex}: ${segment.cause} -> +${"%.2f".format(segment.timeLoss)}s"
+            buildString {
+                append(segment.segmentLabel.ifBlank { "Sector ${segment.segmentIndex}" })
+                if (segment.relativePosition.isNotBlank()) {
+                    append(" (")
+                    append(segment.relativePosition)
+                    append(")")
+                }
+                append(": ")
+                append(segment.cause)
+                append(" -> +")
+                append("%.2f".format(segment.timeLoss))
+                append("s")
+            }
         }
     }
 

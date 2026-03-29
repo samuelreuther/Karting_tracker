@@ -53,6 +53,9 @@ class MainFragment : Fragment() {
         binding.stopButton.setOnClickListener {
             sessionViewModel.stopRecording()
         }
+        binding.editTrackLayoutButton.setOnClickListener {
+            findNavController().navigate(R.id.action_mainFragment_to_trackLayoutFragment)
+        }
         binding.viewLapsButton.setOnClickListener {
             findNavController().navigate(R.id.action_mainFragment_to_lapsFragment)
         }
@@ -80,6 +83,9 @@ class MainFragment : Fragment() {
                         state.hasValidSelectedTrack
                     binding.stopButton.isEnabled = state.isRecording || state.isCalibrating
                     binding.trackDropdown.isEnabled = !state.isRecording && !state.isCalibrating
+                    binding.editTrackLayoutButton.isEnabled = !state.isRecording &&
+                        !state.isCalibrating &&
+                        state.hasValidSelectedTrack
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.samplesValue.text = state.sampleCount.toString()
                     binding.longitudinalValue.text = getString(

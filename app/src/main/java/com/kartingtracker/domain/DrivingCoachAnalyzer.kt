@@ -5,6 +5,8 @@ import com.kartingtracker.data.LapPhase
 import com.kartingtracker.data.SegmentMarker
 import com.kartingtracker.data.Session
 import com.kartingtracker.data.TimeLossSegment
+import com.kartingtracker.data.TrackLayout
+import com.kartingtracker.data.TrackProfile
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -17,7 +19,11 @@ data class SessionTelemetryAnalysis(
 )
 
 class DrivingCoachAnalyzer {
-    fun analyzeSession(session: Session): SessionTelemetryAnalysis {
+    fun analyzeSession(
+        session: Session,
+        trackProfile: TrackProfile? = null,
+        trackLayout: TrackLayout? = null
+    ): SessionTelemetryAnalysis {
         val referenceLap = selectReferenceLap(session.laps) ?: return SessionTelemetryAnalysis()
         val validLaps = session.laps.filter(::isPrimaryValidLap)
         if (validLaps.size < minimumComparableLaps) {
@@ -48,7 +54,7 @@ class DrivingCoachAnalyzer {
 
         val insights = buildList {
             topSegments.forEach { comparison ->
-                add(buildSegmentInsight(comparison))
+                add(buildSegmentInsight(comparison, resolveCornerReference(comparison, trackLayout, trackProfile)))
             }
             consistencyInsight?.let(::add)
             generalImprovementInsight?.let(::add)
@@ -58,18 +64,25 @@ class DrivingCoachAnalyzer {
             insights = insights,
             theoreticalBestLapTimeMs = theoreticalBestLapTimeMs,
             topTimeLossSegments = topSegments.map { comparison ->
+                val reference = resolveCornerReference(comparison, trackLayout, trackProfile)
                 TimeLossSegment(
-                    segmentIndex = comparison.segment.displayIndex,
+                    segmentIndex = reference?.displayIndex ?: comparison.segment.displayIndex,
+                    segmentLabel = reference?.corner?.name ?: "Sector ${comparison.segment.displayIndex}",
+                    relativePosition = reference?.relativePosition.orEmpty(),
                     timeLoss = comparison.averageTimeLossMs / 1000f,
                     cause = comparison.cause.title
                 )
             },
-            segmentMarkers = buildSegmentMarkers(topSegments)
+            segmentMarkers = buildSegmentMarkers(topSegments, trackLayout, trackProfile)
         )
     }
 
-    fun generateSessionInsights(session: Session): List<String> {
-        return analyzeSession(session).insights
+    fun generateSessionInsights(
+        session: Session,
+        trackProfile: TrackProfile? = null,
+        trackLayout: TrackLayout? = null
+    ): List<String> {
+        return analyzeSession(session, trackProfile, trackLayout).insights
     }
 
     private fun selectReferenceLap(laps: List<Lap>): Lap? {
@@ -281,26 +294,28 @@ class DrivingCoachAnalyzer {
         }
     }
 
-    private fun buildSegmentInsight(comparison: SegmentComparison): String {
+    private fun buildSegmentInsight(
+        comparison: SegmentComparison,
+        cornerReference: TrackCornerReference?
+    ): String {
         val timeLoss = comparison.averageTimeLossMs / 1000f
         val detail = when (comparison.cause) {
-            TimeLossCause.BRAKING_TOO_EARLY -> {
-                val earlierPercent = abs(comparison.averageDelta.brakingPointPercent).roundToInt()
-                "Braking about ${earlierPercent}% earlier reduces entry speed"
-            }
-
-            TimeLossCause.OVER_SLOWING -> "Over-slowing in the corner drops minimum speed"
+            TimeLossCause.BRAKING_TOO_EARLY -> "braking too early"
+            TimeLossCause.OVER_SLOWING -> "mid-corner speed too low"
             TimeLossCause.POOR_EXIT_SPEED -> {
-                val exitLossPercent = percentLoss(comparison.averageDelta.exitSpeed)
-                "Lower exit speed (-${exitLossPercent}%) hurts the following straight"
+                if (cornerReference?.relativePosition == "before main straight") {
+                    "poor exit onto main straight"
+                } else {
+                    "poor exit speed"
+                }
             }
 
-            TimeLossCause.UNSTABLE_CORNERING -> "High yaw variation points to unstable cornering"
-            TimeLossCause.INSUFFICIENT_BRAKING_FORCE -> "Weak braking keeps too much speed before rotation"
-            TimeLossCause.GENERAL_TIME_LOSS -> "This segment is losing time relative to the reference lap"
+            TimeLossCause.UNSTABLE_CORNERING -> "unstable cornering"
+            TimeLossCause.INSUFFICIENT_BRAKING_FORCE -> "insufficient braking force"
+            TimeLossCause.GENERAL_TIME_LOSS -> "general time loss"
         }
-        return "Sector ${comparison.segment.displayIndex}: $detail and costs +${"%.2f".format(timeLoss)}s. " +
-            "Recommendation: ${comparison.cause.recommendation}"
+        val locationLabel = buildLocationLabel(cornerReference, comparison)
+        return "$locationLabel: $detail (+${"%.2f".format(timeLoss)}s). Recommendation: ${comparison.cause.recommendation}"
     }
 
     private fun buildConsistencyInsight(validLaps: List<Lap>, segmentation: Segmentation): String? {
@@ -346,17 +361,53 @@ class DrivingCoachAnalyzer {
         }.takeIf { total -> total > 0L }
     }
 
-    private fun buildSegmentMarkers(topSegments: List<SegmentComparison>): List<SegmentMarker> {
+    private fun buildSegmentMarkers(
+        topSegments: List<SegmentComparison>,
+        trackLayout: TrackLayout?,
+        trackProfile: TrackProfile?
+    ): List<SegmentMarker> {
         if (topSegments.isEmpty()) {
             return emptyList()
         }
         val maxLoss = topSegments.maxOf { comparison -> comparison.averageTimeLossMs }.coerceAtLeast(1L)
         return topSegments.map { comparison ->
+            val reference = resolveCornerReference(comparison, trackLayout, trackProfile)
             SegmentMarker(
                 positionPercent = comparison.segment.positionPercent,
                 severity = (comparison.averageTimeLossMs.toFloat() / maxLoss.toFloat()).coerceIn(0.2f, 1f),
-                label = comparison.cause.shortLabel
+                label = reference?.corner?.name ?: comparison.cause.shortLabel
             )
+        }
+    }
+
+    private fun resolveCornerReference(
+        comparison: SegmentComparison,
+        trackLayout: TrackLayout?,
+        trackProfile: TrackProfile?
+    ): TrackCornerReference? {
+        val layout = trackLayout?.takeIf { candidate ->
+            candidate.imagePath.isNotBlank() && candidate.corners.isNotEmpty()
+        } ?: return null
+
+        return TrackLayoutMapper.findClosestCornerReference(
+            layout = layout,
+            trackProfile = trackProfile,
+            segmentPercent = comparison.segment.positionPercent
+        )
+    }
+
+    private fun buildLocationLabel(
+        cornerReference: TrackCornerReference?,
+        comparison: SegmentComparison
+    ): String {
+        if (cornerReference == null) {
+            return "Sector ${comparison.segment.displayIndex}"
+        }
+
+        return if (cornerReference.relativePosition.isBlank()) {
+            cornerReference.corner.name
+        } else {
+            "${cornerReference.corner.name} (${cornerReference.relativePosition})"
         }
     }
 

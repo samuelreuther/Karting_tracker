@@ -14,6 +14,7 @@
     <string name="new_track_hint">Track name</string>
     <string name="track_name_required">Enter a track name.</string>
     <string name="track_name_exists">That track already exists.</string>
+    <string name="edit_track_layout">Edit track layout</string>
     <string name="live_telemetry">Live telemetry</string>
     <string name="samples_label">Samples</string>
     <string name="detected_laps_label">Detected laps</string>
@@ -41,7 +42,7 @@
     <string name="delete_session">Delete session</string>
     <string name="delete_track">Delete track</string>
     <string name="delete_session_confirmation">Delete this session from %1$s? This cannot be undone.</string>
-    <string name="delete_track_confirmation">Delete track %1$s, all of its sessions, and its learned profile?</string>
+    <string name="delete_track_confirmation">Delete track %1$s, all of its sessions, learned profile, and saved layout?</string>
     <string name="open_laps">Open laps</string>
     <string name="open_comparison">Open comparison</string>
     <string name="reprocess_session">Reprocess session</string>
@@ -49,11 +50,37 @@
     <string name="recording_channel_name">Karting recording</string>
     <string name="recording_channel_description">Active telemetry recording for karting sessions</string>
     <string name="recording_notification_title">%1$s recording</string>
-    <string name="recording_notification_text">%1$s • %2$s • %3$s</string>
+    <string name="recording_notification_text">%1$s - %2$s - %3$s</string>
     <string name="recording_notification_big_text">Track: %1$s\nStatus: %2$s\nDuration: %3$s\n%4$s</string>
     <string name="recording_notification_stats_samples">%1$d samples</string>
-    <string name="recording_notification_stats_laps">%1$d laps • %2$d samples</string>
+    <string name="recording_notification_stats_laps">%1$d laps - %2$d samples</string>
     <string name="recording_phase_starting">Starting</string>
     <string name="recording_phase_calibrating">Calibrating</string>
     <string name="recording_phase_recording">Recording</string>
+    <string name="track_layout_title">Track layout</string>
+    <string name="track_layout_select_image">Upload track image</string>
+    <string name="track_layout_hint">Upload a track image, tap the start or finish line, choose the driving direction, then add corners in order around the lap.</string>
+    <string name="track_layout_set_start">Set start point</string>
+    <string name="track_layout_add_corner">Add corner</string>
+    <string name="track_layout_direction_label">Driving direction</string>
+    <string name="track_layout_clockwise">Clockwise</string>
+    <string name="track_layout_counter_clockwise">Counter-clockwise</string>
+    <string name="track_layout_start_point_label">Start point</string>
+    <string name="track_layout_corners_label">Corners</string>
+    <string name="track_layout_undo_corner">Undo last corner</string>
+    <string name="track_layout_clear_corners">Clear corners</string>
+    <string name="track_layout_save">Save layout</string>
+    <string name="track_layout_no_image">No track image selected yet.</string>
+    <string name="track_layout_image_ready">Track image loaded.</string>
+    <string name="track_layout_no_corners">No corners defined yet.</string>
+    <string name="track_layout_saved">Track layout saved.</string>
+    <string name="track_layout_load_failed">Track layout could not be loaded.</string>
+    <string name="track_layout_image_failed">Track image could not be imported.</string>
+    <string name="track_layout_track_required">Select a track before editing the layout.</string>
+    <string name="track_layout_mode_start">Tap the image to set the start or finish point.</string>
+    <string name="track_layout_mode_corner">Tap the image to add corners. Kurve 1 will be the first corner after start.</string>
+    <plurals name="track_layout_corner_count">
+        <item quantity="one">%d corner saved</item>
+        <item quantity="other">%d corners saved</item>
+    </plurals>
 </resources>

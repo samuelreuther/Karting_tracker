@@ -1,0 +1,164 @@
+package com.kartingtracker.data
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import java.io.File
+
+class TrackLayoutManager(
+    context: Context
+) {
+    private val appContext = context.applicationContext
+    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    private val layoutDirectory = File(appContext.filesDir, "track_layouts").apply { mkdirs() }
+    private val imageDirectory = File(layoutDirectory, "images").apply { mkdirs() }
+
+    fun loadLayout(trackName: String): TrackLayout? {
+        val file = File(layoutDirectory, buildLayoutFileName(trackName))
+        if (!file.exists()) {
+            return null
+        }
+
+        return try {
+            val persisted = gson.fromJson(file.readText(), PersistedTrackLayout::class.java)
+            persisted.toTrackLayout(trackName)
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to parse track layout for $trackName", exception)
+            null
+        }
+    }
+
+    fun loadOrCreateLayout(trackName: String): TrackLayout {
+        return loadLayout(trackName) ?: emptyLayout(trackName)
+    }
+
+    fun saveLayout(layout: TrackLayout) {
+        val file = File(layoutDirectory, buildLayoutFileName(layout.trackName))
+        file.writeText(gson.toJson(layout.normalize()))
+    }
+
+    fun deleteLayout(trackName: String): Boolean {
+        val layout = loadLayout(trackName)
+        val imageDeleted = layout?.imagePath
+            ?.takeIf(::isManagedImagePath)
+            ?.let { imagePath -> File(imagePath).delete() || !File(imagePath).exists() }
+            ?: true
+        val file = File(layoutDirectory, buildLayoutFileName(trackName))
+        val layoutDeleted = !file.exists() || file.delete()
+        return imageDeleted && layoutDeleted
+    }
+
+    fun importTrackImage(trackName: String, sourceUri: Uri): String? {
+        val fileExtension = resolveExtension(sourceUri)
+        val targetFile = File(imageDirectory, buildImageFileName(trackName, fileExtension))
+        return try {
+            appContext.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
+                targetFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: return null
+
+            loadLayout(trackName)?.imagePath
+                ?.takeIf(::isManagedImagePath)
+                ?.takeIf { existingPath -> existingPath != targetFile.absolutePath }
+                ?.let { existingPath -> File(existingPath).delete() }
+
+            targetFile.absolutePath
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to import track image for $trackName", exception)
+            null
+        }
+    }
+
+    fun emptyLayout(trackName: String): TrackLayout {
+        return TrackLayout(
+            trackName = trackName,
+            imagePath = "",
+            lengthMeters = null,
+            startPoint = TrackLayout.DEFAULT_START_POINT,
+            direction = TrackDirection.CLOCKWISE,
+            corners = emptyList()
+        )
+    }
+
+    private fun buildLayoutFileName(trackName: String): String {
+        return "layout_${sanitizeTrackName(trackName)}.json"
+    }
+
+    private fun buildImageFileName(trackName: String, extension: String): String {
+        return "layout_${sanitizeTrackName(trackName)}.$extension"
+    }
+
+    private fun sanitizeTrackName(trackName: String): String {
+        val trimmed = trackName.trim().ifBlank { "track" }
+        return trimmed.replace(Regex("[^A-Za-z0-9_-]+"), "_")
+    }
+
+    private fun resolveExtension(sourceUri: Uri): String {
+        val mimeType = appContext.contentResolver.getType(sourceUri).orEmpty()
+        return when {
+            mimeType.contains("png", ignoreCase = true) -> "png"
+            mimeType.contains("webp", ignoreCase = true) -> "webp"
+            else -> "jpg"
+        }
+    }
+
+    private fun isManagedImagePath(path: String): Boolean {
+        return path.startsWith(imageDirectory.absolutePath)
+    }
+
+    private fun TrackLayout.normalize(): TrackLayout {
+        val safeImagePath = imagePath.takeIf { path -> path.isNotBlank() } ?: ""
+        val safeCorners = corners.mapIndexed { index, corner ->
+            TrackCorner(
+                name = corner.name.ifBlank { "Kurve ${index + 1}" },
+                point = TrackPoint(
+                    x = corner.point.x.coerceIn(0f, 1f),
+                    y = corner.point.y.coerceIn(0f, 1f)
+                )
+            )
+        }
+        return copy(
+            imagePath = safeImagePath,
+            startPoint = TrackPoint(
+                x = startPoint.x.coerceIn(0f, 1f),
+                y = startPoint.y.coerceIn(0f, 1f)
+            ),
+            corners = safeCorners
+        )
+    }
+
+    private fun PersistedTrackLayout.toTrackLayout(trackNameFallback: String): TrackLayout {
+        return TrackLayout(
+            trackName = trackName?.takeIf { it.isNotBlank() } ?: trackNameFallback,
+            imagePath = imagePath.orEmpty(),
+            lengthMeters = lengthMeters,
+            startPoint = startPoint ?: TrackLayout.DEFAULT_START_POINT,
+            direction = direction ?: TrackDirection.CLOCKWISE,
+            corners = corners.orEmpty().mapIndexed { index, corner ->
+                TrackCorner(
+                    name = corner.name.ifBlank { "Kurve ${index + 1}" },
+                    point = TrackPoint(
+                        x = corner.point.x.coerceIn(0f, 1f),
+                        y = corner.point.y.coerceIn(0f, 1f)
+                    )
+                )
+            }
+        )
+    }
+
+    private data class PersistedTrackLayout(
+        val trackName: String? = null,
+        val imagePath: String? = null,
+        val lengthMeters: Float? = null,
+        val startPoint: TrackPoint? = null,
+        val direction: TrackDirection? = null,
+        val corners: List<TrackCorner> = emptyList()
+    )
+
+    companion object {
+        private const val TAG = "TrackLayoutManager"
+    }
+}

@@ -5,7 +5,8 @@ import android.content.Context
 class TrackManager(
     context: Context,
     private val sessionStorageManager: SessionStorageManager,
-    private val trackProfileManager: TrackProfileManager
+    private val trackProfileManager: TrackProfileManager,
+    private val trackLayoutManager: TrackLayoutManager
 ) {
     private val preferences = context.getSharedPreferences("karting_tracks", Context.MODE_PRIVATE)
 
@@ -136,6 +137,7 @@ class TrackManager(
 
         sessionStorageManager.deleteSessionsForTrack(persistedTrack)
         trackProfileManager.deleteProfile(persistedTrack)
+        trackLayoutManager.deleteLayout(persistedTrack)
         return true
     }
 

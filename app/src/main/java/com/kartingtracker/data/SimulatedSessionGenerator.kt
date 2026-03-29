@@ -183,7 +183,7 @@ object SimulatedSessionGenerator {
             topTimeLossSegments = emptyList(),
             segmentMarkers = emptyList(),
             quality = SessionQualityEvaluator.evaluate(laps),
-            processingVersion = 4
+            processingVersion = 5
         )
 
         val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(baseSession)

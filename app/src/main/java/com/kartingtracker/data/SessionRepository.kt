@@ -1,11 +1,13 @@
 package com.kartingtracker.data
 
+import android.net.Uri
 import android.util.Log
 import com.kartingtracker.domain.DrivingCoachAnalyzer
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.domain.SectorDetector
 import com.kartingtracker.domain.SessionQualityEvaluator
+import com.kartingtracker.domain.TrackLayoutMapper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +26,7 @@ class SessionRepository(
     private val sessionStorageManager: SessionStorageManager,
     private val trackManager: TrackManager,
     private val trackProfileManager: TrackProfileManager,
+    private val trackLayoutManager: TrackLayoutManager,
     private val drivingCoachAnalyzer: DrivingCoachAnalyzer
 ) {
     private val lock = Any()
@@ -63,6 +66,9 @@ class SessionRepository(
 
     private val _currentTrackProfile = MutableStateFlow(loadUsableTrackProfile(_currentTrackName.value))
     val currentTrackProfile: StateFlow<TrackProfile?> = _currentTrackProfile.asStateFlow()
+
+    private val _currentTrackLayout = MutableStateFlow(loadTrackLayout(_currentTrackName.value))
+    val currentTrackLayout: StateFlow<TrackLayout?> = _currentTrackLayout.asStateFlow()
 
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
@@ -156,6 +162,7 @@ class SessionRepository(
         refreshTracks()
         refreshStoredSessions()
         refreshCurrentTrackProfile(normalizedName)
+        refreshCurrentTrackLayout(normalizedName)
     }
 
     fun normalizeTrackName(trackName: String): String {
@@ -172,6 +179,49 @@ class SessionRepository(
 
     fun loadSessionsForTrack(trackName: String): List<Session> {
         return sessionStorageManager.loadSessionsForTrack(trackName)
+    }
+
+    fun loadTrackLayout(trackName: String): TrackLayout? {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return null
+        }
+        return trackLayoutManager.loadLayout(normalizedName)?.let(::normalizeTrackLayout)
+    }
+
+    fun loadOrCreateTrackLayout(trackName: String): TrackLayout? {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return null
+        }
+        return normalizeTrackLayout(trackLayoutManager.loadOrCreateLayout(normalizedName))
+    }
+
+    fun importTrackLayoutImage(trackName: String, imageUri: Uri): TrackLayout? {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return null
+        }
+        val imagePath = trackLayoutManager.importTrackImage(normalizedName, imageUri) ?: return null
+        val updatedLayout = normalizeTrackLayout(
+            trackLayoutManager.loadOrCreateLayout(normalizedName).copy(imagePath = imagePath)
+        )
+        trackLayoutManager.saveLayout(updatedLayout)
+        if (normalizedName.equals(_currentTrackName.value, ignoreCase = true)) {
+            _currentTrackLayout.value = updatedLayout
+        }
+        return updatedLayout
+    }
+
+    fun saveTrackLayout(layout: TrackLayout): TrackLayout {
+        val normalizedLayout = normalizeTrackLayout(
+            layout.copy(trackName = trackManager.normalizeTrackName(layout.trackName))
+        )
+        trackLayoutManager.saveLayout(normalizedLayout)
+        if (normalizedLayout.trackName.equals(_currentTrackName.value, ignoreCase = true)) {
+            _currentTrackLayout.value = normalizedLayout
+        }
+        return normalizedLayout
     }
 
     fun loadLastSession(): Session? {
@@ -229,6 +279,7 @@ class SessionRepository(
         refreshTracks()
         _currentTrackName.value = trackManager.getSelectedTrackName().orEmpty()
         refreshCurrentTrackProfile(_currentTrackName.value)
+        refreshCurrentTrackLayout(_currentTrackName.value)
         return true
     }
 
@@ -248,6 +299,7 @@ class SessionRepository(
                 trackManager.setSelectedTrack(session.trackName)
                 refreshTracks()
                 refreshCurrentTrackProfile(session.trackName)
+                refreshCurrentTrackLayout(session.trackName)
             }
         }
     }
@@ -310,6 +362,14 @@ class SessionRepository(
 
     private fun refreshCurrentTrackProfile(trackName: String = _currentTrackName.value) {
         _currentTrackProfile.value = loadUsableTrackProfile(trackName)
+    }
+
+    private fun refreshCurrentTrackLayout(trackName: String = _currentTrackName.value) {
+        _currentTrackLayout.value = loadTrackLayout(trackName)
+    }
+
+    private fun normalizeTrackLayout(layout: TrackLayout): TrackLayout {
+        return layout.copy(corners = TrackLayoutMapper.sortAndRenameCorners(layout))
     }
 
     private fun refreshTrackProfileState(trackName: String) {
@@ -501,7 +561,11 @@ class SessionRepository(
             isPartial = false
         ).withQuality()
 
-        val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(processedSession)
+        val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(
+            session = processedSession,
+            trackProfile = trackProfile,
+            trackLayout = loadTrackLayout(processedSession.trackName)
+        )
         return processedSession.copy(
             insights = telemetryAnalysis.insights,
             theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
@@ -547,7 +611,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 4
+        private const val CURRENT_PROCESSING_VERSION = 5
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

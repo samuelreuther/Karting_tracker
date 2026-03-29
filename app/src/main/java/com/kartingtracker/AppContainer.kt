@@ -4,6 +4,7 @@ import android.content.Context
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.SessionStorageManager
 import com.kartingtracker.data.SimulatedSessionGenerator
+import com.kartingtracker.data.TrackLayoutManager
 import com.kartingtracker.data.TrackManager
 import com.kartingtracker.data.TrackProfileManager
 import com.kartingtracker.domain.DrivingCoachAnalyzer
@@ -16,10 +17,12 @@ class AppContainer(context: Context) {
     private val peakDetector = PeakDetector()
     private val sessionStorageManager = SessionStorageManager(context.applicationContext)
     private val trackProfileManager = TrackProfileManager(context.applicationContext)
+    private val trackLayoutManager = TrackLayoutManager(context.applicationContext)
     private val trackManager = TrackManager(
         context = context.applicationContext,
         sessionStorageManager = sessionStorageManager,
-        trackProfileManager = trackProfileManager
+        trackProfileManager = trackProfileManager,
+        trackLayoutManager = trackLayoutManager
     )
     private val drivingCoachAnalyzer = DrivingCoachAnalyzer()
 
@@ -40,6 +43,7 @@ class AppContainer(context: Context) {
         sessionStorageManager = sessionStorageManager,
         trackManager = trackManager,
         trackProfileManager = trackProfileManager,
+        trackLayoutManager = trackLayoutManager,
         drivingCoachAnalyzer = drivingCoachAnalyzer
     )
 

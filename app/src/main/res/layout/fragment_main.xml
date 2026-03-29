@@ -71,6 +71,14 @@
             android:textColor="@color/karting_muted"
             android:visibility="gone" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/editTrackLayoutButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/edit_track_layout" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
