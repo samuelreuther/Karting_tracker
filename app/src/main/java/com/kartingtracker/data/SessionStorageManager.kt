@@ -109,6 +109,9 @@ class SessionStorageManager(
             }
             parsedSession.copy(
                 insights = parseInsights(jsonObject),
+                theoreticalBestLapTimeMs = parseTheoreticalBestLapTime(jsonObject),
+                topTimeLossSegments = parseTopTimeLossSegments(jsonObject),
+                segmentMarkers = parseSegmentMarkers(jsonObject),
                 processingVersion = if (!jsonObject.has(PROCESSING_VERSION_FIELD) || parsedSession.processingVersion <= 0) {
                     Session.DEFAULT_PROCESSING_VERSION
                 } else {
@@ -127,6 +130,26 @@ class SessionStorageManager(
         val rawInsights = jsonObject.getAsJsonArray(INSIGHTS_FIELD) ?: return emptyList()
         return rawInsights.mapNotNull { element ->
             element?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    private fun parseTheoreticalBestLapTime(jsonObject: com.google.gson.JsonObject): Long? {
+        return jsonObject.get(THEORETICAL_BEST_LAP_TIME_FIELD)
+            ?.takeIf { element -> !element.isJsonNull }
+            ?.asLong
+    }
+
+    private fun parseTopTimeLossSegments(jsonObject: com.google.gson.JsonObject): List<TimeLossSegment> {
+        val rawSegments = jsonObject.getAsJsonArray(TOP_TIME_LOSS_SEGMENTS_FIELD) ?: return emptyList()
+        return rawSegments.mapNotNull { element ->
+            runCatching { gson.fromJson(element, TimeLossSegment::class.java) }.getOrNull()
+        }
+    }
+
+    private fun parseSegmentMarkers(jsonObject: com.google.gson.JsonObject): List<SegmentMarker> {
+        val rawMarkers = jsonObject.getAsJsonArray(SEGMENT_MARKERS_FIELD) ?: return emptyList()
+        return rawMarkers.mapNotNull { element ->
+            runCatching { gson.fromJson(element, SegmentMarker::class.java) }.getOrNull()
         }
     }
 
@@ -256,6 +279,9 @@ class SessionStorageManager(
         private const val ID_FIELD = "id"
         private const val TRACK_NAME_FIELD = "trackName"
         private const val INSIGHTS_FIELD = "insights"
+        private const val THEORETICAL_BEST_LAP_TIME_FIELD = "theoreticalBestLapTimeMs"
+        private const val TOP_TIME_LOSS_SEGMENTS_FIELD = "topTimeLossSegments"
+        private const val SEGMENT_MARKERS_FIELD = "segmentMarkers"
         private const val PROCESSING_VERSION_FIELD = "processingVersion"
         private const val IS_PARTIAL_FIELD = "isPartial"
         private const val JSON_SUFFIX = ".json"

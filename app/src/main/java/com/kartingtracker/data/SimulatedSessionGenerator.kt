@@ -179,12 +179,19 @@ object SimulatedSessionGenerator {
             laps = laps,
             estimatedLapTimeMs = estimatedLapTimeMs,
             insights = emptyList(),
+            theoreticalBestLapTimeMs = null,
+            topTimeLossSegments = emptyList(),
+            segmentMarkers = emptyList(),
             quality = SessionQualityEvaluator.evaluate(laps),
-            processingVersion = 3
+            processingVersion = 4
         )
 
+        val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(baseSession)
         return baseSession.copy(
-            insights = drivingCoachAnalyzer.generateSessionInsights(baseSession)
+            insights = telemetryAnalysis.insights,
+            theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
+            topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
+            segmentMarkers = telemetryAnalysis.segmentMarkers
         )
     }
 

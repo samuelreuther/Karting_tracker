@@ -29,8 +29,9 @@
     <string name="saved_sessions_title">Saved sessions</string>
     <string name="no_laps_detected">No laps detected yet. Record a session and stop it to run lap detection.</string>
     <string name="comparison_intro">Each lap is normalized to 0-100 percent of its duration so the traces can be overlaid directly.</string>
-    <string name="insights_title">Driving style insights</string>
+    <string name="insights_title">Telemetry insights</string>
     <string name="session_insights">Session insights</string>
+    <string name="top_time_loss_map">Top time loss map</string>
     <string name="lap_a_label">Lap A</string>
     <string name="lap_b_label">Lap B</string>
     <string name="no_comparison_data">No laps available to compare yet.</string>

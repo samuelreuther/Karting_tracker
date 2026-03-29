@@ -23,8 +23,8 @@ Implemented today:
 - automatic sector detection and sector time calculation without GPS
 - track-profile driven stable sector usage when learned sector boundaries exist
 - braking and cornering peak markers
-- lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
-- session-level coaching insights derived from best-vs-slower lap analysis
+- lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, chart markers, and structured telemetry insights
+- session-level coaching insights with segment-based time-loss attribution and a theoretical best lap
 - persistent session storage as JSON
 - session browser metadata for sample count and JSON file size
 - processing-versioned session reanalysis from stored raw sensor data
@@ -198,11 +198,13 @@ The comparison screen shows:
 - Lap A and Lap B overlay for longitudinal acceleration
 - Lap A and Lap B overlay for lateral acceleration
 - time loss graph for `Lap A - Lap B`
+- highlighted markers for the biggest session-level loss segments
 - sector-by-sector delta lines
 - ideal lap total time and best sector lines
+- theoretical best lap for the loaded session
 - braking markers
 - cornering markers
-- short heuristic driving insights
+- prioritized telemetry coaching insights and a top time-loss map
 
 Peak detection robustness:
 
@@ -368,7 +370,7 @@ For debug builds, the app seeds three simulated sessions once on app start:
 - persistent JSON save through `SessionStorageManager`
 - approximately 10 minutes, roughly 12,000 samples, and 23-25 laps per session
 - per-lap variability in braking timing, braking intensity, cornering load, exit acceleration, and occasional imperfect laps
-- session-level coaching insights are generated after full processing and shown on the comparison screen
+- segment-based coaching insights, top time-loss sectors, and a theoretical best lap are generated after full processing
 
 This is intended for UI and chart validation when no real kart session has been recorded yet.
 

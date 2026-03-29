@@ -9,7 +9,6 @@ import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.Track
 import com.kartingtracker.data.TrackProfile
-import com.kartingtracker.domain.DrivingInsightsGenerator
 import com.kartingtracker.domain.IdealLap
 import com.kartingtracker.domain.IdealLapCalculator
 import com.kartingtracker.domain.LapNormalizer
@@ -142,7 +141,9 @@ class SessionViewModel(
     ) { laps, idealLap, currentSession, selectedA, selectedB ->
         if (laps.isEmpty()) {
             return@combine ComparisonUiState(
-                sessionInsights = currentSession?.insights.orEmpty()
+                insights = currentSession?.insights.orEmpty(),
+                theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
+                topTimeLossLines = createTopTimeLossLines(currentSession)
             )
         }
 
@@ -191,11 +192,13 @@ class SessionViewModel(
             lateralCornerMarkersA = normalizedA.corneringMarkerEntries,
             lateralCornerMarkersB = normalizedB.corneringMarkerEntries,
             timeLossEntries = timeLossEntries,
+            segmentMarkerEntries = createSegmentMarkerEntries(currentSession),
             sectorComparisonLines = createSectorComparisonLines(lapA, lapB),
             idealLapLabel = idealLap?.let { ideal -> "Ideal Lap: ${formatLapTime(ideal.totalTimeMs)}" }.orEmpty(),
+            theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
             idealLapSectorLines = createIdealLapSectorLines(idealLap),
-            insights = DrivingInsightsGenerator.generate(normalizedA, normalizedB),
-            sessionInsights = currentSession?.insights.orEmpty(),
+            insights = currentSession?.insights.orEmpty(),
+            topTimeLossLines = createTopTimeLossLines(currentSession),
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
                     append("Outlap selected. Comparison may be less stable. ")
@@ -215,6 +218,13 @@ class SessionViewModel(
                 append("Cornering peaks: ${lapA.corneringPeakIndices.size} vs ${lapB.corneringPeakIndices.size}. ")
                 idealLap?.let { ideal ->
                     append("Ideal lap reference: ${formatLapTime(ideal.totalTimeMs)}. ")
+                }
+                currentSession?.theoreticalBestLapTimeMs?.let { theoreticalBestLapTimeMs ->
+                    val bestLapTimeMs = currentSession.laps.minOfOrNull { lap -> lap.lapTimeMs } ?: return@let
+                    val gapMs = bestLapTimeMs - theoreticalBestLapTimeMs
+                    if (gapMs > 0L) {
+                        append("Theoretical best is ${formatLapTime(gapMs)} quicker than the current best lap. ")
+                    }
                 }
                 timeLossEntries.lastOrNull()?.let { finalDelta ->
                     val absoluteDelta = abs(finalDelta.y)
@@ -338,6 +348,30 @@ class SessionViewModel(
         return idealLap?.sectorBestTimes?.mapIndexed { index, sectorTimeMs ->
             "Best S${index + 1}: ${formatLapTime(sectorTimeMs)}"
         }.orEmpty()
+    }
+
+    private fun createTheoreticalBestLabel(session: Session?): String {
+        val theoreticalBestLapTimeMs = session?.theoreticalBestLapTimeMs ?: return ""
+        val currentBestLapTimeMs = session.laps.minOfOrNull { lap -> lap.lapTimeMs } ?: return ""
+        return buildString {
+            append("Theoretical best: ")
+            append(formatLapTime(theoreticalBestLapTimeMs))
+            append(" (current best: ")
+            append(formatLapTime(currentBestLapTimeMs))
+            append(")")
+        }
+    }
+
+    private fun createTopTimeLossLines(session: Session?): List<String> {
+        return session?.topTimeLossSegments.orEmpty().map { segment ->
+            "Sector ${segment.segmentIndex}: ${segment.cause} -> +${"%.2f".format(segment.timeLoss)}s"
+        }
+    }
+
+    private fun createSegmentMarkerEntries(session: Session?): List<Entry> {
+        return session?.segmentMarkers.orEmpty().map { marker ->
+            Entry(marker.positionPercent, marker.severity)
+        }
     }
 
     private fun resetLapSelection(session: Session) {

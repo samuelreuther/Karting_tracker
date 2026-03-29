@@ -1,292 +1,380 @@
 package com.kartingtracker.domain
 
 import com.kartingtracker.data.Lap
-import com.kartingtracker.data.SensorSample
+import com.kartingtracker.data.LapPhase
+import com.kartingtracker.data.SegmentMarker
 import com.kartingtracker.data.Session
+import com.kartingtracker.data.TimeLossSegment
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
+data class SessionTelemetryAnalysis(
+    val insights: List<String> = emptyList(),
+    val theoreticalBestLapTimeMs: Long? = null,
+    val topTimeLossSegments: List<TimeLossSegment> = emptyList(),
+    val segmentMarkers: List<SegmentMarker> = emptyList()
+)
+
 class DrivingCoachAnalyzer {
+    fun analyzeSession(session: Session): SessionTelemetryAnalysis {
+        val referenceLap = selectReferenceLap(session.laps) ?: return SessionTelemetryAnalysis()
+        val validLaps = session.laps.filter(::isPrimaryValidLap)
+        if (validLaps.size < minimumComparableLaps) {
+            return SessionTelemetryAnalysis()
+        }
+
+        val segmentation = resolveSegmentation(referenceLap)
+        val referenceAnalysis = analyzeLap(referenceLap, segmentation)
+        val comparableAnalyses = validLaps
+            .filterNot { lap -> lap.id == referenceLap.id }
+            .map { lap -> analyzeLap(lap, segmentation) }
+
+        if (comparableAnalyses.isEmpty()) {
+            return SessionTelemetryAnalysis()
+        }
+
+        val segmentComparisons = segmentation.segments.map { segment ->
+            aggregateSegmentComparison(segment, referenceAnalysis, comparableAnalyses)
+        }
+        val topSegments = segmentComparisons
+            .filter { comparison -> comparison.averageTimeLossMs > minimumReportableTimeLossMs }
+            .sortedByDescending { comparison -> abs(comparison.averageTimeLossMs) }
+            .take(maximumTrackedSegments)
+
+        val theoreticalBestLapTimeMs = computeTheoreticalBestLapTime(validLaps, segmentation)
+        val consistencyInsight = buildConsistencyInsight(validLaps, segmentation)
+        val generalImprovementInsight = buildGeneralImprovementInsight(theoreticalBestLapTimeMs, referenceLap.lapTimeMs)
+
+        val insights = buildList {
+            topSegments.forEach { comparison ->
+                add(buildSegmentInsight(comparison))
+            }
+            consistencyInsight?.let(::add)
+            generalImprovementInsight?.let(::add)
+        }.take(maximumInsightCount)
+
+        return SessionTelemetryAnalysis(
+            insights = insights,
+            theoreticalBestLapTimeMs = theoreticalBestLapTimeMs,
+            topTimeLossSegments = topSegments.map { comparison ->
+                TimeLossSegment(
+                    segmentIndex = comparison.segment.displayIndex,
+                    timeLoss = comparison.averageTimeLossMs / 1000f,
+                    cause = comparison.cause.title
+                )
+            },
+            segmentMarkers = buildSegmentMarkers(topSegments)
+        )
+    }
+
     fun generateSessionInsights(session: Session): List<String> {
-        val candidateLaps = session.laps.filter { lap ->
-            lap.isNormalPhase &&
-                lap.confidenceScore >= minimumConfidence &&
-                lap.samples.size >= minimumSamplesPerLap
+        return analyzeSession(session).insights
+    }
+
+    private fun selectReferenceLap(laps: List<Lap>): Lap? {
+        val preferredLap = laps
+            .filter(::isPrimaryValidLap)
+            .minByOrNull { lap -> lap.lapTimeMs }
+        return preferredLap ?: laps.minByOrNull { lap -> lap.lapTimeMs }
+    }
+
+    private fun isPrimaryValidLap(lap: Lap): Boolean {
+        return lap.phase == LapPhase.NORMAL &&
+            !lap.isDisturbed &&
+            lap.confidenceScore >= minimumReferenceConfidence
+    }
+
+    private fun resolveSegmentation(referenceLap: Lap): Segmentation {
+        val sectorBoundaries = referenceLap.sectorBoundaries
+            .filter { boundary -> boundary in 1..99 }
+            .sorted()
+
+        return if (sectorBoundaries.isNotEmpty()) {
+            val segments = mutableListOf<SegmentDefinition>()
+            var startIndex = 0
+            sectorBoundaries.forEachIndexed { index, boundary ->
+                val endIndex = normalizedIndex(boundary.toFloat())
+                segments += SegmentDefinition(
+                    index = index,
+                    displayIndex = index + 1,
+                    startIndex = startIndex,
+                    endIndex = endIndex.coerceAtLeast(startIndex + 1)
+                )
+                startIndex = endIndex.coerceAtLeast(startIndex + 1)
+            }
+            segments += SegmentDefinition(
+                index = segments.size,
+                displayIndex = segments.size + 1,
+                startIndex = startIndex,
+                endIndex = LapNormalizer.DEFAULT_POINT_COUNT - 1
+            )
+            Segmentation(segments = segments, usesSectorTimes = referenceLap.sectorTimesMs.size == segments.size)
+        } else {
+            val fallbackSegments = listOf(0, 25, 50, 75, 100)
+            val segments = fallbackSegments.zipWithNext().mapIndexed { index, (startPercent, endPercent) ->
+                SegmentDefinition(
+                    index = index,
+                    displayIndex = index + 1,
+                    startIndex = normalizedIndex(startPercent.toFloat()),
+                    endIndex = normalizedIndex(endPercent.toFloat()).coerceAtLeast(normalizedIndex(startPercent.toFloat()) + 1)
+                )
+            }
+            Segmentation(segments = segments, usesSectorTimes = false)
         }
-        if (candidateLaps.size < 2) {
+    }
+
+    private fun analyzeLap(lap: Lap, segmentation: Segmentation): AnalyzedLap {
+        val totalAcceleration = LapNormalizer.normalizeSignal(lap, LapNormalizer.DEFAULT_POINT_COUNT) { sample ->
+            sample.totalAcceleration
+        }
+        val yawRateAbs = LapNormalizer.normalizeSignal(lap, LapNormalizer.DEFAULT_POINT_COUNT) { sample ->
+            sample.yawRateAbs
+        }
+        val velocityProxy = deriveVelocityProxy(totalAcceleration)
+        val normalizedBrakingPeaks = normalizePeakIndices(lap.brakingPeakIndices, lap.samples.size)
+
+        val segmentMetrics = segmentation.segments.associateWith { segment ->
+            val totalSlice = slice(totalAcceleration, segment.startIndex, segment.endIndex)
+            val yawSlice = slice(yawRateAbs, segment.startIndex, segment.endIndex)
+            val velocitySlice = slice(velocityProxy, segment.startIndex, segment.endIndex)
+            val entryWindow = slice(velocityProxy, (segment.startIndex - contextWindow).coerceAtLeast(0), segment.startIndex)
+            val exitWindow = slice(
+                velocityProxy,
+                segment.endIndex,
+                (segment.endIndex + contextWindow).coerceAtMost(velocityProxy.lastIndex)
+            )
+
+            val brakingPointPercent = detectBrakingPointPercent(
+                totalAcceleration = totalAcceleration,
+                normalizedBrakingPeaks = normalizedBrakingPeaks,
+                segment = segment
+            )
+            val segmentTimeMs = computeSegmentTimeMs(lap, segmentation, segment)
+
+            SegmentMetrics(
+                segmentTimeMs = segmentTimeMs,
+                entrySpeed = averageOrZero(entryWindow),
+                minSpeed = velocitySlice.minOrNull() ?: 0f,
+                exitSpeed = averageOrZero(exitWindow),
+                brakingPointPercent = brakingPointPercent,
+                brakingIntensity = totalSlice.minOrNull() ?: 0f,
+                yawMean = averageOrZero(yawSlice),
+                yawStdDev = standardDeviation(yawSlice),
+                yawPeak = yawSlice.maxOrNull() ?: 0f
+            )
+        }
+
+        return AnalyzedLap(
+            lap = lap,
+            totalAcceleration = totalAcceleration,
+            yawRateAbs = yawRateAbs,
+            velocityProxy = velocityProxy,
+            segmentMetrics = segmentMetrics
+        )
+    }
+
+    private fun deriveVelocityProxy(totalAcceleration: List<Float>): List<Float> {
+        if (totalAcceleration.isEmpty()) {
             return emptyList()
         }
-
-        val orderedLaps = candidateLaps.sortedBy { lap -> lap.lapTimeMs }
-        val groupSize = (orderedLaps.size / 3).coerceIn(1, 3)
-        val bestLaps = orderedLaps.take(groupSize)
-        val slowerLaps = orderedLaps.takeLast(groupSize).filterNot { lap -> bestLaps.any { it.id == lap.id } }
-            .ifEmpty { orderedLaps.drop(groupSize).takeLast(groupSize).ifEmpty { orderedLaps.takeLast(groupSize) } }
-
-        if (slowerLaps.isEmpty()) {
-            return emptyList()
+        val velocity = MutableList(totalAcceleration.size) { minimumVelocityProxy }
+        velocity[0] = baseVelocityProxy
+        for (index in 1 until totalAcceleration.size) {
+            val positiveContribution = maxOf(0f, totalAcceleration[index] - totalAcceleration[index - 1]) * positiveAccelerationGain
+            val brakingPenalty = maxOf(0f, totalAcceleration[index - 1] - totalAcceleration[index]) * brakingPenaltyGain
+            velocity[index] = (velocity[index - 1] + positiveContribution - brakingPenalty)
+                .coerceIn(minimumVelocityProxy, maximumVelocityProxy)
         }
-
-        val insights = mutableListOf<InsightCandidate>()
-
-        buildEarlierBrakingInsight(bestLaps, slowerLaps)?.let(insights::add)
-        buildBrakingConsistencyInsight(candidateLaps, bestLaps, slowerLaps)?.let(insights::add)
-        buildCorneringStabilityInsight(bestLaps, slowerLaps)?.let(insights::add)
-        buildAccelerationInsight(bestLaps, slowerLaps)?.let(insights::add)
-        buildSectorTimeInsight(bestLaps, slowerLaps)?.let(insights::add)
-
-        return insights
-            .sortedByDescending { candidate -> candidate.priority }
-            .map { candidate -> candidate.message }
-            .distinct()
-            .take(maximumInsightCount)
+        return velocity
     }
 
-    private fun buildEarlierBrakingInsight(bestLaps: List<Lap>, slowerLaps: List<Lap>): InsightCandidate? {
-        val zoneCount = minOf(
-            bestLaps.minOfOrNull { lap -> lap.brakingPeakIndices.size } ?: 0,
-            slowerLaps.minOfOrNull { lap -> lap.brakingPeakIndices.size } ?: 0
-        )
-        if (zoneCount <= 0) {
-            return null
-        }
-
-        return (0 until zoneCount).mapNotNull { zoneIndex ->
-            val bestPhase = averagePeakPhase(bestLaps, zoneIndex, PeakType.BRAKING)
-            val slowPhase = averagePeakPhase(slowerLaps, zoneIndex, PeakType.BRAKING)
-            val phaseDelta = slowPhase - bestPhase
-            val exitGain = averageExitAcceleration(bestLaps, zoneIndex) - averageExitAcceleration(slowerLaps, zoneIndex)
-            val sectorDeltaMs = estimateSectorDelta(bestLaps, slowerLaps, bestPhase)
-            if (phaseDelta > minimumEarlierBrakeDelta && exitGain > minimumExitGain && sectorDeltaMs > minimumSectorGainMs) {
-                val gainSeconds = sectorDeltaMs / 1000f
-                InsightCandidate(
-                    priority = 1.0f + gainSeconds,
-                    message = "Earlier braking before Turn ${zoneIndex + 1} improved exit speed (+${"%.1f".format(gainSeconds)}s)"
-                )
-            } else {
-                null
-            }
-        }.maxByOrNull { candidate -> candidate.priority }
-    }
-
-    private fun buildBrakingConsistencyInsight(
-        candidateLaps: List<Lap>,
-        bestLaps: List<Lap>,
-        slowerLaps: List<Lap>
-    ): InsightCandidate? {
-        val zoneCount = candidateLaps.minOfOrNull { lap -> lap.brakingPeakIndices.size } ?: 0
-        if (zoneCount <= 0) {
-            return null
-        }
-
-        return (0 until zoneCount).mapNotNull { zoneIndex ->
-            val globalConsistency = peakPhaseStdDev(candidateLaps, zoneIndex, PeakType.BRAKING)
-            val bestConsistency = peakPhaseStdDev(bestLaps, zoneIndex, PeakType.BRAKING)
-            val slowConsistency = peakPhaseStdDev(slowerLaps, zoneIndex, PeakType.BRAKING)
-            val representativePhase = averagePeakPhase(candidateLaps, zoneIndex, PeakType.BRAKING)
-            val sectorDeltaMs = estimateSectorDelta(bestLaps, slowerLaps, representativePhase)
-
-            if (globalConsistency > minimumInconsistentBrakeStdDev &&
-                slowConsistency - bestConsistency > minimumConsistencyImprovement &&
-                sectorDeltaMs > minimumSectorGainMs
-            ) {
-                val sectorNumber = resolveSectorNumber(candidateLaps.first(), representativePhase)
-                InsightCandidate(
-                    priority = 0.95f + (sectorDeltaMs / 1000f),
-                    message = "Inconsistent braking in Sector $sectorNumber is causing time loss."
-                )
-            } else {
-                null
-            }
-        }.maxByOrNull { candidate -> candidate.priority }
-    }
-
-    private fun buildCorneringStabilityInsight(bestLaps: List<Lap>, slowerLaps: List<Lap>): InsightCandidate? {
-        val zoneCount = minOf(
-            bestLaps.minOfOrNull { lap -> lap.corneringPeakIndices.size } ?: 0,
-            slowerLaps.minOfOrNull { lap -> lap.corneringPeakIndices.size } ?: 0
-        )
-        if (zoneCount <= 0) {
-            return null
-        }
-
-        return (0 until zoneCount).mapNotNull { zoneIndex ->
-            val stabilityGain = averageCornerStability(slowerLaps, zoneIndex) - averageCornerStability(bestLaps, zoneIndex)
-            val peakGain = averagePeakMagnitude(bestLaps, zoneIndex, PeakType.CORNERING) -
-                averagePeakMagnitude(slowerLaps, zoneIndex, PeakType.CORNERING)
-            if (stabilityGain > minimumCornerStabilityGain && peakGain > minimumCornerPeakGain) {
-                InsightCandidate(
-                    priority = 0.9f + stabilityGain + peakGain,
-                    message = "Higher cornering stability in faster laps carried more speed through Turn ${zoneIndex + 1}."
-                )
-            } else {
-                null
-            }
-        }.maxByOrNull { candidate -> candidate.priority }
-    }
-
-    private fun buildAccelerationInsight(bestLaps: List<Lap>, slowerLaps: List<Lap>): InsightCandidate? {
-        val zoneCount = minOf(
-            bestLaps.minOfOrNull { lap -> lap.corneringPeakIndices.size } ?: 0,
-            slowerLaps.minOfOrNull { lap -> lap.corneringPeakIndices.size } ?: 0
-        )
-        if (zoneCount <= 0) {
-            return null
-        }
-
-        return (0 until zoneCount).mapNotNull { zoneIndex ->
-            val smoothnessGain = averageAccelerationSmoothness(slowerLaps, zoneIndex) -
-                averageAccelerationSmoothness(bestLaps, zoneIndex)
-            val accelerationGain = averageExitAcceleration(bestLaps, zoneIndex) -
-                averageExitAcceleration(slowerLaps, zoneIndex)
-            if (smoothnessGain > minimumSmoothnessGain && accelerationGain > minimumExitGain) {
-                InsightCandidate(
-                    priority = 0.85f + smoothnessGain + accelerationGain,
-                    message = "Smoother acceleration after Turn ${zoneIndex + 1} reduced wheelspin and improved the run onto the next straight."
-                )
-            } else {
-                null
-            }
-        }.maxByOrNull { candidate -> candidate.priority }
-    }
-
-    private fun buildSectorTimeInsight(bestLaps: List<Lap>, slowerLaps: List<Lap>): InsightCandidate? {
-        val sectorCount = minOf(
-            bestLaps.minOfOrNull { lap -> lap.sectorTimesMs.size } ?: 0,
-            slowerLaps.minOfOrNull { lap -> lap.sectorTimesMs.size } ?: 0
-        )
-        if (sectorCount <= 0) {
-            return null
-        }
-
-        return (0 until sectorCount).mapNotNull { sectorIndex ->
-            val bestAverage = bestLaps.map { lap -> lap.sectorTimesMs[sectorIndex] }.average().toFloat()
-            val slowAverage = slowerLaps.map { lap -> lap.sectorTimesMs[sectorIndex] }.average().toFloat()
-            val deltaMs = slowAverage - bestAverage
-            if (deltaMs > minimumSectorGainMs) {
-                InsightCandidate(
-                    priority = 0.8f + (deltaMs / 1000f),
-                    message = "Sector ${sectorIndex + 1} is the main time-loss area (${formatDelta(deltaMs)} slower than your best laps)."
-                )
-            } else {
-                null
-            }
-        }.maxByOrNull { candidate -> candidate.priority }
-    }
-
-    private fun averagePeakPhase(laps: List<Lap>, zoneIndex: Int, peakType: PeakType): Float {
-        val phases = laps.mapNotNull { lap ->
-            val peakIndex = peakIndices(lap, peakType).getOrNull(zoneIndex) ?: return@mapNotNull null
-            normalizedPhase(lap.samples.size, peakIndex)
-        }
-        return phases.average().toFloat()
-    }
-
-    private fun averagePeakMagnitude(laps: List<Lap>, zoneIndex: Int, peakType: PeakType): Float {
-        val values = laps.mapNotNull { lap ->
-            val peakIndex = peakIndices(lap, peakType).getOrNull(zoneIndex) ?: return@mapNotNull null
-            val sample = lap.samples.getOrNull(peakIndex) ?: return@mapNotNull null
-            when (peakType) {
-                PeakType.BRAKING -> -sample.totalAcceleration
-                PeakType.CORNERING -> sample.yawRateAbs
-            }
-        }
-        return values.average().toFloat()
-    }
-
-    private fun averageExitAcceleration(laps: List<Lap>, zoneIndex: Int): Float {
-        val values = laps.mapNotNull { lap ->
-            val anchorIndex = lap.brakingPeakIndices.getOrNull(zoneIndex)
-                ?: lap.corneringPeakIndices.getOrNull(zoneIndex)
-                ?: return@mapNotNull null
-            windowSamples(lap.samples, anchorIndex + 8, anchorIndex + 30)
-                .map { sample -> sample.longitudinalAccel }
-                .average()
-                .takeIf { it.isFinite() }
-                ?.toFloat()
-        }
-        return values.average().toFloat()
-    }
-
-    private fun averageCornerStability(laps: List<Lap>, zoneIndex: Int): Float {
-        val values = laps.mapNotNull { lap ->
-            val peakIndex = lap.corneringPeakIndices.getOrNull(zoneIndex) ?: return@mapNotNull null
-            val yawWindow = windowSamples(lap.samples, peakIndex - 10, peakIndex + 10).map { sample -> sample.yawRateAbs }
-            if (yawWindow.size < 3) {
-                null
-            } else {
-                (1f / (standardDeviation(yawWindow) + 0.05f))
-            }
-        }
-        return values.average().toFloat()
-    }
-
-    private fun averageAccelerationSmoothness(laps: List<Lap>, zoneIndex: Int): Float {
-        val values = laps.mapNotNull { lap ->
-            val peakIndex = lap.corneringPeakIndices.getOrNull(zoneIndex)
-                ?: lap.brakingPeakIndices.getOrNull(zoneIndex)
-                ?: return@mapNotNull null
-            val window = windowSamples(lap.samples, peakIndex + 5, peakIndex + 35).map { sample -> sample.longitudinalAccel }
-            if (window.size < 3) {
-                null
-            } else {
-                (1f / (averageJerk(window) + 0.05f))
-            }
-        }
-        return values.average().toFloat()
-    }
-
-    private fun peakPhaseStdDev(laps: List<Lap>, zoneIndex: Int, peakType: PeakType): Float {
-        val phases = laps.mapNotNull { lap ->
-            val peakIndex = peakIndices(lap, peakType).getOrNull(zoneIndex) ?: return@mapNotNull null
-            normalizedPhase(lap.samples.size, peakIndex)
-        }
-        return standardDeviation(phases)
-    }
-
-    private fun peakIndices(lap: Lap, peakType: PeakType): List<Int> {
-        return when (peakType) {
-            PeakType.BRAKING -> lap.brakingPeakIndices
-            PeakType.CORNERING -> lap.corneringPeakIndices
-        }
-    }
-
-    private fun estimateSectorDelta(bestLaps: List<Lap>, slowerLaps: List<Lap>, normalizedPhase: Float): Float {
-        val referenceLap = bestLaps.firstOrNull() ?: return 0f
-        val sectorIndex = resolveSectorIndex(referenceLap, normalizedPhase)
-        val comparableBest = bestLaps.filter { lap -> lap.sectorTimesMs.indices.contains(sectorIndex) }
-        val comparableSlow = slowerLaps.filter { lap -> lap.sectorTimesMs.indices.contains(sectorIndex) }
-        if (comparableBest.isEmpty() || comparableSlow.isEmpty()) {
-            return 0f
-        }
-        val bestAverage = comparableBest.map { lap -> lap.sectorTimesMs[sectorIndex] }.average().toFloat()
-        val slowAverage = comparableSlow.map { lap -> lap.sectorTimesMs[sectorIndex] }.average().toFloat()
-        return slowAverage - bestAverage
-    }
-
-    private fun resolveSectorNumber(lap: Lap, normalizedPhase: Float): Int {
-        return resolveSectorIndex(lap, normalizedPhase) + 1
-    }
-
-    private fun resolveSectorIndex(lap: Lap, normalizedPhase: Float): Int {
-        val boundaries = lap.sectorBoundaries.sorted()
-        return boundaries.count { boundary -> normalizedPhase >= boundary / 100f }
-    }
-
-    private fun normalizedPhase(sampleCount: Int, peakIndex: Int): Float {
+    private fun normalizePeakIndices(peakIndices: List<Int>, sampleCount: Int): List<Int> {
         if (sampleCount <= 1) {
-            return 0f
-        }
-        return peakIndex.toFloat() / (sampleCount - 1).toFloat()
-    }
-
-    private fun windowSamples(samples: List<SensorSample>, startInclusive: Int, endInclusive: Int): List<SensorSample> {
-        if (samples.isEmpty()) {
             return emptyList()
         }
-        val startIndex = startInclusive.coerceIn(0, samples.lastIndex)
-        val endIndex = endInclusive.coerceIn(startIndex, samples.lastIndex)
-        return samples.subList(startIndex, endIndex + 1)
+        return peakIndices.map { peakIndex ->
+            ((peakIndex.toFloat() / (sampleCount - 1).toFloat()) * (LapNormalizer.DEFAULT_POINT_COUNT - 1))
+                .roundToInt()
+                .coerceIn(0, LapNormalizer.DEFAULT_POINT_COUNT - 1)
+        }
+    }
+
+    private fun computeSegmentTimeMs(lap: Lap, segmentation: Segmentation, segment: SegmentDefinition): Long {
+        return if (segmentation.usesSectorTimes && lap.sectorTimesMs.size == segmentation.segments.size) {
+            lap.sectorTimesMs[segment.index]
+        } else {
+            val fraction = (segment.endIndex - segment.startIndex).toFloat() / (LapNormalizer.DEFAULT_POINT_COUNT - 1).toFloat()
+            (lap.lapTimeMs * fraction).toLong().coerceAtLeast(1L)
+        }
+    }
+
+    private fun detectBrakingPointPercent(
+        totalAcceleration: List<Float>,
+        normalizedBrakingPeaks: List<Int>,
+        segment: SegmentDefinition
+    ): Float {
+        for (index in (segment.startIndex + 1)..segment.endIndex) {
+            val drop = totalAcceleration[index] - totalAcceleration[index - 1]
+            if (drop <= brakingDropThreshold) {
+                return indexToPercent(index)
+            }
+        }
+
+        val brakingPeak = normalizedBrakingPeaks.firstOrNull { peakIndex ->
+            peakIndex in segment.startIndex..segment.endIndex
+        }
+        return brakingPeak?.let(::indexToPercent) ?: indexToPercent(segment.startIndex)
+    }
+
+    private fun aggregateSegmentComparison(
+        segment: SegmentDefinition,
+        referenceAnalysis: AnalyzedLap,
+        comparableAnalyses: List<AnalyzedLap>
+    ): SegmentComparison {
+        val referenceMetrics = referenceAnalysis.segmentMetrics.getValue(segment)
+        val deltas = comparableAnalyses.map { analyzedLap ->
+            val metrics = analyzedLap.segmentMetrics.getValue(segment)
+            SegmentDelta(
+                entrySpeed = metrics.entrySpeed - referenceMetrics.entrySpeed,
+                minSpeed = metrics.minSpeed - referenceMetrics.minSpeed,
+                exitSpeed = metrics.exitSpeed - referenceMetrics.exitSpeed,
+                brakingPointPercent = metrics.brakingPointPercent - referenceMetrics.brakingPointPercent,
+                brakingIntensity = metrics.brakingIntensity - referenceMetrics.brakingIntensity,
+                yawStdDev = metrics.yawStdDev - referenceMetrics.yawStdDev,
+                segmentTimeMs = metrics.segmentTimeMs - referenceMetrics.segmentTimeMs
+            )
+        }
+
+        val averageDelta = SegmentDelta(
+            entrySpeed = deltas.map { delta -> delta.entrySpeed }.average().toFloat(),
+            minSpeed = deltas.map { delta -> delta.minSpeed }.average().toFloat(),
+            exitSpeed = deltas.map { delta -> delta.exitSpeed }.average().toFloat(),
+            brakingPointPercent = deltas.map { delta -> delta.brakingPointPercent }.average().toFloat(),
+            brakingIntensity = deltas.map { delta -> delta.brakingIntensity }.average().toFloat(),
+            yawStdDev = deltas.map { delta -> delta.yawStdDev }.average().toFloat(),
+            segmentTimeMs = deltas.map { delta -> delta.segmentTimeMs.toDouble() }.average().toLong()
+        )
+
+        return SegmentComparison(
+            segment = segment,
+            averageTimeLossMs = averageDelta.segmentTimeMs.coerceAtLeast(0L),
+            averageDelta = averageDelta,
+            cause = classifyCause(averageDelta)
+        )
+    }
+
+    private fun classifyCause(averageDelta: SegmentDelta): TimeLossCause {
+        return when {
+            averageDelta.brakingPointPercent <= -minimumEarlyBrakingPercent &&
+                averageDelta.entrySpeed <= -minimumEntrySpeedDelta -> TimeLossCause.BRAKING_TOO_EARLY
+
+            averageDelta.minSpeed <= -minimumMidCornerSpeedDelta -> TimeLossCause.OVER_SLOWING
+
+            averageDelta.exitSpeed <= -minimumExitSpeedDelta -> TimeLossCause.POOR_EXIT_SPEED
+
+            averageDelta.yawStdDev >= minimumYawStdDevDelta -> TimeLossCause.UNSTABLE_CORNERING
+
+            averageDelta.brakingIntensity >= minimumBrakingIntensityDelta -> TimeLossCause.INSUFFICIENT_BRAKING_FORCE
+
+            else -> TimeLossCause.GENERAL_TIME_LOSS
+        }
+    }
+
+    private fun buildSegmentInsight(comparison: SegmentComparison): String {
+        val timeLoss = comparison.averageTimeLossMs / 1000f
+        val detail = when (comparison.cause) {
+            TimeLossCause.BRAKING_TOO_EARLY -> {
+                val earlierPercent = abs(comparison.averageDelta.brakingPointPercent).roundToInt()
+                "Braking about ${earlierPercent}% earlier reduces entry speed"
+            }
+
+            TimeLossCause.OVER_SLOWING -> "Over-slowing in the corner drops minimum speed"
+            TimeLossCause.POOR_EXIT_SPEED -> {
+                val exitLossPercent = percentLoss(comparison.averageDelta.exitSpeed)
+                "Lower exit speed (-${exitLossPercent}%) hurts the following straight"
+            }
+
+            TimeLossCause.UNSTABLE_CORNERING -> "High yaw variation points to unstable cornering"
+            TimeLossCause.INSUFFICIENT_BRAKING_FORCE -> "Weak braking keeps too much speed before rotation"
+            TimeLossCause.GENERAL_TIME_LOSS -> "This segment is losing time relative to the reference lap"
+        }
+        return "Sector ${comparison.segment.displayIndex}: $detail and costs +${"%.2f".format(timeLoss)}s. " +
+            "Recommendation: ${comparison.cause.recommendation}"
+    }
+
+    private fun buildConsistencyInsight(validLaps: List<Lap>, segmentation: Segmentation): String? {
+        val analyzedLaps = validLaps.map { lap -> analyzeLap(lap, segmentation) }
+        val averageBrakingPointByLap = analyzedLaps.map { analyzedLap ->
+            analyzedLap.segmentMetrics.values.map { metrics -> metrics.brakingPointPercent }.average().toFloat()
+        }
+        val averageMinSpeedByLap = analyzedLaps.map { analyzedLap ->
+            analyzedLap.segmentMetrics.values.map { metrics -> metrics.minSpeed }.average().toFloat()
+        }
+        val lapTimeStdDev = standardDeviation(validLaps.map { lap -> lap.lapTimeMs.toFloat() })
+        val brakingPointStdDev = standardDeviation(averageBrakingPointByLap)
+        val minSpeedStdDev = standardDeviation(averageMinSpeedByLap)
+
+        return if (
+            lapTimeStdDev >= highLapTimeVarianceMs &&
+            (brakingPointStdDev >= highBrakingPointVariancePercent || minSpeedStdDev >= highMinSpeedVariance)
+        ) {
+            "Inconsistent braking points are causing unstable lap times."
+        } else {
+            null
+        }
+    }
+
+    private fun buildGeneralImprovementInsight(theoreticalBestLapTimeMs: Long?, currentBestLapTimeMs: Long): String? {
+        val theoretical = theoreticalBestLapTimeMs ?: return null
+        val gainMs = currentBestLapTimeMs - theoretical
+        if (gainMs < minimumGeneralImprovementGainMs) {
+            return null
+        }
+        return "Theoretical best lap is ${"%.2f".format(gainMs / 1000f)}s quicker if you combine the strongest segments."
+    }
+
+    private fun computeTheoreticalBestLapTime(validLaps: List<Lap>, segmentation: Segmentation): Long? {
+        if (validLaps.size < minimumComparableLaps) {
+            return null
+        }
+        val analyzedLaps = validLaps.map { lap -> analyzeLap(lap, segmentation) }
+        return segmentation.segments.sumOf { segment ->
+            analyzedLaps.minOf { analyzedLap ->
+                analyzedLap.segmentMetrics.getValue(segment).segmentTimeMs
+            }
+        }.takeIf { total -> total > 0L }
+    }
+
+    private fun buildSegmentMarkers(topSegments: List<SegmentComparison>): List<SegmentMarker> {
+        if (topSegments.isEmpty()) {
+            return emptyList()
+        }
+        val maxLoss = topSegments.maxOf { comparison -> comparison.averageTimeLossMs }.coerceAtLeast(1L)
+        return topSegments.map { comparison ->
+            SegmentMarker(
+                positionPercent = comparison.segment.positionPercent,
+                severity = (comparison.averageTimeLossMs.toFloat() / maxLoss.toFloat()).coerceIn(0.2f, 1f),
+                label = comparison.cause.shortLabel
+            )
+        }
+    }
+
+    private fun percentLoss(delta: Float): Int {
+        return abs(delta / baseVelocityProxy * 100f).roundToInt().coerceAtLeast(1)
+    }
+
+    private fun slice(values: List<Float>, startInclusive: Int, endInclusive: Int): List<Float> {
+        if (values.isEmpty()) {
+            return emptyList()
+        }
+        val start = startInclusive.coerceIn(0, values.lastIndex)
+        val end = endInclusive.coerceIn(start, values.lastIndex)
+        return values.subList(start, end + 1)
+    }
+
+    private fun averageOrZero(values: List<Float>): Float {
+        return if (values.isEmpty()) 0f else values.average().toFloat()
     }
 
     private fun standardDeviation(values: List<Float>): Float {
@@ -300,40 +388,123 @@ class DrivingCoachAnalyzer {
         return sqrt(variance).toFloat()
     }
 
-    private fun averageJerk(values: List<Float>): Float {
-        if (values.size < 2) {
-            return 0f
-        }
-        val deltas = values.zipWithNext { previous, next -> abs(next - previous) }
-        return deltas.average().toFloat()
+    private fun normalizedIndex(percent: Float): Int {
+        return ((percent / 100f) * (LapNormalizer.DEFAULT_POINT_COUNT - 1))
+            .roundToInt()
+            .coerceIn(0, LapNormalizer.DEFAULT_POINT_COUNT - 1)
     }
 
-    private fun formatDelta(deltaMs: Float): String {
-        val seconds = deltaMs / 1000f
-        return "${"%.1f".format(seconds)}s"
+    private fun indexToPercent(index: Int): Float {
+        return (index.toFloat() / (LapNormalizer.DEFAULT_POINT_COUNT - 1).toFloat()) * 100f
     }
 
-    private data class InsightCandidate(
-        val priority: Float,
-        val message: String
+    private data class Segmentation(
+        val segments: List<SegmentDefinition>,
+        val usesSectorTimes: Boolean
     )
 
-    private enum class PeakType {
-        BRAKING,
-        CORNERING
+    private data class SegmentDefinition(
+        val index: Int,
+        val displayIndex: Int,
+        val startIndex: Int,
+        val endIndex: Int
+    ) {
+        val positionPercent: Float
+            get() = ((startIndex + endIndex) / 2f / (LapNormalizer.DEFAULT_POINT_COUNT - 1).toFloat()) * 100f
+    }
+
+    private data class AnalyzedLap(
+        val lap: Lap,
+        val totalAcceleration: List<Float>,
+        val yawRateAbs: List<Float>,
+        val velocityProxy: List<Float>,
+        val segmentMetrics: Map<SegmentDefinition, SegmentMetrics>
+    )
+
+    private data class SegmentMetrics(
+        val segmentTimeMs: Long,
+        val entrySpeed: Float,
+        val minSpeed: Float,
+        val exitSpeed: Float,
+        val brakingPointPercent: Float,
+        val brakingIntensity: Float,
+        val yawMean: Float,
+        val yawStdDev: Float,
+        val yawPeak: Float
+    )
+
+    private data class SegmentDelta(
+        val entrySpeed: Float,
+        val minSpeed: Float,
+        val exitSpeed: Float,
+        val brakingPointPercent: Float,
+        val brakingIntensity: Float,
+        val yawStdDev: Float,
+        val segmentTimeMs: Long
+    )
+
+    private data class SegmentComparison(
+        val segment: SegmentDefinition,
+        val averageTimeLossMs: Long,
+        val averageDelta: SegmentDelta,
+        val cause: TimeLossCause
+    )
+
+    private enum class TimeLossCause(val title: String, val shortLabel: String, val recommendation: String) {
+        BRAKING_TOO_EARLY(
+            title = "Braking too early",
+            shortLabel = "Brake early",
+            recommendation = "Brake later and commit to the release closer to turn-in."
+        ),
+        OVER_SLOWING(
+            title = "Over-slowing in corner",
+            shortLabel = "Over-slowing",
+            recommendation = "Carry a little more minimum speed and trust the kart mid-corner."
+        ),
+        POOR_EXIT_SPEED(
+            title = "Poor exit speed",
+            shortLabel = "Poor exit",
+            recommendation = "Get back to throttle earlier and straighten the exit sooner."
+        ),
+        UNSTABLE_CORNERING(
+            title = "Unstable cornering",
+            shortLabel = "Unstable",
+            recommendation = "Aim for a cleaner steering trace and reduce corrections through the apex."
+        ),
+        INSUFFICIENT_BRAKING_FORCE(
+            title = "Insufficient braking force",
+            shortLabel = "Brake weak",
+            recommendation = "Use firmer initial brake pressure to finish deceleration before rotation."
+        ),
+        GENERAL_TIME_LOSS(
+            title = "General time loss",
+            shortLabel = "Time loss",
+            recommendation = "Focus on cleaner line discipline and smoother phase transitions."
+        )
     }
 
     companion object {
-        private const val maximumInsightCount = 4
-        private const val minimumConfidence = 0.6f
-        private const val minimumSamplesPerLap = 60
-        private const val minimumEarlierBrakeDelta = 0.01f
-        private const val minimumExitGain = 0.10f
-        private const val minimumSectorGainMs = 120f
-        private const val minimumInconsistentBrakeStdDev = 0.012f
-        private const val minimumConsistencyImprovement = 0.004f
-        private const val minimumCornerStabilityGain = 0.12f
-        private const val minimumCornerPeakGain = 0.08f
-        private const val minimumSmoothnessGain = 0.10f
+        private const val minimumReferenceConfidence = 0.75f
+        private const val minimumComparableLaps = 2
+        private const val contextWindow = 8
+        private const val baseVelocityProxy = 12f
+        private const val minimumVelocityProxy = 1f
+        private const val maximumVelocityProxy = 32f
+        private const val positiveAccelerationGain = 2.4f
+        private const val brakingPenaltyGain = 2.0f
+        private const val brakingDropThreshold = -0.35f
+        private const val minimumReportableTimeLossMs = 60L
+        private const val minimumGeneralImprovementGainMs = 120L
+        private const val maximumTrackedSegments = 3
+        private const val maximumInsightCount = 5
+        private const val minimumEarlyBrakingPercent = 1.5f
+        private const val minimumEntrySpeedDelta = 0.8f
+        private const val minimumMidCornerSpeedDelta = 0.8f
+        private const val minimumExitSpeedDelta = 0.8f
+        private const val minimumYawStdDevDelta = 0.18f
+        private const val minimumBrakingIntensityDelta = 0.18f
+        private const val highLapTimeVarianceMs = 220f
+        private const val highBrakingPointVariancePercent = 2.5f
+        private const val highMinSpeedVariance = 0.9f
     }
 }

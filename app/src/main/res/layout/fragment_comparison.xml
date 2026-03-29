@@ -107,6 +107,15 @@
                 android:visibility="gone" />
 
             <TextView
+                android:id="@+id/theoreticalBestLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/idealLapSectorLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -164,7 +173,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="@string/session_insights"
+                android:text="@string/top_time_loss_map"
                 android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                 android:textStyle="bold"
                 android:visibility="gone" />

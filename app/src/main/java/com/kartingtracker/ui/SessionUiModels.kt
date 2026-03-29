@@ -36,11 +36,13 @@ data class ComparisonUiState(
     val lateralCornerMarkersA: List<Entry> = emptyList(),
     val lateralCornerMarkersB: List<Entry> = emptyList(),
     val timeLossEntries: List<Entry> = emptyList(),
+    val segmentMarkerEntries: List<Entry> = emptyList(),
     val sectorComparisonLines: List<String> = emptyList(),
     val idealLapLabel: String = "",
+    val theoreticalBestLabel: String = "",
     val idealLapSectorLines: List<String> = emptyList(),
     val insights: List<String> = emptyList(),
-    val sessionInsights: List<String> = emptyList(),
+    val topTimeLossLines: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
 )
 

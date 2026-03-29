@@ -53,8 +53,9 @@ Wichtig fuer dieses Dokument:
 - Comparison Screen mit Overlay-Charts und Zeitverlust-Chart
 - Sektorvergleich zwischen zwei Laps
 - Ideal-Lap-Berechnung aus Best-Sektoren
-- einfache textliche Fahrstil-Insights
-- Session-Coaching-Insights aus Best-vs-slow-Lap-Vergleich
+- strukturierte Telemetrie-Insights mit Segmentanalyse
+- Theoretical-Best-Lap-Berechnung pro Session
+- Top-Time-Loss-Map und Chart-Marker fuer schwache Segmente
 - persistente Session-Speicherung als JSON
 - Anzeige von Sample-Count und Dateigroesse im Session-Browser
 - Reprocessing gespeicherter Sessions aus Rohdaten mit Processing-Versionierung
@@ -132,8 +133,7 @@ Aktuelles Verhalten:
   - `TimeLossCalculator` fuer stabilisierte Zeitverlust-Approximation
   - `TimeLossResult` als internes Ergebnis mit Delta-Kurve und Confidence
   - `SessionQualityEvaluator` fuer Session-Qualitaetsbewertung
-  - `DrivingInsightsGenerator` fuer einfache Heuristiken
-  - `DrivingCoachAnalyzer` fuer Session-Coaching-Insights
+  - `DrivingCoachAnalyzer` fuer Session-Telemetrieanalyse, Zeitverlust-Ursachen und Coaching
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
   - `MainFragment`, `LapsFragment`, `ComparisonFragment`, `SessionListFragment`
@@ -216,6 +216,9 @@ Bedeutung:
 - `laps`
 - `estimatedLapTimeMs`
 - `insights`
+- `theoreticalBestLapTimeMs`
+- `topTimeLossSegments`
+- `segmentMarkers`
 - `quality`
 - `processingVersion`
 - `isPartial`
@@ -223,6 +226,12 @@ Bedeutung:
 `quality` ist optional, weil rohe Autosave-Snapshots noch keine verarbeiteten Laps enthalten.
 
 `insights` speichert bis zu fuenf textliche Coaching-Hinweise pro final verarbeiteter Session.
+
+`theoreticalBestLapTimeMs` speichert die theoretische Bestzeit aus den besten Session-Segmenten.
+
+`topTimeLossSegments` speichert die groessten Segmentverluste mit Ursache.
+
+`segmentMarkers` speichert Markerposition, Schweregrad und Label fuer die Chart-Visualisierung.
 
 `processingVersion` kennzeichnet, mit welcher Verarbeitungslogik die Session zuletzt voll analysiert wurde.
 
@@ -290,7 +299,7 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 16. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
 17. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
 18. `SessionQualityEvaluator` berechnet die Session-Qualitaet.
-19. `DrivingCoachAnalyzer.generateSessionInsights(...)` erzeugt Session-Coaching-Feedback.
+19. `DrivingCoachAnalyzer.analyzeSession(...)` erzeugt Session-Coaching-Feedback, Theoretical Best Lap und Segmentmarker.
 20. `SessionStorageManager` speichert die finale Session als JSON.
 21. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
 22. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
@@ -805,17 +814,21 @@ Nutzung in der UI:
 
 ## Driving Insights
 
-`DrivingInsightsGenerator` nutzt einfache Heuristiken:
+`DrivingCoachAnalyzer` nutzt eine leichte Telemetrie-Analyse:
 
-- spaeteres Bremsen aus Markerpositionen
-- hoehere Cornering-Last aus maximaler lateraler Beschleunigung
-- bessere positive Beschleunigung aus Mittel positiver longitudinaler Werte
+- Referenzlap-Auswahl aus stabilen Normal-Laps
+- Normierung auf 251 Punkte
+- Segmentierung ueber Sektorgrenzen oder Fallback-Splits
+- Metriken pro Segment fuer Entry-, Mid-, Exit-Speed, Brems- und Yaw-Verhalten
+- Zeitverlust-Ursachenklassifikation und Priorisierung
+- Theoretical-Best-Lap-Berechnung ueber Best-Segmente
+- Segmentmarker fuer die Chart-Darstellung
 
 Wichtig:
 
-- die Texte sind bewusst einfach
-- sie sind keine belastbare Rennfahrerbewertung
-- bei lockerer Telefonlage kann die lap-basierte Erkennung sinnvoller sein als die Richtungsinterpretation der Insights
+- die Analyse bleibt heuristisch und deterministisch
+- sie ist bewusst leichtgewichtig und nutzt kein ML
+- sie priorisiert die groessten Zeitverluste statt allgemeiner Kurztexte
 
 ## Persistenz
 
@@ -1142,7 +1155,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Visualisierung | Sektorzeiten pro Lap | Erfuellt | Lap-Liste zeigt Abschnittszeiten |
 | Visualisierung | Ideal Lap | Erfuellt | `IdealLapCalculator` + Comparison Screen |
 | Visualisierung | Peak-Marker | Erfuellt | Bremsen und Cornering |
-| Insights | Text-Feedback | Erfuellt | `DrivingInsightsGenerator` |
+| Insights | Text-Feedback | Erfuellt | `DrivingCoachAnalyzer` |
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
 | Robustheit | Voll orientierungsfreie Richtungsdiagramme | Nicht erfuellt | Charts nutzen weiterhin angenaeherten Richtungsbezug |
 | Export | CSV/Share | Nicht erfuellt | derzeit nicht vorhanden |
@@ -1234,7 +1247,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - `app/src/main/java/com/kartingtracker/domain/TimeLossCalculator.kt`
 - `app/src/main/java/com/kartingtracker/domain/IdealLapCalculator.kt`
 - `app/src/main/java/com/kartingtracker/domain/SessionQualityEvaluator.kt`
-- `app/src/main/java/com/kartingtracker/domain/DrivingInsightsGenerator.kt`
+- `app/src/main/java/com/kartingtracker/domain/DrivingCoachAnalyzer.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionViewModel.kt`
 - `app/src/main/java/com/kartingtracker/ui/SessionUiModels.kt`
 - `app/src/main/java/com/kartingtracker/ui/main/MainFragment.kt`

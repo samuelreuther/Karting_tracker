@@ -112,6 +112,9 @@ class SessionRepository(
                     laps = emptyList(),
                     estimatedLapTimeMs = null,
                     insights = emptyList(),
+                    theoreticalBestLapTimeMs = null,
+                    topTimeLossSegments = emptyList(),
+                    segmentMarkers = emptyList(),
                     quality = null
                 )
             } else {
@@ -264,6 +267,9 @@ class SessionRepository(
             session.copy(
                 laps = emptyList(),
                 insights = emptyList(),
+                theoreticalBestLapTimeMs = null,
+                topTimeLossSegments = emptyList(),
+                segmentMarkers = emptyList(),
                 quality = null
             )
         )
@@ -356,6 +362,9 @@ class SessionRepository(
                 laps = emptyList(),
                 estimatedLapTimeMs = null,
                 insights = emptyList(),
+                theoreticalBestLapTimeMs = null,
+                topTimeLossSegments = emptyList(),
+                segmentMarkers = emptyList(),
                 processingVersion = 0,
                 isPartial = true
             )
@@ -381,6 +390,9 @@ class SessionRepository(
             laps = emptyList(),
             estimatedLapTimeMs = null,
             insights = emptyList(),
+            theoreticalBestLapTimeMs = null,
+            topTimeLossSegments = emptyList(),
+            segmentMarkers = emptyList(),
             quality = null
         )
 
@@ -482,12 +494,19 @@ class SessionRepository(
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
             insights = emptyList(),
+            theoreticalBestLapTimeMs = null,
+            topTimeLossSegments = emptyList(),
+            segmentMarkers = emptyList(),
             quality = null,
             isPartial = false
         ).withQuality()
 
+        val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(processedSession)
         return processedSession.copy(
-            insights = drivingCoachAnalyzer.generateSessionInsights(processedSession)
+            insights = telemetryAnalysis.insights,
+            theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
+            topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
+            segmentMarkers = telemetryAnalysis.segmentMarkers
         )
     }
 
@@ -528,7 +547,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 3
+        private const val CURRENT_PROCESSING_VERSION = 4
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f
