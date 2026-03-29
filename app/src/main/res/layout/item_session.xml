@@ -32,6 +32,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:textColor="@color/karting_muted" />
+
+        <TextView
+            android:id="@+id/sessionFileSize"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/karting_muted" />
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

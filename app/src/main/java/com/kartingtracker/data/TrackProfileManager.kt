@@ -37,6 +37,11 @@ class TrackProfileManager(
         file.writeText(gson.toJson(profile))
     }
 
+    fun deleteProfile(trackName: String): Boolean {
+        val file = File(profileDirectory, buildFileName(trackName))
+        return !file.exists() || file.delete()
+    }
+
     fun updateProfile(trackName: String, sessions: List<Session>): TrackProfile {
         val existingProfile = loadProfile(trackName)
         val updateThresholds = resolveUpdateThresholds(existingProfile?.confidenceScore ?: 0f)

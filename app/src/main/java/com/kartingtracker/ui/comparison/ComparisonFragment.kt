@@ -80,7 +80,10 @@ class ComparisonFragment : Fragment() {
                     binding.idealLapSectorLabel.visibility = if (state.idealLapSectorLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.sectorComparisonLabel.text = state.sectorComparisonLines.joinToString(separator = "\n")
                     binding.sectorComparisonLabel.visibility = if (state.sectorComparisonLines.isEmpty()) View.GONE else View.VISIBLE
-                    binding.insightsLabel.text = state.insights.joinToString(separator = "\n")
+                    binding.insightsLabel.text = state.insights.joinToString(separator = "\n") { insight -> "- $insight" }
+                    binding.sessionInsightsLabel.text = state.sessionInsights.joinToString(separator = "\n") { insight -> "- $insight" }
+                    binding.sessionInsightsTitle.visibility = if (state.sessionInsights.isEmpty()) View.GONE else View.VISIBLE
+                    binding.sessionInsightsLabel.visibility = if (state.sessionInsights.isEmpty()) View.GONE else View.VISIBLE
 
                     if (state.lapLabels.isNotEmpty()) {
                         updateSpinner(binding.lapASpinner, state.lapLabels, state.selectedLapAIndex)

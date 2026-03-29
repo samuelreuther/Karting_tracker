@@ -54,7 +54,9 @@ Wichtig fuer dieses Dokument:
 - Sektorvergleich zwischen zwei Laps
 - Ideal-Lap-Berechnung aus Best-Sektoren
 - einfache textliche Fahrstil-Insights
+- Session-Coaching-Insights aus Best-vs-slow-Lap-Vergleich
 - persistente Session-Speicherung als JSON
+- Anzeige von Sample-Count und Dateigroesse im Session-Browser
 - Reprocessing gespeicherter Sessions aus Rohdaten mit Processing-Versionierung
 - periodisches Autosave waehrend Recording mit separaten Partial-Snapshots
 - Track-Verwaltung
@@ -62,9 +64,11 @@ Wichtig fuer dieses Dokument:
 - Track-spezifisches Lernen ueber `TrackProfile`
 - geschuetztes Track-Learning mit Quality-Guard, Ausreisserfilter und Profil-Reifegrad
 - Session-Browsing mit Filter
+- Loeschen einzelner Sessions
+- Loeschen kompletter Tracks inklusive Sessions und Track-Profil
 - Laden der letzten Session
 - Laden gespeicherter Sessions in den aktiven App-State
-- Debug-Erzeugung einer simulierten Test-Session
+- Debug-Erzeugung von drei simulierten 10-Minuten-Test-Sessions
 
 ### Nicht implementiert
 
@@ -81,8 +85,9 @@ Wichtig fuer dieses Dokument:
 Es gibt jetzt einen zusaetzlichen Utility-Pfad fuer Entwicklung und Demo:
 
 - `SimulatedSessionGenerator.generateSession(trackName)`
+- `SimulatedSessionGenerator.generateSeededSession(trackName, seed, durationMinutes = 10)`
 - erzeugt eine vollstaendige `Session` mit kompatiblen `SensorSample`-, `Lap`- und `Session`-Strukturen
-- schreibt im Debug-Build einmalig eine Session fuer `Test Track` in den bestehenden JSON-Speicherpfad
+- schreibt im Debug-Build einmalig drei Sessions fuer `Test Track` in den bestehenden JSON-Speicherpfad
 
 Ziel:
 
@@ -92,10 +97,12 @@ Ziel:
 Aktuelles Verhalten:
 
 - Sampling alle 50 ms
-- etwa 8 bis 9 Laps
-- erste Lap langsamer und als Outlap markiert
-- simulierte Bremszonen, Straights und Cornering-Zonen
-- gespeicherte Session wird von der App wie eine normale Session geladen
+- etwa 10 Minuten Laufzeit
+- ca. 12.000 Samples pro Session
+- ca. 23 bis 25 Laps mit Ziel-Lap-Time von etwa 24 bis 26 Sekunden
+- pro Lap realistische Variation bei Bremsintensitaet, Bremspunkt, Cornering-Aggressivitaet und Exit-Acceleration
+- gelegentliche leicht unperfekte Laps mit milder Stoerung, aber weiter detektierbaren Peaks
+- gespeicherte Sessions werden von der App wie normale Sessions geladen
 
 ## Architektur
 
@@ -126,6 +133,7 @@ Aktuelles Verhalten:
   - `TimeLossResult` als internes Ergebnis mit Delta-Kurve und Confidence
   - `SessionQualityEvaluator` fuer Session-Qualitaetsbewertung
   - `DrivingInsightsGenerator` fuer einfache Heuristiken
+  - `DrivingCoachAnalyzer` fuer Session-Coaching-Insights
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
   - `MainFragment`, `LapsFragment`, `ComparisonFragment`, `SessionListFragment`
@@ -207,11 +215,14 @@ Bedeutung:
 - `samples`
 - `laps`
 - `estimatedLapTimeMs`
+- `insights`
 - `quality`
 - `processingVersion`
 - `isPartial`
 
 `quality` ist optional, weil rohe Autosave-Snapshots noch keine verarbeiteten Laps enthalten.
+
+`insights` speichert bis zu fuenf textliche Coaching-Hinweise pro final verarbeiteter Session.
 
 `processingVersion` kennzeichnet, mit welcher Verarbeitungslogik die Session zuletzt voll analysiert wurde.
 
@@ -279,9 +290,10 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 16. `SectorDetector` berechnet Sektorgrenzen und Sektorzeiten pro Lap.
 17. `SessionRepository.classifyLaps(...)` markiert `isDisturbed`.
 18. `SessionQualityEvaluator` berechnet die Session-Qualitaet.
-19. `SessionStorageManager` speichert die finale Session als JSON.
-20. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
-21. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
+19. `DrivingCoachAnalyzer.generateSessionInsights(...)` erzeugt Session-Coaching-Feedback.
+20. `SessionStorageManager` speichert die finale Session als JSON.
+21. `TrackProfileManager.updateProfile(...)` aktualisiert das Track-Profil nur mit ausreichend guten Sessions.
+22. `SessionViewModel` stellt Session, Lap-Liste und Comparison-State fuer die UI bereit.
 
 ## Recording und Sensorverarbeitung
 

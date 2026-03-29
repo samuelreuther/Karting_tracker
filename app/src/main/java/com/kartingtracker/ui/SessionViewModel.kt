@@ -114,26 +114,36 @@ class SessionViewModel(
         selectedSessionFilter
     ) { storedSessions, tracks, selectedFilter ->
         val filterOptions = listOf(ALL_TRACKS_FILTER) + tracks.map { track -> track.name }
-        val filteredSessions = if (selectedFilter == ALL_TRACKS_FILTER) {
+        val activeFilter = selectedFilter.takeIf { filterOptions.contains(it) } ?: ALL_TRACKS_FILTER
+        val filteredSessions = if (activeFilter == ALL_TRACKS_FILTER) {
             storedSessions
         } else {
-            storedSessions.filter { session -> session.trackName == selectedFilter }
+            storedSessions.filter { session -> session.trackName == activeFilter }
         }
         SessionListUiState(
             filterOptions = filterOptions,
-            selectedFilter = selectedFilter,
-            sessions = filteredSessions
+            selectedFilter = activeFilter,
+            sessions = filteredSessions.map { session ->
+                SessionListItemUiState(
+                    session = session,
+                    sampleCount = session.samples.size,
+                    fileSizeBytes = sessionRepository.getSessionFileSize(session.id)
+                )
+            }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
 
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
         laps,
         idealLap,
+        sessionRepository.currentSession,
         selectedLapAIndex,
         selectedLapBIndex
-    ) { laps, idealLap, selectedA, selectedB ->
+    ) { laps, idealLap, currentSession, selectedA, selectedB ->
         if (laps.isEmpty()) {
-            return@combine ComparisonUiState()
+            return@combine ComparisonUiState(
+                sessionInsights = currentSession?.insights.orEmpty()
+            )
         }
 
         val safeA = selectedA.coerceIn(0, laps.lastIndex)
@@ -185,6 +195,7 @@ class SessionViewModel(
             idealLapLabel = idealLap?.let { ideal -> "Ideal Lap: ${formatLapTime(ideal.totalTimeMs)}" }.orEmpty(),
             idealLapSectorLines = createIdealLapSectorLines(idealLap),
             insights = DrivingInsightsGenerator.generate(normalizedA, normalizedB),
+            sessionInsights = currentSession?.insights.orEmpty(),
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
                     append("Outlap selected. Comparison may be less stable. ")
@@ -275,6 +286,18 @@ class SessionViewModel(
 
     fun reprocessSession(session: Session) {
         sessionRepository.reprocessSessionAsync(session)
+    }
+
+    fun deleteSession(session: Session): Boolean {
+        return sessionRepository.deleteSession(session.id)
+    }
+
+    fun deleteTrack(trackName: String): Boolean {
+        val deleted = sessionRepository.deleteTrack(trackName)
+        if (deleted && selectedSessionFilter.value == trackName) {
+            selectedSessionFilter.value = ALL_TRACKS_FILTER
+        }
+        return deleted
     }
 
     fun selectSessionFilter(filter: String) {

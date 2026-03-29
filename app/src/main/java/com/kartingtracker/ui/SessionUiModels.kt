@@ -40,11 +40,18 @@ data class ComparisonUiState(
     val idealLapLabel: String = "",
     val idealLapSectorLines: List<String> = emptyList(),
     val insights: List<String> = emptyList(),
+    val sessionInsights: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
 )
 
 data class SessionListUiState(
     val filterOptions: List<String> = emptyList(),
     val selectedFilter: String = SessionViewModel.ALL_TRACKS_FILTER,
-    val sessions: List<Session> = emptyList()
+    val sessions: List<SessionListItemUiState> = emptyList()
+)
+
+data class SessionListItemUiState(
+    val session: Session,
+    val sampleCount: Int,
+    val fileSizeBytes: Long
 )

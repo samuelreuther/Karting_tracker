@@ -24,14 +24,16 @@ Implemented today:
 - track-profile driven stable sector usage when learned sector boundaries exist
 - braking and cornering peak markers
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, and simple text insights
+- session-level coaching insights derived from best-vs-slower lap analysis
 - persistent session storage as JSON
+- session browser metadata for sample count and JSON file size
 - processing-versioned session reanalysis from stored raw sensor data
 - periodic autosave during recording with separate partial-session files
 - dropdown-based track management with duplicate-safe creation flow
 - track-specific learning with reusable profiles, quality guards, and weighted updates
-- session browser with filter and reload
+- session browser with filter, reload, and delete actions for sessions or full tracks
 - load-last-session shortcut
-- debug seeding of one simulated test session
+- debug seeding of three deterministic 10-minute simulated test sessions
 
 Not implemented yet:
 
@@ -338,9 +340,12 @@ The app includes a session list screen with:
 
 - all stored sessions
 - filter by track
+- sample count and stored JSON file size per session
 - open laps
 - open comparison
 - optional debug action to reprocess a stored session
+- long-press delete for a single session
+- long-press delete for a whole track including its sessions and learned profile
 
 There is also a `Load last session` button on the main screen.
 
@@ -356,13 +361,14 @@ When a saved session is loaded:
 
 ## Simulated Test Data
 
-For debug builds, the app seeds one simulated session once on app start:
+For debug builds, the app seeds three simulated sessions once on app start:
 
 - track name: `Test Track`
+- deterministic seeds: `42`, `1337`, `9001`
 - persistent JSON save through `SessionStorageManager`
-- slower first lap marked as outlap
-- additional disturbed-lap handling still applies after load/classification
-- multiple laps with braking and cornering markers
+- approximately 10 minutes, roughly 12,000 samples, and 23-25 laps per session
+- per-lap variability in braking timing, braking intensity, cornering load, exit acceleration, and occasional imperfect laps
+- session-level coaching insights are generated after full processing and shown on the comparison screen
 
 This is intended for UI and chart validation when no real kart session has been recorded yet.
 

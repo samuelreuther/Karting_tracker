@@ -18,6 +18,7 @@ import com.kartingtracker.R
 import com.kartingtracker.data.Session
 import com.kartingtracker.databinding.FragmentSessionListBinding
 import com.kartingtracker.ui.AppViewModelFactory
+import com.kartingtracker.ui.SessionListItemUiState
 import com.kartingtracker.ui.SessionViewModel
 import kotlinx.coroutines.launch
 
@@ -29,7 +30,7 @@ class SessionListFragment : Fragment() {
         AppViewModelFactory(requireActivity().application)
     }
 
-    private val adapter = SessionListAdapter(::showOpenOptions)
+    private val adapter = SessionListAdapter(::showOpenOptions, ::showDeleteOptions)
     private var suppressFilterCallbacks = false
 
     override fun onCreateView(
@@ -86,10 +87,17 @@ class SessionListFragment : Fragment() {
         suppressFilterCallbacks = false
     }
 
-    private fun showOpenOptions(session: Session) {
+    private fun showOpenOptions(item: SessionListItemUiState) {
+        val session = item.session
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(session.trackName)
-            .setItems(arrayOf("Open laps", "Open comparison", "Reprocess session")) { _, which ->
+            .setItems(
+                arrayOf(
+                    getString(R.string.open_laps),
+                    getString(R.string.open_comparison),
+                    getString(R.string.reprocess_session)
+                )
+            ) { _, which ->
                 when (which) {
                     0 -> {
                         sessionViewModel.loadSession(session)
@@ -106,6 +114,46 @@ class SessionListFragment : Fragment() {
                     }
                 }
             }
+            .show()
+    }
+
+    private fun showDeleteOptions(item: SessionListItemUiState) {
+        val session = item.session
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(session.trackName)
+            .setItems(
+                arrayOf(
+                    getString(R.string.delete_session),
+                    getString(R.string.delete_track)
+                )
+            ) { _, which ->
+                when (which) {
+                    0 -> confirmDeleteSession(session)
+                    1 -> confirmDeleteTrack(session.trackName)
+                }
+            }
+            .show()
+    }
+
+    private fun confirmDeleteSession(session: Session) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.delete_session)
+            .setMessage(getString(R.string.delete_session_confirmation, session.trackName))
+            .setPositiveButton(R.string.delete_session) { _, _ ->
+                sessionViewModel.deleteSession(session)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteTrack(trackName: String) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.delete_track)
+            .setMessage(getString(R.string.delete_track_confirmation, trackName))
+            .setPositiveButton(R.string.delete_track) { _, _ ->
+                sessionViewModel.deleteTrack(trackName)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 }

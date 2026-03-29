@@ -3,7 +3,9 @@ package com.kartingtracker.data
 import android.content.Context
 
 class TrackManager(
-    context: Context
+    context: Context,
+    private val sessionStorageManager: SessionStorageManager,
+    private val trackProfileManager: TrackProfileManager
 ) {
     private val preferences = context.getSharedPreferences("karting_tracks", Context.MODE_PRIVATE)
 
@@ -98,6 +100,43 @@ class TrackManager(
 
     fun clearSelectedTrack() {
         preferences.edit().remove(KEY_SELECTED_TRACK).apply()
+    }
+
+    fun deleteTrack(trackName: String): Boolean {
+        val normalizedName = normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return false
+        }
+
+        val existingTracks = preferences.getStringSet(KEY_TRACKS, emptySet()).orEmpty()
+        val persistedTrack = existingTracks.firstOrNull { existing ->
+            existing.equals(normalizedName, ignoreCase = true)
+        } ?: return false
+
+        val updatedTracks = existingTracks.toMutableSet().apply {
+            removeIf { existing -> existing.equals(persistedTrack, ignoreCase = true) }
+        }
+
+        val selectedTrack = readSelectedTrackName()
+        val editor = preferences.edit().putStringSet(KEY_TRACKS, updatedTracks)
+        if (selectedTrack.equals(persistedTrack, ignoreCase = true)) {
+            val fallbackTrack = updatedTracks
+                .map(::normalizeTrackName)
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase() }
+                .sortedBy { it.lowercase() }
+                .firstOrNull()
+            if (fallbackTrack == null) {
+                editor.remove(KEY_SELECTED_TRACK)
+            } else {
+                editor.putString(KEY_SELECTED_TRACK, fallbackTrack)
+            }
+        }
+        editor.apply()
+
+        sessionStorageManager.deleteSessionsForTrack(persistedTrack)
+        trackProfileManager.deleteProfile(persistedTrack)
+        return true
     }
 
     private fun readSelectedTrackName(): String {

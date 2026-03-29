@@ -58,6 +58,29 @@ class SessionStorageManager(
         return loadAllSessions().maxByOrNull { session -> session.startTimeEpochMs }
     }
 
+    fun getSessionFileSize(sessionId: Long): Long {
+        return findSessionFile(sessionId)?.length() ?: 0L
+    }
+
+    fun deleteSession(sessionId: Long): Boolean {
+        val targetFile = findSessionFile(sessionId) ?: return false
+        return targetFile.delete()
+    }
+
+    fun deleteSessionsForTrack(trackName: String): Int {
+        val deletedFiles = listSessionFiles().filter { file ->
+            readSessionMetadata(file)?.trackName?.equals(trackName, ignoreCase = true) == true
+        }
+
+        var deleteCount = 0
+        deletedFiles.forEach { file ->
+            if (file.delete()) {
+                deleteCount += 1
+            }
+        }
+        return deleteCount
+    }
+
     private fun parseSession(file: File): Session? {
         if (file.length() <= 0L) {
             Log.w(TAG, "Session file ${file.name} is empty")
@@ -85,6 +108,7 @@ class SessionStorageManager(
                 return null
             }
             parsedSession.copy(
+                insights = parseInsights(jsonObject),
                 processingVersion = if (!jsonObject.has(PROCESSING_VERSION_FIELD) || parsedSession.processingVersion <= 0) {
                     Session.DEFAULT_PROCESSING_VERSION
                 } else {
@@ -95,6 +119,38 @@ class SessionStorageManager(
         } catch (exception: Exception) {
             Log.w(TAG, "Failed to parse session file ${file.name}", exception)
             quarantineCorruptFile(file, "unreadable session file")
+            null
+        }
+    }
+
+    private fun parseInsights(jsonObject: com.google.gson.JsonObject): List<String> {
+        val rawInsights = jsonObject.getAsJsonArray(INSIGHTS_FIELD) ?: return emptyList()
+        return rawInsights.mapNotNull { element ->
+            element?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    private fun listSessionFiles(): List<File> {
+        return sessionDirectory
+            .listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }
+            .orEmpty()
+            .toList()
+    }
+
+    private fun findSessionFile(sessionId: Long): File? {
+        return listSessionFiles().firstOrNull { file ->
+            readSessionMetadata(file)?.id == sessionId
+        }
+    }
+
+    private fun readSessionMetadata(file: File): SessionFileMetadata? {
+        return try {
+            val jsonObject = JsonParser.parseString(file.readText()).asJsonObject
+            SessionFileMetadata(
+                id = jsonObject.get(ID_FIELD)?.asLong ?: return null,
+                trackName = jsonObject.get(TRACK_NAME_FIELD)?.asString ?: return null
+            )
+        } catch (_: Exception) {
             null
         }
     }
@@ -197,10 +253,18 @@ class SessionStorageManager(
 
     companion object {
         private const val TAG = "SessionStorageManager"
+        private const val ID_FIELD = "id"
+        private const val TRACK_NAME_FIELD = "trackName"
+        private const val INSIGHTS_FIELD = "insights"
         private const val PROCESSING_VERSION_FIELD = "processingVersion"
         private const val IS_PARTIAL_FIELD = "isPartial"
         private const val JSON_SUFFIX = ".json"
         private const val PARTIAL_SUFFIX = "_partial.json"
         private const val MAX_SESSION_FILE_SIZE_BYTES = 64L * 1024L * 1024L
     }
+
+    private data class SessionFileMetadata(
+        val id: Long,
+        val trackName: String
+    )
 }

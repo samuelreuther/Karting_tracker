@@ -16,3 +16,12 @@ fun formatSessionDate(epochMilliseconds: Long): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return formatter.format(Date(epochMilliseconds))
 }
+
+fun formatFileSize(bytes: Long): String {
+    val safeBytes = bytes.coerceAtLeast(0L)
+    return when {
+        safeBytes >= 1_048_576L -> "%.2f MB".format(Locale.getDefault(), safeBytes / 1_048_576f)
+        safeBytes >= 1024L -> "%.1f KB".format(Locale.getDefault(), safeBytes / 1024f)
+        else -> "$safeBytes B"
+    }
+}

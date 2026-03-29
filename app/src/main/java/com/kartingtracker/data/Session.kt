@@ -10,6 +10,7 @@ data class Session(
     val samples: List<SensorSample>,
     val laps: List<Lap>,
     val estimatedLapTimeMs: Long? = null,
+    val insights: List<String> = emptyList(),
     val quality: SessionQuality? = null,
     val processingVersion: Int = DEFAULT_PROCESSING_VERSION,
     val isPartial: Boolean = false
