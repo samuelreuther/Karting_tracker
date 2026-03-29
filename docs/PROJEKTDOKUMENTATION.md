@@ -341,9 +341,10 @@ Android-Anforderungen:
 
 Restart-Verhalten:
 
-- der Service verwendet `START_STICKY`
+- der Service verwendet `START_NOT_STICKY`
 - ein bereits laufender Service bleibt bei UI-Wechseln stabil
-- nach echtem Prozess-Tod kann jedoch kein lueckenloser Live-Sensorstream rekonstruiert werden
+- nach echtem Prozess-Tod wird das Recording nicht automatisch ueber einen Sticky-Restart rekonstruiert
+- Start, Foreground-Promotion, Notification-Updates und Shutdown sind defensiv abgefangen und fuehren bei Fehlern zu sauberem Stop statt zu einem haengenden Service-Zustand
 - OEM-spezifische Battery-Optimierungen koennen trotz Foreground Service weiterhin aggressiv sein
 
 ## Low-Pass-Filter
@@ -813,6 +814,8 @@ Sessions werden als JSON-Dateien in app-spezifischem Speicher abgelegt.
 Speicherort:
 
 - `context.filesDir/sessions`
+- Quarantaene fuer ungueltige Session-Dateien:
+  - `context.filesDir/corrupt_sessions`
 
 Dateiname:
 
@@ -843,6 +846,8 @@ Aktueller Stand:
 - bestehende Kompatibilitaetsfelder wie `isOutlap` bleiben erhalten
 - fehlende `processingVersion`-Felder in aelteren JSON-Dateien werden beim Laden kompatibel als Version `1` behandelt
 - fehlende `isPartial`-Felder in aelteren JSON-Dateien werden kompatibel als `false` behandelt
+- Schreibvorgaenge erfolgen ueber eine temporaere Datei und werden danach atomar ersetzt, um halb geschriebene JSON-Dateien zu vermeiden
+- leere, unlesbare, implausible oder uebergrosse Session-Dateien werden aus dem aktiven Session-Ordner in `corrupt_sessions` verschoben
 
 Die App nutzt derzeit keine Datenbank.
 
@@ -917,6 +922,7 @@ Recovery:
 - Reprocessing nutzt weiterhin die gespeicherten Rohsamples als Quelle und erzeugt neue Laps, Peaks, Sektoren, Confidence-Werte und Session-Quality
 - automatisches Reprocessing beim Laden laeuft asynchron auf `repositoryScope`
 - der Foreground Service reduziert Session-Verlust bei Hintergrundbetrieb deutlich
+- defekte JSON-Dateien werden vor erneutem Laden quarantainisiert, damit sie nicht bei jedem App-Start denselben Fehler erneut ausloesen
 
 Grenze:
 
@@ -1140,7 +1146,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - Time-Loss ist eine Approximation aus Beschleunigung, nicht echte Fahrzeugzeitmessung
 - Sektorgrenzen sind heuristisch aus Musterpunkten abgeleitet, nicht physisch vermessen
 - auch mit Schutzlogik bleibt Track-Learning heuristisch und datenabhaengig
-- ein bereits laufendes Recording kann nach Prozess-Tod nicht nahtlos live fortgesetzt werden
+- ein bereits laufendes Recording kann nach Prozess-Tod nicht nahtlos live fortgesetzt oder automatisch per Sticky-Restart wiederaufgenommen werden
 - keine Exportfunktion
 - keine Tests im Projekt
 
@@ -1226,4 +1232,4 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 ## Hinweis zur Build-Validierung
 
-In dieser Arbeitsumgebung standen kein Java, kein Gradle und kein Android SDK zur Verfuegung. Die Dokumentation wurde deshalb gegen den vorhandenen Quellcode abgeglichen, aber nicht durch einen echten lokalen Android-Build verifiziert.
+Die Dokumentation wurde gegen den vorhandenen Quellcode abgeglichen. Fuer dieses Doku-Update wurde kein echter Android-Build und kein Lauf auf einem Geraet ausgefuehrt.

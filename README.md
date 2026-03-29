@@ -65,6 +65,8 @@ The app first starts a foreground service:
 - the notification shows the current track, elapsed time, and sample count
 - a stop action in the notification stops recording cleanly
 - the service keeps running when the UI goes to background
+- the service does not rely on sticky auto-restart after process death
+- startup, notification updates, and recorder shutdown are guarded so service failures degrade into a clean stop instead of a crash loop
 - a partial wake lock is held while recording to improve reliability when the screen turns off
 
 The app first enters a calibration phase for about 2 seconds:
@@ -235,6 +237,7 @@ Sessions are stored permanently on the device as JSON files.
 Storage details:
 
 - location: app-specific storage under `filesDir/sessions`
+- quarantined invalid session files: app-specific storage under `filesDir/corrupt_sessions`
 - final file naming: `session_<trackName>_<startTimeEpochMs>.json`
 - partial autosave file naming: `session_<trackName>_<startTimeEpochMs>_partial.json`
 - autosave writes partial snapshots into the partial file and never overwrites the final processed session file
@@ -259,10 +262,13 @@ Crash protection:
 
 - during recording, autosave runs every 5 seconds
 - autosave snapshots are stored separately from final processed sessions
+- session writes use a temporary file and atomic replace strategy to reduce half-written JSON after interrupted writes
+- empty, unreadable, implausible, or oversized session JSON files are moved out of the active session directory into `corrupt_sessions`
 - if a session was saved only partially and has no laps yet, the repository fully reprocesses it on load
 - if an older saved session has laps but no sectors or no quality yet, the repository fully reprocesses it on load
 - if a saved session was processed with an older algorithm version, it is automatically reprocessed from raw samples on load
 - the foreground service keeps recording active while the app is backgrounded or the screen is off
+- if the foreground-service promotion or notification update path fails, the service stops cleanly instead of persisting a broken sticky restart state
 
 Session reprocessing:
 
@@ -459,6 +465,7 @@ Practical advice:
 - no database
 - no fully sensor-fused 3D orientation estimation
 - recording continuity is greatly improved in background, but a killed process cannot fully reconstruct a live sensor stream mid-session
+- recording is intentionally not auto-resumed through sticky service restart after process death; a fresh manual start is required
 - background behavior still depends partly on OEM battery policies despite the foreground service
 - lap detection is heuristic and not validated against reference timing hardware
 - comparison charts still use derived longitudinal/lateral axes, not purely orientation-invariant signals
@@ -478,4 +485,4 @@ Project documentation is intended to stay in sync with code changes after each i
 
 ## Build Status In This Workspace
 
-The local environment used for these changes does not include Java, Gradle, or Android SDK tooling, so no real Android build or device run was executed here.
+No Android build or device run was executed for this documentation update in this workspace.

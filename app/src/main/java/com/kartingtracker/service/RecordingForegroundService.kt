@@ -8,6 +8,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.kartingtracker.KartingApplication
@@ -43,12 +44,17 @@ class RecordingForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> stopRecordingAndService()
-            ACTION_START -> handleStart(intent)
-            null -> handleRestart()
+        try {
+            when (intent?.action) {
+                ACTION_STOP -> stopRecordingAndService()
+                ACTION_START -> handleStart(intent)
+                null -> handleRestart()
+            }
+        } catch (exception: Exception) {
+            Log.e(TAG, "Recording service failed during startup", exception)
+            stopServiceInternal("Service startup failed")
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -57,7 +63,7 @@ class RecordingForegroundService : Service() {
         notificationJob?.cancel()
         notificationJob = null
         if (sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) {
-            sensorRecorder.stopRecording()
+            safeStopRecording("Service destroyed while recorder was active")
         }
         releaseWakeLock()
         serviceScope.cancel()
@@ -70,7 +76,10 @@ class RecordingForegroundService : Service() {
 
     private fun handleStart(intent: Intent?) {
         val requestedTrackName = intent?.getStringExtra(EXTRA_TRACK_NAME)?.trim().orEmpty()
-        promoteToForeground()
+        if (!promoteToForeground()) {
+            stopServiceInternal("Unable to promote recording service to foreground")
+            return
+        }
         startNotificationUpdates()
 
         if (!sensorRecorder.hasRequiredSensors) {
@@ -84,7 +93,12 @@ class RecordingForegroundService : Service() {
             }
             serviceStartedAtMs = System.currentTimeMillis()
             acquireWakeLock()
-            sensorRecorder.startRecording()
+            try {
+                sensorRecorder.startRecording()
+            } catch (exception: Exception) {
+                Log.e(TAG, "Failed to start sensor recording", exception)
+                stopServiceInternal("Sensor recorder startup failed")
+            }
         } else if (serviceStartedAtMs == 0L) {
             serviceStartedAtMs = System.currentTimeMillis()
             acquireWakeLock()
@@ -93,7 +107,10 @@ class RecordingForegroundService : Service() {
 
     private fun handleRestart() {
         if (sensorRecorder.isActive || sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) {
-            promoteToForeground()
+            if (!promoteToForeground()) {
+                stopServiceInternal("Unable to restore recording service in foreground")
+                return
+            }
             startNotificationUpdates()
             if (serviceStartedAtMs == 0L) {
                 serviceStartedAtMs = System.currentTimeMillis()
@@ -104,22 +121,28 @@ class RecordingForegroundService : Service() {
         stopSelf()
     }
 
-    private fun promoteToForeground() {
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+    private fun promoteToForeground(): Boolean {
+        return try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST
+                }
+                ServiceCompat.startForeground(
+                    this,
+                    RecordingNotificationHelper.NOTIFICATION_ID,
+                    notification,
+                    serviceType
+                )
             } else {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST
+                startForeground(RecordingNotificationHelper.NOTIFICATION_ID, notification)
             }
-            ServiceCompat.startForeground(
-                this,
-                RecordingNotificationHelper.NOTIFICATION_ID,
-                notification,
-                serviceType
-            )
-        } else {
-            startForeground(RecordingNotificationHelper.NOTIFICATION_ID, notification)
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "Failed to enter foreground mode", exception)
+            false
         }
     }
 
@@ -130,20 +153,49 @@ class RecordingForegroundService : Service() {
 
         notificationJob = serviceScope.launch {
             while (isActive) {
-                notificationHelper.notify(buildNotification())
+                try {
+                    notificationHelper.notify(buildNotification())
+                } catch (exception: Exception) {
+                    Log.e(TAG, "Failed to update recording notification", exception)
+                    stopServiceInternal("Notification updates failed")
+                    return@launch
+                }
                 delay(NOTIFICATION_UPDATE_INTERVAL_MS)
             }
         }
     }
 
     private fun stopRecordingAndService() {
+        stopServiceInternal("Recording stopped")
+    }
+
+    private fun stopServiceInternal(reason: String) {
         notificationJob?.cancel()
         notificationJob = null
-        sensorRecorder.stopRecording()
+        safeStopRecording(reason)
         releaseWakeLock()
         serviceStartedAtMs = 0L
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopForegroundSafely()
         stopSelf()
+    }
+
+    private fun safeStopRecording(reason: String) {
+        if (sensorRecorder.recorderPhase.value == RecorderPhase.IDLE) {
+            return
+        }
+        try {
+            sensorRecorder.stopRecording()
+        } catch (exception: Exception) {
+            Log.e(TAG, "$reason: recorder shutdown failed", exception)
+        }
+    }
+
+    private fun stopForegroundSafely() {
+        try {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to stop foreground state cleanly", exception)
+        }
     }
 
     private fun buildNotification() = notificationHelper.buildNotification(
@@ -185,6 +237,7 @@ class RecordingForegroundService : Service() {
     }
 
     companion object {
+        private const val TAG = "RecordingService"
         const val ACTION_START = "com.kartingtracker.action.START_RECORDING"
         const val ACTION_STOP = "com.kartingtracker.action.STOP_RECORDING"
         const val EXTRA_TRACK_NAME = "extra_track_name"
