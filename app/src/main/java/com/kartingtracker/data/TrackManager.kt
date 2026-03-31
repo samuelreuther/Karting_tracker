@@ -1,6 +1,8 @@
 package com.kartingtracker.data
 
 import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 
 class TrackManager(
     context: Context,
@@ -9,6 +11,7 @@ class TrackManager(
     private val trackLayoutManager: TrackLayoutManager
 ) {
     private val preferences = context.getSharedPreferences("karting_tracks", Context.MODE_PRIVATE)
+    private val gson: Gson = GsonBuilder().create()
 
     fun normalizeTrackName(name: String): String {
         return name
@@ -22,22 +25,20 @@ class TrackManager(
             return false
         }
 
-        val existingTracks = preferences.getStringSet(KEY_TRACKS, emptySet()).orEmpty()
+        val existingTracks = readTrackNames()
         if (existingTracks.any { existing -> existing.equals(normalizedName, ignoreCase = true) }) {
             return false
         }
 
-        val updatedTracks = existingTracks.toMutableSet().apply {
-            add(normalizedName)
-        }
-        preferences.edit().putStringSet(KEY_TRACKS, updatedTracks).apply()
+        val updatedTrack = Track(name = normalizedName)
+        persistTrackNames(existingTracks + normalizedName)
+        persistTrack(updatedTrack)
         return true
     }
 
     fun getTracksList(): List<String> {
         val selectedTrack = readSelectedTrackName()
-        val sortedTracks = preferences.getStringSet(KEY_TRACKS, emptySet())
-            .orEmpty()
+        val sortedTracks = readTrackNames()
             .map(::normalizeTrackName)
             .filter { name -> name.isNotBlank() }
             .distinctBy { name -> name.lowercase() }
@@ -52,7 +53,21 @@ class TrackManager(
     }
 
     fun getTracks(): List<Track> {
-        return getTracksList().map(::Track)
+        return getTracksList().map { trackName ->
+            getTrack(trackName) ?: Track(name = trackName)
+        }
+    }
+
+    fun getTrack(trackName: String): Track? {
+        val normalizedName = normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return null
+        }
+
+        val persistedTrackName = readTrackNames()
+            .firstOrNull { existing -> existing.equals(normalizedName, ignoreCase = true) }
+            ?: return null
+        return readPersistedTrack(persistedTrackName) ?: Track(name = persistedTrackName)
     }
 
     fun saveTrack(trackName: String): Track? {
@@ -61,14 +76,30 @@ class TrackManager(
             return null
         }
 
-        if (!addTrackSafe(normalizedName)) {
-            val existingTrack = getTracksList()
-                .firstOrNull { existing -> existing.equals(normalizedName, ignoreCase = true) }
-                ?: return null
-            return Track(existingTrack)
+        val existingTrack = getTrack(normalizedName)
+        return if (existingTrack != null) {
+            existingTrack
+        } else {
+            val createdTrack = Track(name = normalizedName)
+            persistTrackNames(readTrackNames() + normalizedName)
+            persistTrack(createdTrack)
+            createdTrack
+        }
+    }
+
+    fun saveTrack(track: Track): Track? {
+        val normalizedName = normalizeTrackName(track.name)
+        if (normalizedName.isBlank()) {
+            return null
         }
 
-        return Track(normalizedName)
+        val normalizedTrack = track.copy(name = normalizedName)
+        val existingNames = readTrackNames()
+        if (existingNames.none { existing -> existing.equals(normalizedName, ignoreCase = true) }) {
+            persistTrackNames(existingNames + normalizedName)
+        }
+        persistTrack(normalizedTrack)
+        return normalizedTrack
     }
 
     fun getSelectedTrackName(): String? {
@@ -92,11 +123,14 @@ class TrackManager(
             return
         }
 
-        val persistedTrackName = getTracksList()
+        val persistedTrack = getTracksList()
             .firstOrNull { existing -> existing.equals(normalizedName, ignoreCase = true) }
-            ?: if (addTrackSafe(normalizedName)) normalizedName else normalizedName
+            ?: run {
+                saveTrack(normalizedName)
+                normalizedName
+            }
 
-        preferences.edit().putString(KEY_SELECTED_TRACK, persistedTrackName).apply()
+        preferences.edit().putString(KEY_SELECTED_TRACK, persistedTrack).apply()
     }
 
     fun clearSelectedTrack() {
@@ -109,17 +143,18 @@ class TrackManager(
             return false
         }
 
-        val existingTracks = preferences.getStringSet(KEY_TRACKS, emptySet()).orEmpty()
+        val existingTracks = readTrackNames()
         val persistedTrack = existingTracks.firstOrNull { existing ->
             existing.equals(normalizedName, ignoreCase = true)
         } ?: return false
 
-        val updatedTracks = existingTracks.toMutableSet().apply {
-            removeIf { existing -> existing.equals(persistedTrack, ignoreCase = true) }
+        val updatedTracks = existingTracks.filterNot { existing ->
+            existing.equals(persistedTrack, ignoreCase = true)
         }
 
         val selectedTrack = readSelectedTrackName()
-        val editor = preferences.edit().putStringSet(KEY_TRACKS, updatedTracks)
+        val editor = preferences.edit().putStringSet(KEY_TRACKS, updatedTracks.toSet())
+            .remove(buildTrackKey(persistedTrack))
         if (selectedTrack.equals(persistedTrack, ignoreCase = true)) {
             val fallbackTrack = updatedTracks
                 .map(::normalizeTrackName)
@@ -143,6 +178,41 @@ class TrackManager(
 
     private fun readSelectedTrackName(): String {
         return normalizeTrackName(preferences.getString(KEY_SELECTED_TRACK, null).orEmpty())
+    }
+
+    private fun readTrackNames(): List<String> {
+        return preferences.getStringSet(KEY_TRACKS, emptySet())
+            .orEmpty()
+            .toList()
+    }
+
+    private fun persistTrackNames(trackNames: List<String>) {
+        preferences.edit().putStringSet(KEY_TRACKS, trackNames.toSet()).apply()
+    }
+
+    private fun persistTrack(track: Track) {
+        preferences.edit()
+            .putString(buildTrackKey(track.name), gson.toJson(track))
+            .apply()
+    }
+
+    private fun readPersistedTrack(trackName: String): Track? {
+        val rawTrack = preferences.getString(buildTrackKey(trackName), null).orEmpty()
+        if (rawTrack.isBlank()) {
+            return null
+        }
+        return runCatching { gson.fromJson(rawTrack, Track::class.java) }
+            .getOrNull()
+            ?.copy(name = normalizeTrackName(trackName))
+    }
+
+    private fun buildTrackKey(trackName: String): String {
+        return "track_${sanitizeTrackName(trackName)}"
+    }
+
+    private fun sanitizeTrackName(trackName: String): String {
+        val trimmed = trackName.trim().ifBlank { "track" }
+        return trimmed.replace(Regex("[^A-Za-z0-9_-]+"), "_")
     }
 
     companion object {

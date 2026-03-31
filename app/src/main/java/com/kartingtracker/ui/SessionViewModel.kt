@@ -4,6 +4,8 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.mikephil.charting.data.Entry
+import com.kartingtracker.data.CurveDefinition
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.Session
@@ -11,18 +13,19 @@ import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.Track
 import com.kartingtracker.data.TrackLayout
 import com.kartingtracker.data.TrackProfile
+import com.kartingtracker.domain.AutoStartDetector
 import com.kartingtracker.domain.AutoCornerDetector
+import com.kartingtracker.domain.CurveDetector
 import com.kartingtracker.domain.IdealLap
 import com.kartingtracker.domain.IdealLapCalculator
 import com.kartingtracker.domain.LapNormalizer
-import com.kartingtracker.domain.TrackLayoutMapper
+import com.kartingtracker.domain.MapOverlayProjector
 import com.kartingtracker.domain.TimeLossCalculator
 import com.kartingtracker.service.startRecordingService
 import com.kartingtracker.service.stopRecordingService
 import com.kartingtracker.sensor.RecorderPhase
 import com.kartingtracker.sensor.SensorRecorder
 import com.kartingtracker.ui.common.formatLapTime
-import com.github.mikephil.charting.data.Entry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,6 +42,9 @@ class SessionViewModel(
     val sensorRecorder: SensorRecorder
 ) : AndroidViewModel(application) {
     private val autoCornerDetector = AutoCornerDetector()
+    private val curveDetector = CurveDetector()
+    private val autoStartDetector = AutoStartDetector()
+    private val mapOverlayProjector = MapOverlayProjector()
 
     private val selectedLapAIndex = MutableStateFlow(0)
     private val selectedLapBIndex = MutableStateFlow(1)
@@ -68,13 +74,28 @@ class SessionViewModel(
 
     val trackMapUiState: StateFlow<TrackMapUiState> = combine(
         sessionRepository.currentSession,
-        sessionRepository.currentTrackLayout
-    ) { session, trackLayout ->
-        val referenceLap = session?.laps
-            ?.filter { lap -> lap.isNormalPhase && !lap.isDisturbed && lap.confidenceScore >= 0.75f }
-            ?.minByOrNull { lap -> lap.lapTimeMs }
-            ?: session?.laps?.minByOrNull { lap -> lap.lapTimeMs }
-        val detectedCorners = referenceLap?.let(autoCornerDetector::detectCorners).orEmpty()
+        sessionRepository.currentTrackLayout,
+        sessionRepository.availableTracks,
+        sessionRepository.currentTrackName
+    ) { session, trackLayout, tracks, currentTrackName ->
+        val referenceLap = selectReferenceLap(session?.laps.orEmpty())
+        val selectedTrack = tracks.firstOrNull { track -> track.name.equals(currentTrackName, ignoreCase = true) }
+        val savedCurves = currentTrackName
+            .takeIf { trackName -> trackName.isNotBlank() }
+            ?.let(sessionRepository::loadTrackMapMetadata)
+            ?.curves
+            .orEmpty()
+        val detectedCurves = referenceLap?.let(curveDetector::detectCurves).orEmpty().ifEmpty { savedCurves }
+        val detectedCorners = detectedCurves.map { curve ->
+            com.kartingtracker.domain.DetectedCorner(
+                startPercent = curve.startPercent,
+                endPercent = curve.endPercent,
+                peakPercent = curve.peakPercent,
+                strength = curve.intensity
+            )
+        }.ifEmpty {
+            referenceLap?.let(autoCornerDetector::detectCorners).orEmpty()
+        }
         val highlightLabels = session?.topTimeLossSegments
             .orEmpty()
             .mapNotNull { segment ->
@@ -83,20 +104,15 @@ class SessionViewModel(
             .take(3)
             .map { index -> "K$index" }
             .toSet()
-        val fallbackCornerLines = if (trackLayout?.imagePath.isNullOrBlank() || trackLayout?.corners.isNullOrEmpty()) {
-            TrackLayoutMapper.buildCornerReferences(detectedCorners, null).map { reference ->
-                if (reference.relativePosition.isBlank()) {
-                    reference.insightLabel
-                } else {
-                    "${reference.insightLabel} (${reference.relativePosition})"
-                }
-            }
-        } else {
-            emptyList()
-        }
+        val mapImagePath = selectedTrack?.mapImagePath ?: trackLayout?.imagePath?.takeIf { path -> path.isNotBlank() }
+        val fallbackCornerLines = buildFallbackCurveLines(
+            curves = detectedCurves,
+            includePosition = mapImagePath.isNullOrBlank()
+        )
 
         TrackMapUiState(
             detectedCorners = detectedCorners,
+            detectedCurves = detectedCurves,
             highlightedMarkerLabels = highlightLabels,
             fallbackCornerLines = fallbackCornerLines
         )
@@ -186,13 +202,25 @@ class SessionViewModel(
         idealLap,
         sessionRepository.currentSession,
         selectedLapAIndex,
-        selectedLapBIndex
-    ) { laps, idealLap, currentSession, selectedA, selectedB ->
+        selectedLapBIndex,
+        sessionRepository.availableTracks,
+        sessionRepository.currentTrackName,
+        sessionRepository.currentTrackLayout
+    ) { laps, idealLap, currentSession, selectedA, selectedB, tracks, currentTrackName, currentTrackLayout ->
+        val currentTrack = tracks.firstOrNull { track -> track.name.equals(currentTrackName, ignoreCase = true) }
+        val mapImagePath = currentTrack?.mapImagePath ?: currentTrackLayout?.imagePath?.takeIf { path -> path.isNotBlank() }
+        val savedCurves = currentTrackName
+            .takeIf { trackName -> trackName.isNotBlank() }
+            ?.let(sessionRepository::loadTrackMapMetadata)
+            ?.curves
+            .orEmpty()
         if (laps.isEmpty()) {
             return@combine ComparisonUiState(
                 insights = currentSession?.insights.orEmpty(),
                 theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
-                topTimeLossLines = createTopTimeLossLines(currentSession)
+                topTimeLossLines = createTopTimeLossLines(currentSession),
+                mapImagePath = mapImagePath,
+                fallbackCurveLines = buildFallbackCurveLines(savedCurves, includePosition = true)
             )
         }
 
@@ -200,9 +228,31 @@ class SessionViewModel(
         val safeB = selectedB.coerceIn(0, laps.lastIndex)
         val lapA = laps[safeA]
         val lapB = laps[safeB]
+        val referenceLap = minOf(lapA, lapB, compareBy<Lap> { it.lapTimeMs })
         val normalizedA = LapNormalizer.normalize(lapA)
         val normalizedB = LapNormalizer.normalize(lapB)
         val timeLossEntries = createTimeLossEntries(lapA, lapB)
+        val detectedCurves = curveDetector.detectCurves(referenceLap).ifEmpty { savedCurves }
+        val autoDetectedStart = autoStartDetector.detectStart(currentSession?.laps.orEmpty())
+        val projectedCurves = if (mapImagePath.isNullOrBlank()) {
+            emptyList()
+        } else {
+            mapOverlayProjector.projectCurves(
+                track = currentTrack,
+                trackLayout = currentTrackLayout,
+                referenceLap = referenceLap,
+                curves = detectedCurves,
+                autoDetectedStart = autoDetectedStart
+            ).map { projectedCurve ->
+                ProjectedCurveUiState(
+                    label = projectedCurve.label,
+                    x = projectedCurve.position.x,
+                    y = projectedCurve.position.y,
+                    intensity = projectedCurve.intensity,
+                    deltaSeconds = sampleTimeLossAtPercent(timeLossEntries, projectedCurve.peakPercent)
+                )
+            }
+        }
         val deltaMs = lapA.lapTimeMs - lapB.lapTimeMs
         val fasterLabel = when {
             deltaMs == 0L -> "Both laps have the same lap time."
@@ -248,6 +298,12 @@ class SessionViewModel(
             idealLapSectorLines = createIdealLapSectorLines(idealLap),
             insights = currentSession?.insights.orEmpty(),
             topTimeLossLines = createTopTimeLossLines(currentSession),
+            mapImagePath = mapImagePath,
+            projectedCurves = projectedCurves,
+            fallbackCurveLines = buildFallbackCurveLines(
+                curves = detectedCurves,
+                includePosition = mapImagePath.isNullOrBlank()
+            ),
             summaryLabel = buildString {
                 if (lapA.isOutlap || lapB.isOutlap) {
                     append("Outlap selected. Comparison may be less stable. ")
@@ -413,6 +469,23 @@ class SessionViewModel(
         }.orEmpty()
     }
 
+    private fun sampleTimeLossAtPercent(entries: List<Entry>, percent: Float): Float {
+        if (entries.isEmpty()) {
+            return 0f
+        }
+        return entries.minByOrNull { entry -> abs(entry.x - percent) }?.y ?: 0f
+    }
+
+    private fun buildFallbackCurveLines(curves: List<CurveDefinition>, includePosition: Boolean): List<String> {
+        return curves.map { curve ->
+            if (includePosition) {
+                "Turn ${curve.index} (${curve.peakPercent.toInt()}%)"
+            } else {
+                "Turn ${curve.index}"
+            }
+        }
+    }
+
     private fun createTheoreticalBestLabel(session: Session?): String {
         val theoreticalBestLapTimeMs = session?.theoreticalBestLapTimeMs ?: return ""
         val currentBestLapTimeMs = session.laps.minOfOrNull { lap -> lap.lapTimeMs } ?: return ""
@@ -447,6 +520,13 @@ class SessionViewModel(
         return session?.segmentMarkers.orEmpty().map { marker ->
             Entry(marker.positionPercent, marker.severity)
         }
+    }
+
+    private fun selectReferenceLap(laps: List<Lap>): Lap? {
+        val preferredLap = laps
+            .filter { lap -> lap.isNormalPhase && !lap.isDisturbed && lap.confidenceScore >= 0.75f }
+            .minByOrNull { lap -> lap.lapTimeMs }
+        return preferredLap ?: laps.minByOrNull { lap -> lap.lapTimeMs }
     }
 
     private fun resetLapSelection(session: Session) {

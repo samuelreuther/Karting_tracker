@@ -90,6 +90,39 @@
                 android:textColor="@color/karting_muted" />
 
             <TextView
+                android:id="@+id/trackMapTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Track Map"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/trackMapCard"
+                android:layout_width="match_parent"
+                android:layout_height="240dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                app:cardCornerRadius="18dp"
+                app:cardUseCompatPadding="true">
+
+                <com.kartingtracker.ui.comparison.TrackMapOverlayView
+                    android:id="@+id/trackMapOverlayView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:id="@+id/fallbackCurveLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="@color/karting_muted"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/sectorComparisonLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

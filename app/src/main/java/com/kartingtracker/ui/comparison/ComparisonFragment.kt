@@ -1,5 +1,6 @@
 package com.kartingtracker.ui.comparison
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -17,6 +18,7 @@ import com.kartingtracker.databinding.FragmentComparisonBinding
 import com.kartingtracker.ui.AppViewModelFactory
 import com.kartingtracker.ui.SessionViewModel
 import com.kartingtracker.ui.common.ChartUtils
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ComparisonFragment : Fragment() {
@@ -28,6 +30,9 @@ class ComparisonFragment : Fragment() {
     }
 
     private var suppressSelectionCallbacks = false
+    private var mapBitmapJob: Job? = null
+    private var currentMapPath: String? = null
+    private var currentMapBitmap: Bitmap? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -88,6 +93,24 @@ class ComparisonFragment : Fragment() {
                     binding.sessionInsightsLabel.text = state.topTimeLossLines.joinToString(separator = "\n") { insight -> "- $insight" }
                     binding.sessionInsightsTitle.visibility = if (state.topTimeLossLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.sessionInsightsLabel.visibility = if (state.topTimeLossLines.isEmpty()) View.GONE else View.VISIBLE
+                    binding.trackMapTitle.visibility =
+                        if (state.mapImagePath.isNullOrBlank() && state.fallbackCurveLines.isEmpty()) View.GONE else View.VISIBLE
+                    binding.trackMapTitle.text = if (state.mapImagePath.isNullOrBlank()) {
+                        "Detected Turns"
+                    } else {
+                        "Track Map"
+                    }
+                    binding.trackMapCard.visibility = if (state.mapImagePath.isNullOrBlank()) View.GONE else View.VISIBLE
+                    binding.fallbackCurveLabel.text = state.fallbackCurveLines.joinToString(separator = "\n")
+                    binding.fallbackCurveLabel.visibility = if (
+                        state.fallbackCurveLines.isEmpty() ||
+                        (!state.mapImagePath.isNullOrBlank() && state.projectedCurves.isNotEmpty())
+                    ) {
+                        View.GONE
+                    } else {
+                        View.VISIBLE
+                    }
+                    renderTrackMap(state)
 
                     if (state.lapLabels.isNotEmpty()) {
                         updateSpinner(binding.lapASpinner, state.lapLabels, state.selectedLapAIndex)
@@ -119,6 +142,9 @@ class ComparisonFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        mapBitmapJob?.cancel()
+        currentMapBitmap = null
+        currentMapPath = null
         _binding = null
     }
 
@@ -130,5 +156,32 @@ class ComparisonFragment : Fragment() {
         spinner.adapter = adapter
         spinner.setSelection(selectedIndex, false)
         suppressSelectionCallbacks = false
+    }
+
+    private fun renderTrackMap(state: com.kartingtracker.ui.ComparisonUiState) {
+        if (state.mapImagePath.isNullOrBlank()) {
+            currentMapBitmap = null
+            currentMapPath = null
+            binding.trackMapOverlayView.render(bitmap = null, curves = emptyList())
+            return
+        }
+
+        if (currentMapPath == state.mapImagePath && currentMapBitmap != null) {
+            binding.trackMapOverlayView.render(bitmap = currentMapBitmap, curves = state.projectedCurves)
+            return
+        }
+
+        mapBitmapJob?.cancel()
+        currentMapPath = state.mapImagePath
+        val mapPath = state.mapImagePath
+        val projectedCurves = state.projectedCurves
+        mapBitmapJob = viewLifecycleOwner.lifecycleScope.launch {
+            val bitmap = TrackMapBitmapStore.load(mapPath)
+            if (_binding == null || currentMapPath != mapPath) {
+                return@launch
+            }
+            currentMapBitmap = bitmap
+            binding.trackMapOverlayView.render(bitmap = bitmap, curves = projectedCurves)
+        }
     }
 }

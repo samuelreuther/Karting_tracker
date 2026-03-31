@@ -1,16 +1,16 @@
 [
   {
-    "trackName": "Loerrach VM Kart Racing",
+    "trackName": "Lörrach VM Kart Racing",
     "imageAsset": "preloaded_tracks/images/Loerrach VM Kart Racing.png",
     "layoutAsset": "preloaded_tracks/layouts/loerrach_vm_kart_racing.json"
   },
   {
-    "trackName": "Rheinfelden Kartbahn",
+    "trackName": "Demo Indoor Track",
     "imageAsset": "preloaded_tracks/images/Rheinfelden Kartbahn.png",
     "layoutAsset": "preloaded_tracks/layouts/rheinfelden_kartbahn.json"
   },
   {
-    "trackName": "Basel Kart",
+    "trackName": "Test Track",
     "imageAsset": "preloaded_tracks/images/Basel Kart.png",
     "layoutAsset": "preloaded_tracks/layouts/basel_kart.json"
   }

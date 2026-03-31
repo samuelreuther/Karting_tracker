@@ -1,20 +1,23 @@
 package com.kartingtracker.ui.main
 
+import android.content.Context
+import android.content.DialogInterface
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.content.DialogInterface
+import android.widget.Filter
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentMainBinding
 import com.kartingtracker.ui.AppViewModelFactory
@@ -32,6 +35,7 @@ class MainFragment : Fragment() {
 
     private var suppressTrackCallbacks = false
     private var currentDropdownOptions: List<String> = emptyList()
+    private var trackDropdownAdapter: TrackDropdownAdapter? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -109,19 +113,28 @@ class MainFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        trackDropdownAdapter = null
         _binding = null
     }
 
     private fun setupTrackDropdown() {
+        binding.trackDropdown.keyListener = null
         binding.trackDropdown.setOnClickListener {
-            if (binding.trackDropdown.isEnabled) {
-                binding.trackDropdown.showDropDown()
+            showTrackDropdown()
+        }
+        binding.trackDropdown.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                showTrackDropdown()
             }
+            false
         }
         binding.trackDropdown.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus && binding.trackDropdown.isEnabled) {
-                binding.trackDropdown.post { binding.trackDropdown.showDropDown() }
+            if (hasFocus) {
+                binding.trackDropdown.post(::showTrackDropdown)
             }
+        }
+        binding.trackDropdown.setOnDismissListener {
+            binding.trackDropdown.clearFocus()
         }
         binding.trackDropdown.setOnItemClickListener { parent, _, position, _ ->
             if (suppressTrackCallbacks) {
@@ -135,11 +148,13 @@ class MainFragment : Fragment() {
 
     private fun updateTrackDropdown(trackOptions: List<String>, selectedTrackName: String) {
         val options = trackOptions + getString(R.string.add_new_track_option)
-        if (currentDropdownOptions != options) {
+        if (trackDropdownAdapter == null) {
+            trackDropdownAdapter = TrackDropdownAdapter(requireContext(), options)
+            binding.trackDropdown.setAdapter(trackDropdownAdapter)
             currentDropdownOptions = options
-            binding.trackDropdown.setAdapter(
-                ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, options)
-            )
+        } else if (currentDropdownOptions != options) {
+            currentDropdownOptions = options
+            trackDropdownAdapter?.replaceItems(options)
         }
 
         suppressTrackCallbacks = true
@@ -158,6 +173,16 @@ class MainFragment : Fragment() {
         }
 
         sessionViewModel.selectTrack(selectedLabel)
+        binding.trackDropdown.dismissDropDown()
+        binding.trackDropdown.clearFocus()
+    }
+
+    private fun showTrackDropdown() {
+        if (!binding.trackDropdown.isEnabled) {
+            return
+        }
+        binding.trackDropdown.requestFocus()
+        binding.trackDropdown.post { binding.trackDropdown.showDropDown() }
     }
 
     private fun showAddTrackDialog() {
@@ -215,5 +240,40 @@ class MainFragment : Fragment() {
 
         dialog.show()
         input.requestFocus()
+    }
+
+    private class TrackDropdownAdapter(
+        context: Context,
+        items: List<String>
+    ) : ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, items.toMutableList()) {
+        private val allItems = items.toMutableList()
+        private val noFilter = object : Filter() {
+            override fun performFiltering(constraint: CharSequence?): Filter.FilterResults {
+                return Filter.FilterResults().apply {
+                    values = allItems.toList()
+                    count = allItems.size
+                }
+            }
+
+            override fun publishResults(constraint: CharSequence?, results: Filter.FilterResults?) {
+                clear()
+                addAll(allItems)
+                notifyDataSetChanged()
+            }
+
+            override fun convertResultToString(resultValue: Any?): CharSequence {
+                return resultValue as? CharSequence ?: super.convertResultToString(resultValue)
+            }
+        }
+
+        fun replaceItems(items: List<String>) {
+            allItems.clear()
+            allItems.addAll(items)
+            clear()
+            addAll(allItems)
+            notifyDataSetChanged()
+        }
+
+        override fun getFilter(): Filter = noFilter
     }
 }

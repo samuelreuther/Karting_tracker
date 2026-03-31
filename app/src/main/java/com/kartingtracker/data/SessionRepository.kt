@@ -1,5 +1,6 @@
 package com.kartingtracker.data
 
+import android.graphics.PointF
 import android.net.Uri
 import android.util.Log
 import com.kartingtracker.domain.DrivingCoachAnalyzer
@@ -27,6 +28,7 @@ class SessionRepository(
     private val trackManager: TrackManager,
     private val trackProfileManager: TrackProfileManager,
     private val trackLayoutManager: TrackLayoutManager,
+    private val trackMapManager: TrackMapManager,
     private val drivingCoachAnalyzer: DrivingCoachAnalyzer
 ) {
     private val lock = Any()
@@ -157,7 +159,7 @@ class SessionRepository(
         if (!trackManager.addTrackSafe(normalizedName)) {
             return null
         }
-        val track = Track(normalizedName)
+        val track = trackManager.getTrack(normalizedName) ?: Track(normalizedName)
         refreshTracks()
         selectTrack(track.name)
         return track
@@ -216,9 +218,11 @@ class SessionRepository(
             trackLayoutManager.loadOrCreateLayout(normalizedName).copy(imagePath = imagePath)
         )
         trackLayoutManager.saveLayout(updatedLayout)
+        upsertTrackFromLayout(updatedLayout)
         if (normalizedName.equals(_currentTrackName.value, ignoreCase = true)) {
             _currentTrackLayout.value = updatedLayout
         }
+        refreshTracks()
         return updatedLayout
     }
 
@@ -227,10 +231,24 @@ class SessionRepository(
             layout.copy(trackName = trackManager.normalizeTrackName(layout.trackName))
         )
         trackLayoutManager.saveLayout(normalizedLayout)
+        upsertTrackFromLayout(normalizedLayout)
         if (normalizedLayout.trackName.equals(_currentTrackName.value, ignoreCase = true)) {
             _currentTrackLayout.value = normalizedLayout
         }
+        refreshTracks()
         return normalizedLayout
+    }
+
+    fun loadTrack(trackName: String): Track? {
+        return trackManager.getTrack(trackName)
+    }
+
+    fun loadTrackMapMetadata(trackName: String): TrackMapMetadata? {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return null
+        }
+        return trackMapManager.loadMetadata(normalizedName)
     }
 
     fun loadLastSession(): Session? {
@@ -274,6 +292,7 @@ class SessionRepository(
         if (!trackManager.deleteTrack(normalizedName)) {
             return false
         }
+        trackMapManager.deleteTrackMap(normalizedName)
 
         synchronized(lock) {
             if (_currentSession.value?.trackName.equals(normalizedName, ignoreCase = true)) {
@@ -397,6 +416,32 @@ class SessionRepository(
 
     private fun normalizeTrackLayout(layout: TrackLayout): TrackLayout {
         return layout.copy(corners = TrackLayoutMapper.sortAndRenameCorners(layout))
+    }
+
+    private fun upsertTrackFromLayout(layout: TrackLayout) {
+        val existingTrack = trackManager.getTrack(layout.trackName) ?: Track(name = layout.trackName)
+        trackManager.saveTrack(
+            existingTrack.copy(
+                name = layout.trackName,
+                mapImagePath = layout.imagePath.ifBlank { existingTrack.mapImagePath },
+                mapWidthMeters = existingTrack.mapWidthMeters ?: layout.lengthMeters,
+                startPoint = PointF(layout.startPoint.x, layout.startPoint.y),
+                startDirectionDeg = deriveStartDirection(layout)
+            )
+        )
+    }
+
+    private fun deriveStartDirection(layout: TrackLayout): Float {
+        val centerX = 0.5f
+        val centerY = 0.5f
+        val radialAngle = Math.toDegrees(
+            kotlin.math.atan2(
+                (centerY - layout.startPoint.y).toDouble(),
+                (layout.startPoint.x - centerX).toDouble()
+            )
+        ).toFloat()
+        val tangentOffset = if (layout.direction == TrackDirection.COUNTER_CLOCKWISE) 90f else -90f
+        return ((radialAngle + tangentOffset) + 360f) % 360f
     }
 
     private fun refreshTrackProfileState(trackName: String) {
@@ -638,7 +683,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 5
+        private const val CURRENT_PROCESSING_VERSION = 6
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

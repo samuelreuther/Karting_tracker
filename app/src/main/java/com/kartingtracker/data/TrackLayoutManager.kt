@@ -237,7 +237,7 @@ class TrackLayoutManager(
     companion object {
         private const val TAG = "TrackLayoutManager"
         private const val KEY_BUNDLED_LAYOUT_VERSION = "bundled_layout_version"
-        private const val bundledLayoutVersion = 6
+        private const val bundledLayoutVersion = 7
         private const val bundledManifestAssetPath = "preloaded_tracks/manifest.json"
         private val legacyBundledTrackNames = listOf(
             "Lörrach VM Kart Racing",
@@ -247,7 +247,10 @@ class TrackLayoutManager(
             "test_track_a",
             "test_track_b",
             "Test Track A",
-            "Test Track B"
+            "Test Track B",
+            "Loerrach VM Kart Racing",
+            "Rheinfelden Kartbahn",
+            "Basel Kart"
         )
     }
 }

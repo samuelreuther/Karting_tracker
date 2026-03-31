@@ -1,23 +1,14 @@
 package com.kartingtracker.domain
 
 import com.kartingtracker.data.TrackCorner
-import com.kartingtracker.data.TrackDirection
 import com.kartingtracker.data.TrackLayout
 import com.kartingtracker.data.TrackMarker
-import com.kartingtracker.data.TrackPoint
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 object TrackLayoutMapper {
     fun sortAndRenameCorners(layout: TrackLayout): List<TrackCorner> {
-        val orderedCorners = sortCorners(
-            corners = layout.corners,
-            startPoint = layout.startPoint,
-            direction = layout.direction
-        )
-        return orderedCorners.mapIndexed { index, corner ->
+        return layout.corners.mapIndexed { index, corner ->
             corner.copy(name = "Kurve ${index + 1}")
         }
     }
@@ -93,61 +84,6 @@ object TrackLayoutMapper {
         }.filterNotNull()
     }
 
-    private fun sortCorners(
-        corners: List<TrackCorner>,
-        startPoint: TrackPoint,
-        direction: TrackDirection
-    ): List<TrackCorner> {
-        if (corners.size < 2) {
-            return corners
-        }
-
-        val centerPoint = centerPoint(corners.map(TrackCorner::point) + startPoint)
-        return corners.sortedBy { corner ->
-            progressFromStart(corner.point, startPoint, centerPoint, direction)
-        }
-    }
-
-    private fun progressFromStart(
-        point: TrackPoint,
-        startPoint: TrackPoint,
-        centerPoint: TrackPoint,
-        direction: TrackDirection
-    ): Float {
-        val clockwiseProgress = clockwiseProgress(point, startPoint, centerPoint)
-        val directedProgress = when (direction) {
-            TrackDirection.CLOCKWISE -> clockwiseProgress
-            TrackDirection.COUNTER_CLOCKWISE -> ((1f - clockwiseProgress) + 1f) % 1f
-        }
-        return if (abs(directedProgress) < samePointEpsilon) 1f else directedProgress
-    }
-
-    private fun clockwiseProgress(
-        point: TrackPoint,
-        startPoint: TrackPoint,
-        centerPoint: TrackPoint
-    ): Float {
-        val startAngle = angleDegrees(startPoint, centerPoint)
-        val pointAngle = angleDegrees(point, centerPoint)
-        val clockwiseDelta = ((startAngle - pointAngle) + 360f) % 360f
-        return clockwiseDelta / 360f
-    }
-
-    private fun angleDegrees(point: TrackPoint, centerPoint: TrackPoint): Float {
-        val angleRadians = atan2(point.y - centerPoint.y, point.x - centerPoint.x)
-        return (((angleRadians * 180f) / PI.toFloat()) + 360f) % 360f
-    }
-
-    private fun centerPoint(points: List<TrackPoint>): TrackPoint {
-        if (points.isEmpty()) {
-            return TrackLayout.DEFAULT_START_POINT
-        }
-        return TrackPoint(
-            x = points.map { point -> point.x }.average().toFloat(),
-            y = points.map { point -> point.y }.average().toFloat()
-        )
-    }
-
     private fun List<TrackCorner>.mapDetectedCornerToLayout(displayIndex: Int, totalDetectedCorners: Int): TrackCorner? {
         if (isEmpty()) {
             return null
@@ -166,8 +102,6 @@ object TrackLayoutMapper {
         val delta = abs(first - second)
         return minOf(delta, 1f - delta)
     }
-
-    private const val samePointEpsilon = 0.01f
 }
 
 data class TrackCornerReference(

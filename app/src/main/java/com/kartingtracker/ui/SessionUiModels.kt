@@ -2,6 +2,7 @@ package com.kartingtracker.ui
 
 import com.github.mikephil.charting.data.Entry
 import com.kartingtracker.data.Session
+import com.kartingtracker.data.CurveDefinition
 import com.kartingtracker.domain.DetectedCorner
 
 data class SessionUiState(
@@ -44,6 +45,9 @@ data class ComparisonUiState(
     val idealLapSectorLines: List<String> = emptyList(),
     val insights: List<String> = emptyList(),
     val topTimeLossLines: List<String> = emptyList(),
+    val mapImagePath: String? = null,
+    val projectedCurves: List<ProjectedCurveUiState> = emptyList(),
+    val fallbackCurveLines: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
 )
 
@@ -61,6 +65,15 @@ data class SessionListItemUiState(
 
 data class TrackMapUiState(
     val detectedCorners: List<DetectedCorner> = emptyList(),
+    val detectedCurves: List<CurveDefinition> = emptyList(),
     val highlightedMarkerLabels: Set<String> = emptySet(),
     val fallbackCornerLines: List<String> = emptyList()
+)
+
+data class ProjectedCurveUiState(
+    val label: String,
+    val x: Float,
+    val y: Float,
+    val intensity: Float,
+    val deltaSeconds: Float = 0f
 )
