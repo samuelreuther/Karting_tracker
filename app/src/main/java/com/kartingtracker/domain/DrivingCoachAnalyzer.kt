@@ -1,5 +1,6 @@
 package com.kartingtracker.domain
 
+import com.kartingtracker.data.CoachingInsight
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.LapPhase
 import com.kartingtracker.data.SegmentMarker
@@ -12,6 +13,7 @@ import kotlin.math.sqrt
 
 data class SessionTelemetryAnalysis(
     val insights: List<String> = emptyList(),
+    val coachingInsights: List<CoachingInsight> = emptyList(),
     val theoreticalBestLapTimeMs: Long? = null,
     val topTimeLossSegments: List<TimeLossSegment> = emptyList(),
     val segmentMarkers: List<SegmentMarker> = emptyList()
@@ -32,15 +34,6 @@ data class SegmentDelta(
     val deltaExit: Float,
     val deltaYaw: Float,
     val deltaStability: Float
-)
-
-data class CoachingInsight(
-    val segmentIndex: Int,
-    val cornerName: String?,
-    val timeLossMs: Float,
-    val cause: String,
-    val suggestion: String,
-    val severity: Float
 )
 
 class DrivingCoachAnalyzer {
@@ -94,6 +87,7 @@ class DrivingCoachAnalyzer {
 
         return SessionTelemetryAnalysis(
             insights = insights,
+            coachingInsights = aggregateInsights,
             theoreticalBestLapTimeMs = theoreticalBestLapTimeMs,
             topTimeLossSegments = aggregateInsights.map { insight ->
                 val defaultLabel = "Segment ${insight.segmentIndex + 1}"
