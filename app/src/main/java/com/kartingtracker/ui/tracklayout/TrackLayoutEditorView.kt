@@ -174,7 +174,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
             if (highlightedLabels.contains(marker.label)) {
                 canvas.drawCircle(centerX, centerY, markerRadius + (3f * density), markerHighlightPaint)
             }
-            canvas.drawText(centerX, centerY - markerRadius - (4f * density), marker.label, markerLabelPaint)
+            canvas.drawText(marker.label, centerX, centerY - markerRadius - (4f * density), markerLabelPaint)
         }
     }
 
@@ -190,7 +190,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
         val centerY = drawableBounds.top + (point.y * drawableBounds.height())
         canvas.drawCircle(centerX, centerY, markerRadius, fillPaint)
         canvas.drawCircle(centerX, centerY, markerRadius, outlinePaint)
-        canvas.drawText(centerX, centerY + (4f * density), label, labelPaint)
+        canvas.drawText(label, centerX, centerY + (4f * density), labelPaint)
     }
 
     private fun drawDirectionLegend(canvas: Canvas, drawableBounds: RectF) {
