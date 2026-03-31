@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlin.math.abs
+import java.io.File
 
 class SessionViewModel(
     application: Application,
@@ -253,6 +254,28 @@ class SessionViewModel(
                 )
             }
         }
+        val projectedInsights = if (mapImagePath.isNullOrBlank()) {
+            emptyList()
+        } else {
+            val detectedCorners = referenceLap.let(autoCornerDetector::detectCorners)
+            val projected = mapOverlayProjector.projectInsights(
+                trackLayout = currentTrackLayout,
+                detectedCorners = detectedCorners,
+                segmentMarkers = currentSession?.segmentMarkers.orEmpty()
+            )
+            projected.mapNotNull { marker ->
+                val insight = currentSession?.coachingInsights?.firstOrNull { it.segmentIndex == marker.segmentIndex }
+                    ?: currentSession?.coachingInsights?.firstOrNull()
+                    ?: return@mapNotNull null
+                TrackInsightMarker(
+                    x = marker.x,
+                    y = marker.y,
+                    severity = insight.severity,
+                    label = insight.cornerName ?: "S${insight.segmentIndex}",
+                    insight = insight
+                )
+            }
+        }
         val deltaMs = lapA.lapTimeMs - lapB.lapTimeMs
         val fasterLabel = when {
             deltaMs == 0L -> "Both laps have the same lap time."
@@ -300,6 +323,7 @@ class SessionViewModel(
             topTimeLossLines = createTopTimeLossLines(currentSession),
             mapImagePath = mapImagePath,
             projectedCurves = projectedCurves,
+            trackInsightMarkers = projectedInsights,
             fallbackCurveLines = buildFallbackCurveLines(
                 curves = detectedCurves,
                 includePosition = mapImagePath.isNullOrBlank()
@@ -421,12 +445,28 @@ class SessionViewModel(
         return sessionRepository.deleteSession(session.id)
     }
 
+    fun loadTrack(trackName: String): Track? {
+        return sessionRepository.loadTrack(trackName)
+    }
+
     fun deleteTrack(trackName: String): Boolean {
         val deleted = sessionRepository.deleteTrack(trackName)
         if (deleted && selectedSessionFilter.value == trackName) {
             selectedSessionFilter.value = ALL_TRACKS_FILTER
         }
         return deleted
+    }
+
+    fun renameTrack(oldName: String, newName: String): Boolean {
+        return sessionRepository.renameTrack(oldName, newName)
+    }
+
+    fun updateTrack(track: Track): Track? {
+        return sessionRepository.updateTrack(track)
+    }
+
+    fun exportSessionCsv(session: Session): File {
+        return sessionRepository.exportSessionCsv(session)
     }
 
     fun selectSessionFilter(filter: String) {

@@ -109,6 +109,7 @@ class SessionStorageManager(
             }
             parsedSession.copy(
                 insights = parseInsights(jsonObject),
+                coachingInsights = parseCoachingInsights(jsonObject),
                 theoreticalBestLapTimeMs = parseTheoreticalBestLapTime(jsonObject),
                 topTimeLossSegments = parseTopTimeLossSegments(jsonObject),
                 segmentMarkers = parseSegmentMarkers(jsonObject),
@@ -130,6 +131,14 @@ class SessionStorageManager(
         val rawInsights = jsonObject.getAsJsonArray(INSIGHTS_FIELD) ?: return emptyList()
         return rawInsights.mapNotNull { element ->
             element?.takeIf { it.isJsonPrimitive }?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+
+    private fun parseCoachingInsights(jsonObject: com.google.gson.JsonObject): List<CoachingInsight> {
+        val rawInsights = jsonObject.getAsJsonArray(COACHING_INSIGHTS_FIELD) ?: return emptyList()
+        return rawInsights.mapNotNull { element ->
+            runCatching { gson.fromJson(element, CoachingInsight::class.java) }.getOrNull()
         }
     }
 
@@ -279,6 +288,7 @@ class SessionStorageManager(
         private const val ID_FIELD = "id"
         private const val TRACK_NAME_FIELD = "trackName"
         private const val INSIGHTS_FIELD = "insights"
+        private const val COACHING_INSIGHTS_FIELD = "coachingInsights"
         private const val THEORETICAL_BEST_LAP_TIME_FIELD = "theoreticalBestLapTimeMs"
         private const val TOP_TIME_LOSS_SEGMENTS_FIELD = "topTimeLossSegments"
         private const val SEGMENT_MARKERS_FIELD = "segmentMarkers"

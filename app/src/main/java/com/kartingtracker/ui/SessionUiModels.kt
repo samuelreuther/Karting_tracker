@@ -2,6 +2,7 @@ package com.kartingtracker.ui
 
 import com.github.mikephil.charting.data.Entry
 import com.kartingtracker.data.Session
+import com.kartingtracker.data.CoachingInsight
 import com.kartingtracker.data.CurveDefinition
 import com.kartingtracker.domain.DetectedCorner
 
@@ -47,6 +48,7 @@ data class ComparisonUiState(
     val topTimeLossLines: List<String> = emptyList(),
     val mapImagePath: String? = null,
     val projectedCurves: List<ProjectedCurveUiState> = emptyList(),
+    val trackInsightMarkers: List<TrackInsightMarker> = emptyList(),
     val fallbackCurveLines: List<String> = emptyList(),
     val summaryLabel: String = "Record a session to compare laps."
 )
@@ -76,4 +78,13 @@ data class ProjectedCurveUiState(
     val y: Float,
     val intensity: Float,
     val deltaSeconds: Float = 0f
+)
+
+
+data class TrackInsightMarker(
+    val x: Float,
+    val y: Float,
+    val severity: Float,
+    val label: String,
+    val insight: CoachingInsight
 )

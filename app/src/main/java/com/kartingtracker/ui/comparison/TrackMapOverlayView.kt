@@ -7,8 +7,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import com.kartingtracker.ui.ProjectedCurveUiState
+import com.kartingtracker.ui.TrackInsightMarker
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -19,11 +21,11 @@ class TrackMapOverlayView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     private var mapBitmap: Bitmap? = null
     private var projectedCurves: List<ProjectedCurveUiState> = emptyList()
+    private var insightMarkers: List<TrackInsightMarker> = emptyList()
+    private var onInsightTapped: ((TrackInsightMarker) -> Unit)? = null
     private val density = resources.displayMetrics.density
 
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        filterBitmap = true
-    }
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { filterBitmap = true }
     private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
@@ -45,15 +47,37 @@ class TrackMapOverlayView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
     }
 
-    fun render(bitmap: Bitmap?, curves: List<ProjectedCurveUiState>) {
+    fun render(bitmap: Bitmap?, curves: List<ProjectedCurveUiState>, insights: List<TrackInsightMarker> = emptyList()) {
         mapBitmap = bitmap
         projectedCurves = curves
+        insightMarkers = insights
         invalidate()
+    }
+
+    fun setOnInsightTapListener(listener: (TrackInsightMarker) -> Unit) {
+        onInsightTapped = listener
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action != MotionEvent.ACTION_UP || insightMarkers.isEmpty() || width == 0 || height == 0) {
+            return super.onTouchEvent(event)
+        }
+        val bounds = resolveBitmapBounds(mapBitmap ?: return false, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+        val hit = insightMarkers.firstOrNull { marker ->
+            val x = bounds.left + marker.x * bounds.width()
+            val y = bounds.top + marker.y * bounds.height()
+            val radius = 22f * density
+            abs(event.x - x) <= radius && abs(event.y - y) <= radius
+        }
+        if (hit != null) {
+            onInsightTapped?.invoke(hit)
+            return true
+        }
+        return super.onTouchEvent(event)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
         val drawingBounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
         canvas.drawRoundRect(drawingBounds, 18f * density, 18f * density, emptyPaint)
         val bitmap = mapBitmap
@@ -76,6 +100,22 @@ class TrackMapOverlayView @JvmOverloads constructor(
             canvas.drawCircle(x, y, radius, outlinePaint)
             canvas.drawText(curve.label, x, y - radius - (6f * density), textPaint)
         }
+        insightMarkers.forEach { marker ->
+            val x = bitmapBounds.left + marker.x * bitmapBounds.width()
+            val y = bitmapBounds.top + marker.y * bitmapBounds.height()
+            val radius = (10f + marker.severity * 10f) * density
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = when {
+                    marker.severity >= 0.75f -> Color.parseColor("#C62828")
+                    marker.severity >= 0.45f -> Color.parseColor("#EF6C00")
+                    else -> Color.parseColor("#F9A825")
+                }
+            }
+            canvas.drawCircle(x, y, radius, paint)
+            canvas.drawCircle(x, y, radius, outlinePaint)
+            canvas.drawText("!", x, y + (4f * density), textPaint)
+        }
     }
 
     private fun resolveBitmapBounds(bitmap: Bitmap, drawingBounds: RectF): RectF {
@@ -96,16 +136,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
         return when {
             curve.deltaSeconds <= -0.08f -> Color.parseColor("#2E7D32")
             curve.deltaSeconds >= 0.08f -> Color.parseColor("#C62828")
-            else -> {
-                val intensity = curve.intensity.coerceIn(0f, 1f)
-                val baseColor = if (intensity > 0.65f) {
-                    intArrayOf(183, 28, 28)
-                } else {
-                    intArrayOf(239, 108, 0)
-                }
-                val alpha = (180 + (abs(curve.deltaSeconds).coerceIn(0f, 0.25f) * 240f)).toInt().coerceIn(180, 255)
-                Color.argb(alpha, baseColor[0], baseColor[1], baseColor[2])
-            }
+            else -> Color.parseColor("#EF6C00")
         }
     }
 }

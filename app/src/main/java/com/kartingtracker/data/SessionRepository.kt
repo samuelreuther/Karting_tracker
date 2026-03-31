@@ -29,7 +29,8 @@ class SessionRepository(
     private val trackProfileManager: TrackProfileManager,
     private val trackLayoutManager: TrackLayoutManager,
     private val trackMapManager: TrackMapManager,
-    private val drivingCoachAnalyzer: DrivingCoachAnalyzer
+    private val drivingCoachAnalyzer: DrivingCoachAnalyzer,
+    private val sessionCsvExporter: SessionCsvExporter
 ) {
     private val lock = Any()
     private var currentSessionId: Long = System.currentTimeMillis()
@@ -131,6 +132,7 @@ class SessionRepository(
                     laps = emptyList(),
                     estimatedLapTimeMs = null,
                     insights = emptyList(),
+                    coachingInsights = emptyList(),
                     theoreticalBestLapTimeMs = null,
                     topTimeLossSegments = emptyList(),
                     segmentMarkers = emptyList(),
@@ -284,6 +286,56 @@ class SessionRepository(
         return true
     }
 
+    fun renameTrack(oldName: String, newName: String): Boolean {
+        val normalizedOld = trackManager.normalizeTrackName(oldName)
+        val normalizedNew = trackManager.normalizeTrackName(newName)
+        if (!trackManager.renameTrack(normalizedOld, normalizedNew)) {
+            return false
+        }
+
+        val oldSessions = sessionStorageManager.loadSessionsForTrack(normalizedOld)
+        if (oldSessions.isNotEmpty()) {
+            sessionStorageManager.deleteSessionsForTrack(normalizedOld)
+            oldSessions.forEach { sessionStorageManager.saveSession(it.copy(trackName = normalizedNew)) }
+        }
+
+        val oldProfile = trackProfileManager.loadProfile(normalizedOld)
+        if (oldProfile != null) {
+            trackProfileManager.saveProfile(oldProfile.copy(trackName = normalizedNew))
+            trackProfileManager.deleteProfile(normalizedOld)
+        }
+
+        val oldLayout = trackLayoutManager.loadLayout(normalizedOld)
+        if (oldLayout != null) {
+            trackLayoutManager.saveLayout(oldLayout.copy(trackName = normalizedNew))
+            trackLayoutManager.deleteLayout(normalizedOld)
+        }
+
+        val oldMap = trackMapManager.loadMetadata(normalizedOld)
+        if (oldMap != null) {
+            trackMapManager.saveMetadata(normalizedNew, oldMap.copy(trackName = normalizedNew))
+            trackMapManager.deleteTrackMap(normalizedOld)
+        }
+
+        if (_currentTrackName.value.equals(normalizedOld, ignoreCase = true)) {
+            _currentTrackName.value = normalizedNew
+        }
+        refreshTracks()
+        refreshStoredSessions()
+        refreshCurrentTrackStateAsync(_currentTrackName.value)
+        return true
+    }
+
+    fun updateTrack(track: Track): Track? {
+        val saved = trackManager.saveTrack(track) ?: return null
+        refreshTracks()
+        return saved
+    }
+
+    fun exportSessionCsv(session: Session): java.io.File {
+        return sessionCsvExporter.export(session)
+    }
+
     fun deleteTrack(trackName: String): Boolean {
         val normalizedName = trackManager.normalizeTrackName(trackName)
         if (normalizedName.isBlank()) {
@@ -347,6 +399,7 @@ class SessionRepository(
             session.copy(
                 laps = emptyList(),
                 insights = emptyList(),
+                coachingInsights = emptyList(),
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
@@ -425,6 +478,7 @@ class SessionRepository(
                 name = layout.trackName,
                 mapImagePath = layout.imagePath.ifBlank { existingTrack.mapImagePath },
                 mapWidthMeters = existingTrack.mapWidthMeters ?: layout.lengthMeters,
+                lengthMeters = existingTrack.lengthMeters ?: layout.lengthMeters,
                 startPoint = PointF(layout.startPoint.x, layout.startPoint.y),
                 startDirectionDeg = deriveStartDirection(layout)
             )
@@ -494,6 +548,7 @@ class SessionRepository(
                 laps = emptyList(),
                 estimatedLapTimeMs = null,
                 insights = emptyList(),
+                coachingInsights = emptyList(),
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
@@ -522,6 +577,7 @@ class SessionRepository(
             laps = emptyList(),
             estimatedLapTimeMs = null,
             insights = emptyList(),
+            coachingInsights = emptyList(),
             theoreticalBestLapTimeMs = null,
             topTimeLossSegments = emptyList(),
             segmentMarkers = emptyList(),
@@ -626,6 +682,7 @@ class SessionRepository(
             laps = laps,
             estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
             insights = emptyList(),
+            coachingInsights = emptyList(),
             theoreticalBestLapTimeMs = null,
             topTimeLossSegments = emptyList(),
             segmentMarkers = emptyList(),
@@ -640,6 +697,7 @@ class SessionRepository(
         )
         return processedSession.copy(
             insights = telemetryAnalysis.insights,
+            coachingInsights = telemetryAnalysis.coachingInsights,
             theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
             topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
             segmentMarkers = telemetryAnalysis.segmentMarkers
@@ -683,7 +741,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 6
+        private const val CURRENT_PROCESSING_VERSION = 7
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f
