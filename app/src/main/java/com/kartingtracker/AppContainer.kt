@@ -27,6 +27,7 @@ class AppContainer(context: Context) {
     private val drivingCoachAnalyzer = DrivingCoachAnalyzer()
 
     init {
+        trackLayoutManager.seedBundledTracks(trackManager)
         if (BuildConfig.DEBUG) {
             SimulatedSessionGenerator.seedDebugSessionIfNeeded(
                 context = context.applicationContext,

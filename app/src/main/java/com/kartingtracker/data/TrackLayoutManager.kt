@@ -12,6 +12,7 @@ class TrackLayoutManager(
 ) {
     private val appContext = context.applicationContext
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    private val preferences = appContext.getSharedPreferences("karting_track_layouts", Context.MODE_PRIVATE)
     private val layoutDirectory = File(appContext.filesDir, "track_layouts").apply { mkdirs() }
     private val imageDirectory = File(layoutDirectory, "images").apply { mkdirs() }
 
@@ -83,6 +84,29 @@ class TrackLayoutManager(
         )
     }
 
+    fun seedBundledTracks(trackManager: TrackManager) {
+        if (preferences.getInt(KEY_BUNDLED_LAYOUT_VERSION, 0) >= bundledLayoutVersion) {
+            return
+        }
+
+        val bundledTracks = loadBundledTrackAssets()
+        if (bundledTracks.isEmpty()) {
+            return
+        }
+
+        legacyBundledTrackNames.forEach { legacyTrackName ->
+            trackManager.deleteTrack(legacyTrackName)
+        }
+        bundledTracks.forEach { bundledTrack ->
+            copyBundledTrackAsset(bundledTrack, trackManager)
+        }
+
+        if (trackManager.getSelectedTrackName().isNullOrBlank()) {
+            bundledTracks.firstOrNull()?.trackName?.let(trackManager::setSelectedTrack)
+        }
+        preferences.edit().putInt(KEY_BUNDLED_LAYOUT_VERSION, bundledLayoutVersion).apply()
+    }
+
     private fun buildLayoutFileName(trackName: String): String {
         return "layout_${sanitizeTrackName(trackName)}.json"
     }
@@ -105,8 +129,54 @@ class TrackLayoutManager(
         }
     }
 
+    private fun resolveExtensionFromName(fileName: String): String {
+        return fileName.substringAfterLast('.', "png")
+    }
+
     private fun isManagedImagePath(path: String): Boolean {
         return path.startsWith(imageDirectory.absolutePath)
+    }
+
+    private fun loadBundledTrackAssets(): List<BundledTrackAsset> {
+        return try {
+            appContext.assets.open(bundledManifestAssetPath).bufferedReader().use { reader ->
+                gson.fromJson(reader, Array<BundledTrackAsset>::class.java)?.toList().orEmpty()
+            }
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to load bundled track manifest", exception)
+            emptyList()
+        }
+    }
+
+    private fun copyBundledTrackAsset(
+        bundledTrack: BundledTrackAsset,
+        trackManager: TrackManager
+    ) {
+        try {
+            trackManager.saveTrack(bundledTrack.trackName)
+
+            val targetImage = File(
+                imageDirectory,
+                buildImageFileName(bundledTrack.trackName, resolveExtensionFromName(bundledTrack.imageAsset))
+            )
+            appContext.assets.open(bundledTrack.imageAsset).use { inputStream ->
+                targetImage.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            val layout = appContext.assets.open(bundledTrack.layoutAsset).bufferedReader().use { reader ->
+                gson.fromJson(reader, PersistedTrackLayout::class.java).toTrackLayout(bundledTrack.trackName)
+            }
+            saveLayout(
+                layout.copy(
+                    trackName = bundledTrack.trackName,
+                    imagePath = targetImage.absolutePath
+                )
+            )
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to seed bundled track ${bundledTrack.trackName}", exception)
+        }
     }
 
     private fun TrackLayout.normalize(): TrackLayout {
@@ -158,7 +228,26 @@ class TrackLayoutManager(
         val corners: List<TrackCorner> = emptyList()
     )
 
+    private data class BundledTrackAsset(
+        val trackName: String,
+        val imageAsset: String,
+        val layoutAsset: String
+    )
+
     companion object {
         private const val TAG = "TrackLayoutManager"
+        private const val KEY_BUNDLED_LAYOUT_VERSION = "bundled_layout_version"
+        private const val bundledLayoutVersion = 6
+        private const val bundledManifestAssetPath = "preloaded_tracks/manifest.json"
+        private val legacyBundledTrackNames = listOf(
+            "Lörrach VM Kart Racing",
+            "LÃ¶rrach VM Kart Racing",
+            "Lorrach VM Kart Racing",
+            "lorrach_vm_kart_racing",
+            "test_track_a",
+            "test_track_b",
+            "Test Track A",
+            "Test Track B"
+        )
     }
 }

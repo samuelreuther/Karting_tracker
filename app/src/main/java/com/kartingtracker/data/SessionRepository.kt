@@ -30,15 +30,13 @@ class SessionRepository(
     private val drivingCoachAnalyzer: DrivingCoachAnalyzer
 ) {
     private val lock = Any()
-    private var currentSessionId: Long = sessionStorageManager
-        .loadAllSessions()
-        .maxOfOrNull { session -> session.id }
-        ?: 0L
+    private var currentSessionId: Long = System.currentTimeMillis()
     private var currentStartTimestampNs: Long = 0L
     private var currentStartTimeEpochMs: Long = 0L
     private val currentSamples = mutableListOf<SensorSample>()
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var autosaveJob: Job? = null
+    private var trackStateRefreshJob: Job? = null
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
@@ -55,7 +53,7 @@ class SessionRepository(
     private val _currentSession = MutableStateFlow<Session?>(null)
     val currentSession: StateFlow<Session?> = _currentSession.asStateFlow()
 
-    private val _storedSessions = MutableStateFlow(sessionStorageManager.loadAllSessions())
+    private val _storedSessions = MutableStateFlow<List<Session>>(emptyList())
     val storedSessions: StateFlow<List<Session>> = _storedSessions.asStateFlow()
 
     private val _availableTracks = MutableStateFlow(trackManager.getTracks())
@@ -64,11 +62,24 @@ class SessionRepository(
     private val _currentTrackName = MutableStateFlow(trackManager.getSelectedTrackName().orEmpty())
     val currentTrackName: StateFlow<String> = _currentTrackName.asStateFlow()
 
-    private val _currentTrackProfile = MutableStateFlow(loadUsableTrackProfile(_currentTrackName.value))
+    private val _currentTrackProfile = MutableStateFlow<TrackProfile?>(null)
     val currentTrackProfile: StateFlow<TrackProfile?> = _currentTrackProfile.asStateFlow()
 
-    private val _currentTrackLayout = MutableStateFlow(loadTrackLayout(_currentTrackName.value))
+    private val _currentTrackLayout = MutableStateFlow<TrackLayout?>(null)
     val currentTrackLayout: StateFlow<TrackLayout?> = _currentTrackLayout.asStateFlow()
+
+    init {
+        repositoryScope.launch {
+            refreshStoredSessions()
+            synchronized(lock) {
+                currentSessionId = maxOf(
+                    currentSessionId,
+                    _storedSessions.value.maxOfOrNull { session -> session.id } ?: currentSessionId
+                )
+            }
+            refreshCurrentTrackState(_currentTrackName.value)
+        }
+    }
 
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
@@ -160,9 +171,7 @@ class SessionRepository(
         trackManager.setSelectedTrack(normalizedName)
         _currentTrackName.value = normalizedName
         refreshTracks()
-        refreshStoredSessions()
-        refreshCurrentTrackProfile(normalizedName)
-        refreshCurrentTrackLayout(normalizedName)
+        refreshCurrentTrackStateAsync(normalizedName)
     }
 
     fun normalizeTrackName(trackName: String): String {
@@ -361,11 +370,29 @@ class SessionRepository(
     }
 
     private fun refreshCurrentTrackProfile(trackName: String = _currentTrackName.value) {
-        _currentTrackProfile.value = loadUsableTrackProfile(trackName)
+        val profile = loadUsableTrackProfile(trackName)
+        if (trackName.equals(_currentTrackName.value, ignoreCase = true)) {
+            _currentTrackProfile.value = profile
+        }
     }
 
     private fun refreshCurrentTrackLayout(trackName: String = _currentTrackName.value) {
-        _currentTrackLayout.value = loadTrackLayout(trackName)
+        val layout = loadTrackLayout(trackName)
+        if (trackName.equals(_currentTrackName.value, ignoreCase = true)) {
+            _currentTrackLayout.value = layout
+        }
+    }
+
+    private fun refreshCurrentTrackState(trackName: String = _currentTrackName.value) {
+        refreshCurrentTrackProfile(trackName)
+        refreshCurrentTrackLayout(trackName)
+    }
+
+    private fun refreshCurrentTrackStateAsync(trackName: String = _currentTrackName.value) {
+        trackStateRefreshJob?.cancel()
+        trackStateRefreshJob = repositoryScope.launch {
+            refreshCurrentTrackState(trackName)
+        }
     }
 
     private fun normalizeTrackLayout(layout: TrackLayout): TrackLayout {

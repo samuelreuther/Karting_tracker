@@ -58,7 +58,7 @@
                 android:id="@+id/trackDropdown"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:completionThreshold="2147483647"
+                android:completionThreshold="0"
                 android:importantForAutofill="no"
                 android:inputType="none" />
         </com.google.android.material.textfield.TextInputLayout>

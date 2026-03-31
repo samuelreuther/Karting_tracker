@@ -1,0 +1,54 @@
+{
+  "trackName": "Loerrach VM Kart Racing",
+  "imagePath": "",
+  "lengthMeters": 360.0,
+  "startPoint": {
+    "x": 0.74,
+    "y": 0.74
+  },
+  "direction": "CLOCKWISE",
+  "corners": [
+    {
+      "name": "Kurve 1",
+      "point": {
+        "x": 0.10,
+        "y": 0.83
+      }
+    },
+    {
+      "name": "Kurve 2",
+      "point": {
+        "x": 0.16,
+        "y": 0.15
+      }
+    },
+    {
+      "name": "Kurve 3",
+      "point": {
+        "x": 0.60,
+        "y": 0.09
+      }
+    },
+    {
+      "name": "Kurve 4",
+      "point": {
+        "x": 0.76,
+        "y": 0.36
+      }
+    },
+    {
+      "name": "Kurve 5",
+      "point": {
+        "x": 0.63,
+        "y": 0.56
+      }
+    },
+    {
+      "name": "Kurve 6",
+      "point": {
+        "x": 0.17,
+        "y": 0.64
+      }
+    }
+  ]
+}

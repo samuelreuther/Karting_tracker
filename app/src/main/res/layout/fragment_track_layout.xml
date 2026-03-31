@@ -151,6 +151,27 @@
             android:layout_marginTop="8dp"
             android:textColor="@color/karting_muted" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/track_layout_detected_corners_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/detectedCornerCountValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/karting_muted" />
+
+        <TextView
+            android:id="@+id/detectedCornerListValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/karting_muted" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

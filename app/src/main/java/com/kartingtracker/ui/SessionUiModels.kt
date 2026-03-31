@@ -2,6 +2,7 @@ package com.kartingtracker.ui
 
 import com.github.mikephil.charting.data.Entry
 import com.kartingtracker.data.Session
+import com.kartingtracker.domain.DetectedCorner
 
 data class SessionUiState(
     val isRecording: Boolean = false,
@@ -56,4 +57,10 @@ data class SessionListItemUiState(
     val session: Session,
     val sampleCount: Int,
     val fileSizeBytes: Long
+)
+
+data class TrackMapUiState(
+    val detectedCorners: List<DetectedCorner> = emptyList(),
+    val highlightedMarkerLabels: Set<String> = emptySet(),
+    val fallbackCornerLines: List<String> = emptyList()
 )

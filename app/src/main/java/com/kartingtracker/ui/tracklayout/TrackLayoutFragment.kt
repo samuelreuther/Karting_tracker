@@ -8,6 +8,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import com.kartingtracker.R
 import com.kartingtracker.data.TrackCorner
@@ -18,6 +21,8 @@ import com.kartingtracker.databinding.FragmentTrackLayoutBinding
 import com.kartingtracker.domain.TrackLayoutMapper
 import com.kartingtracker.ui.AppViewModelFactory
 import com.kartingtracker.ui.SessionViewModel
+import com.kartingtracker.ui.TrackMapUiState
+import kotlinx.coroutines.launch
 
 class TrackLayoutFragment : Fragment() {
     private var _binding: FragmentTrackLayoutBinding? = null
@@ -28,6 +33,7 @@ class TrackLayoutFragment : Fragment() {
     }
 
     private var workingLayout: TrackLayout? = null
+    private var trackMapUiState: TrackMapUiState = TrackMapUiState()
     private var editorMode: EditorMode = EditorMode.START_POINT
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
@@ -143,6 +149,15 @@ class TrackLayoutFragment : Fragment() {
 
         binding.startPointButton.isChecked = true
         renderLayout()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                sessionViewModel.trackMapUiState.collect { state ->
+                    trackMapUiState = state
+                    renderLayout()
+                }
+            }
+        }
     }
 
     override fun onDestroyView() {
@@ -163,9 +178,18 @@ class TrackLayoutFragment : Fragment() {
     private fun renderLayout() {
         val layout = normalizeLayout(workingLayout ?: return)
         workingLayout = layout
+        val trackMarkers = if (layout.imagePath.isBlank()) {
+            emptyList()
+        } else {
+            TrackLayoutMapper.createTrackMarkers(layout, trackMapUiState.detectedCorners)
+        }
         binding.trackNameValue.text = layout.trackName
         binding.layoutEditorView.setTrackImage(layout.imagePath)
         binding.layoutEditorView.renderLayout(layout)
+        binding.layoutEditorView.renderMarkers(
+            markers = trackMarkers,
+            highlightedLabels = trackMapUiState.highlightedMarkerLabels
+        )
         binding.clockwiseButton.isChecked = layout.direction == TrackDirection.CLOCKWISE
         binding.counterClockwiseButton.isChecked = layout.direction == TrackDirection.COUNTER_CLOCKWISE
         binding.imageStatusLabel.text = if (layout.imagePath.isBlank()) {
@@ -183,6 +207,18 @@ class TrackLayoutFragment : Fragment() {
             getString(R.string.track_layout_no_corners)
         } else {
             layout.corners.joinToString(separator = "\n") { corner -> corner.name }
+        }
+        binding.detectedCornerCountValue.text = resources.getQuantityString(
+            R.plurals.track_layout_detected_corner_count,
+            trackMapUiState.detectedCorners.size,
+            trackMapUiState.detectedCorners.size
+        )
+        binding.detectedCornerListValue.text = when {
+            trackMapUiState.detectedCorners.isEmpty() -> getString(R.string.track_layout_no_detected_corners)
+            trackMarkers.isEmpty() -> trackMapUiState.fallbackCornerLines.joinToString(separator = "\n")
+            else -> trackMapUiState.detectedCorners.mapIndexed { index, corner ->
+                "K${index + 1} (~${corner.peakPercent.toInt()}%)"
+            }.joinToString(separator = "\n")
         }
         binding.undoCornerButton.isEnabled = layout.corners.isNotEmpty()
         binding.clearCornersButton.isEnabled = layout.corners.isNotEmpty()

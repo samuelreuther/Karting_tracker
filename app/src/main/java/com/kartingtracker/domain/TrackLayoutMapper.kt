@@ -3,11 +3,12 @@ package com.kartingtracker.domain
 import com.kartingtracker.data.TrackCorner
 import com.kartingtracker.data.TrackDirection
 import com.kartingtracker.data.TrackLayout
+import com.kartingtracker.data.TrackMarker
 import com.kartingtracker.data.TrackPoint
-import com.kartingtracker.data.TrackProfile
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.roundToInt
 
 object TrackLayoutMapper {
     fun sortAndRenameCorners(layout: TrackLayout): List<TrackCorner> {
@@ -22,35 +23,44 @@ object TrackLayoutMapper {
     }
 
     fun buildCornerReferences(
-        layout: TrackLayout,
-        trackProfile: TrackProfile?
+        detectedCorners: List<DetectedCorner>,
+        trackLayout: TrackLayout?
     ): List<TrackCornerReference> {
-        val orderedCorners = sortAndRenameCorners(layout)
-        if (orderedCorners.isEmpty()) {
+        if (detectedCorners.isEmpty()) {
             return emptyList()
         }
 
-        val mappedPercents = resolveCornerPercents(orderedCorners.size, trackProfile)
-        return orderedCorners.mapIndexed { index, corner ->
+        val usableLayout = trackLayout?.takeIf { layout ->
+            layout.imagePath.isNotBlank() && layout.corners.isNotEmpty()
+        }
+        val orderedLayoutCorners = usableLayout?.let(::sortAndRenameCorners).orEmpty()
+
+        return detectedCorners.mapIndexed { index, detectedCorner ->
+            val displayIndex = index + 1
+            val mappedCorner = orderedLayoutCorners.mapDetectedCornerToLayout(displayIndex, detectedCorners.size)
             TrackCornerReference(
-                corner = corner,
-                displayIndex = index + 1,
-                mappedPercent = mappedPercents.getOrElse(index) { evenlySpacedPercent(index, orderedCorners.size) },
-                relativePosition = when (index) {
-                    0 -> "after start/finish"
-                    orderedCorners.lastIndex -> "before main straight"
+                displayIndex = displayIndex,
+                mappedPercent = (detectedCorner.peakPercent / 100f).coerceIn(0f, 1f),
+                markerLabel = "K$displayIndex",
+                insightLabel = mappedCorner?.name ?: "Corner $displayIndex",
+                relativePosition = when {
+                    mappedCorner == null -> "~${detectedCorner.peakPercent.roundToInt()}% lap"
+                    index == 0 -> "after start/finish"
+                    index == detectedCorners.lastIndex -> "before main straight"
                     else -> ""
-                }
+                },
+                corner = mappedCorner,
+                detectedCorner = detectedCorner
             )
         }
     }
 
     fun findClosestCornerReference(
-        layout: TrackLayout,
-        trackProfile: TrackProfile?,
+        detectedCorners: List<DetectedCorner>,
+        trackLayout: TrackLayout?,
         segmentPercent: Float
     ): TrackCornerReference? {
-        val references = buildCornerReferences(layout, trackProfile)
+        val references = buildCornerReferences(detectedCorners, trackLayout)
         if (references.isEmpty()) {
             return null
         }
@@ -61,13 +71,26 @@ object TrackLayoutMapper {
         }
     }
 
-    fun mapProgress(point: TrackPoint, startPoint: TrackPoint, direction: TrackDirection): Float {
-        val centerPoint = centerPoint(listOf(point, startPoint))
-        val clockwiseProgress = clockwiseProgress(point, startPoint, centerPoint)
-        return when (direction) {
-            TrackDirection.CLOCKWISE -> clockwiseProgress
-            TrackDirection.COUNTER_CLOCKWISE -> ((1f - clockwiseProgress) + 1f) % 1f
+    fun createTrackMarkers(
+        layout: TrackLayout,
+        detectedCorners: List<DetectedCorner>
+    ): List<TrackMarker> {
+        val references = buildCornerReferences(detectedCorners, layout)
+            .filter { reference -> reference.corner != null }
+        if (references.isEmpty()) {
+            return emptyList()
         }
+
+        val maximumStrength = detectedCorners.maxOfOrNull(DetectedCorner::strength)?.coerceAtLeast(1e-3f) ?: 1f
+        return references.map { reference ->
+            val mappedCorner = reference.corner ?: return@map null
+            TrackMarker(
+                x = mappedCorner.point.x,
+                y = mappedCorner.point.y,
+                label = reference.markerLabel,
+                severity = (reference.detectedCorner.strength / maximumStrength).coerceIn(0.2f, 1f)
+            )
+        }.filterNotNull()
     }
 
     private fun sortCorners(
@@ -125,27 +148,18 @@ object TrackLayoutMapper {
         )
     }
 
-    private fun resolveCornerPercents(
-        cornerCount: Int,
-        trackProfile: TrackProfile?
-    ): List<Float> {
-        val profilePercents = trackProfile?.typicalCorneringZones
-            .orEmpty()
-            .filter { percent -> percent in 1..99 }
-            .sorted()
-
-        return if (profilePercents.size == cornerCount) {
-            profilePercents.map { percent -> percent / 100f }
-        } else {
-            List(cornerCount) { index -> evenlySpacedPercent(index, cornerCount) }
+    private fun List<TrackCorner>.mapDetectedCornerToLayout(displayIndex: Int, totalDetectedCorners: Int): TrackCorner? {
+        if (isEmpty()) {
+            return null
         }
-    }
-
-    private fun evenlySpacedPercent(index: Int, total: Int): Float {
-        if (total <= 0) {
-            return 0f
+        if (size == 1 || totalDetectedCorners <= 1) {
+            return first()
         }
-        return (index + 1).toFloat() / (total + 1).toFloat()
+
+        val scaledIndex = (((displayIndex - 1).toFloat() / (totalDetectedCorners - 1).toFloat()) * lastIndex.toFloat())
+            .roundToInt()
+            .coerceIn(0, lastIndex)
+        return this[scaledIndex]
     }
 
     private fun circularDistance(first: Float, second: Float): Float {
@@ -157,8 +171,11 @@ object TrackLayoutMapper {
 }
 
 data class TrackCornerReference(
-    val corner: TrackCorner,
     val displayIndex: Int,
     val mappedPercent: Float,
-    val relativePosition: String
+    val markerLabel: String,
+    val insightLabel: String,
+    val relativePosition: String,
+    val corner: TrackCorner?,
+    val detectedCorner: DetectedCorner
 )

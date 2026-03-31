@@ -113,6 +113,16 @@ class MainFragment : Fragment() {
     }
 
     private fun setupTrackDropdown() {
+        binding.trackDropdown.setOnClickListener {
+            if (binding.trackDropdown.isEnabled) {
+                binding.trackDropdown.showDropDown()
+            }
+        }
+        binding.trackDropdown.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && binding.trackDropdown.isEnabled) {
+                binding.trackDropdown.post { binding.trackDropdown.showDropDown() }
+            }
+        }
         binding.trackDropdown.setOnItemClickListener { parent, _, position, _ ->
             if (suppressTrackCallbacks) {
                 return@setOnItemClickListener

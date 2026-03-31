@@ -59,7 +59,7 @@
     <string name="recording_phase_recording">Recording</string>
     <string name="track_layout_title">Track layout</string>
     <string name="track_layout_select_image">Upload track image</string>
-    <string name="track_layout_hint">Upload a track image, tap the start or finish line, choose the driving direction, then add corners in order around the lap.</string>
+    <string name="track_layout_hint">Upload a track image, tap the start or finish line, choose the driving direction, add layout corners if needed, and review the detected corner overlay.</string>
     <string name="track_layout_set_start">Set start point</string>
     <string name="track_layout_add_corner">Add corner</string>
     <string name="track_layout_direction_label">Driving direction</string>
@@ -67,12 +67,14 @@
     <string name="track_layout_counter_clockwise">Counter-clockwise</string>
     <string name="track_layout_start_point_label">Start point</string>
     <string name="track_layout_corners_label">Corners</string>
+    <string name="track_layout_detected_corners_label">Auto-detected corners</string>
     <string name="track_layout_undo_corner">Undo last corner</string>
     <string name="track_layout_clear_corners">Clear corners</string>
     <string name="track_layout_save">Save layout</string>
     <string name="track_layout_no_image">No track image selected yet.</string>
     <string name="track_layout_image_ready">Track image loaded.</string>
     <string name="track_layout_no_corners">No corners defined yet.</string>
+    <string name="track_layout_no_detected_corners">No corners detected yet. Record or load a session for this track.</string>
     <string name="track_layout_saved">Track layout saved.</string>
     <string name="track_layout_load_failed">Track layout could not be loaded.</string>
     <string name="track_layout_image_failed">Track image could not be imported.</string>
@@ -82,5 +84,9 @@
     <plurals name="track_layout_corner_count">
         <item quantity="one">%d corner saved</item>
         <item quantity="other">%d corners saved</item>
+    </plurals>
+    <plurals name="track_layout_detected_corner_count">
+        <item quantity="one">%d corner detected</item>
+        <item quantity="other">%d corners detected</item>
     </plurals>
 </resources>

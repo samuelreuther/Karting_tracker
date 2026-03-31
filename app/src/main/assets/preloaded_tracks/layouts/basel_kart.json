@@ -1,0 +1,68 @@
+{
+  "trackName": "Basel Kart",
+  "imagePath": "",
+  "lengthMeters": 820.0,
+  "startPoint": {
+    "x": 0.60,
+    "y": 0.16
+  },
+  "direction": "CLOCKWISE",
+  "corners": [
+    {
+      "name": "Kurve 1",
+      "point": {
+        "x": 0.79,
+        "y": 0.23
+      }
+    },
+    {
+      "name": "Kurve 2",
+      "point": {
+        "x": 0.77,
+        "y": 0.46
+      }
+    },
+    {
+      "name": "Kurve 3",
+      "point": {
+        "x": 0.72,
+        "y": 0.81
+      }
+    },
+    {
+      "name": "Kurve 4",
+      "point": {
+        "x": 0.51,
+        "y": 0.83
+      }
+    },
+    {
+      "name": "Kurve 5",
+      "point": {
+        "x": 0.40,
+        "y": 0.70
+      }
+    },
+    {
+      "name": "Kurve 6",
+      "point": {
+        "x": 0.23,
+        "y": 0.84
+      }
+    },
+    {
+      "name": "Kurve 7",
+      "point": {
+        "x": 0.18,
+        "y": 0.62
+      }
+    },
+    {
+      "name": "Kurve 8",
+      "point": {
+        "x": 0.26,
+        "y": 0.35
+      }
+    }
+  ]
+}

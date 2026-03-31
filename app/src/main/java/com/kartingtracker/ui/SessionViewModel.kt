@@ -11,9 +11,11 @@ import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.Track
 import com.kartingtracker.data.TrackLayout
 import com.kartingtracker.data.TrackProfile
+import com.kartingtracker.domain.AutoCornerDetector
 import com.kartingtracker.domain.IdealLap
 import com.kartingtracker.domain.IdealLapCalculator
 import com.kartingtracker.domain.LapNormalizer
+import com.kartingtracker.domain.TrackLayoutMapper
 import com.kartingtracker.domain.TimeLossCalculator
 import com.kartingtracker.service.startRecordingService
 import com.kartingtracker.service.stopRecordingService
@@ -21,10 +23,12 @@ import com.kartingtracker.sensor.RecorderPhase
 import com.kartingtracker.sensor.SensorRecorder
 import com.kartingtracker.ui.common.formatLapTime
 import com.github.mikephil.charting.data.Entry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlin.math.abs
@@ -34,6 +38,7 @@ class SessionViewModel(
     private val sessionRepository: SessionRepository,
     val sensorRecorder: SensorRecorder
 ) : AndroidViewModel(application) {
+    private val autoCornerDetector = AutoCornerDetector()
 
     private val selectedLapAIndex = MutableStateFlow(0)
     private val selectedLapBIndex = MutableStateFlow(1)
@@ -53,11 +58,51 @@ class SessionViewModel(
             }
         }
         IdealLapCalculator.calculate(allTrackLaps)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val laps: StateFlow<List<Lap>> = sessionRepository.currentSession
         .map { session -> session?.laps.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val trackMapUiState: StateFlow<TrackMapUiState> = combine(
+        sessionRepository.currentSession,
+        sessionRepository.currentTrackLayout
+    ) { session, trackLayout ->
+        val referenceLap = session?.laps
+            ?.filter { lap -> lap.isNormalPhase && !lap.isDisturbed && lap.confidenceScore >= 0.75f }
+            ?.minByOrNull { lap -> lap.lapTimeMs }
+            ?: session?.laps?.minByOrNull { lap -> lap.lapTimeMs }
+        val detectedCorners = referenceLap?.let(autoCornerDetector::detectCorners).orEmpty()
+        val highlightLabels = session?.topTimeLossSegments
+            .orEmpty()
+            .mapNotNull { segment ->
+                Regex("(\\d+)").find(segment.segmentLabel)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            }
+            .take(3)
+            .map { index -> "K$index" }
+            .toSet()
+        val fallbackCornerLines = if (trackLayout?.imagePath.isNullOrBlank() || trackLayout?.corners.isNullOrEmpty()) {
+            TrackLayoutMapper.buildCornerReferences(detectedCorners, null).map { reference ->
+                if (reference.relativePosition.isBlank()) {
+                    reference.insightLabel
+                } else {
+                    "${reference.insightLabel} (${reference.relativePosition})"
+                }
+            }
+        } else {
+            emptyList()
+        }
+
+        TrackMapUiState(
+            detectedCorners = detectedCorners,
+            highlightedMarkerLabels = highlightLabels,
+            fallbackCornerLines = fallbackCornerLines
+        )
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TrackMapUiState())
 
     val uiState: StateFlow<SessionUiState> = combine(
         sensorRecorder.recorderPhase,
@@ -132,7 +177,9 @@ class SessionViewModel(
                 )
             }
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
+    }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
 
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
         laps,
@@ -239,7 +286,9 @@ class SessionViewModel(
                 }
             }
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ComparisonUiState())
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ComparisonUiState())
 
     fun startRecording() {
         if (sessionRepository.currentTrackName.value.isBlank()) {

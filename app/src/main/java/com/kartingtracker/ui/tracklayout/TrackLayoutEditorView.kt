@@ -14,6 +14,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import com.kartingtracker.data.TrackCorner
 import com.kartingtracker.data.TrackDirection
 import com.kartingtracker.data.TrackLayout
+import com.kartingtracker.data.TrackMarker
 import com.kartingtracker.data.TrackPoint
 import kotlin.math.max
 
@@ -28,6 +29,8 @@ class TrackLayoutEditorView @JvmOverloads constructor(
     private var startPoint: TrackPoint = TrackLayout.DEFAULT_START_POINT
     private var corners: List<TrackCorner> = emptyList()
     private var direction: TrackDirection = TrackDirection.CLOCKWISE
+    private var markers: List<TrackMarker> = emptyList()
+    private var highlightedLabels: Set<String> = emptySet()
 
     private val density = resources.displayMetrics.density
     private val startFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -58,6 +61,21 @@ class TrackLayoutEditorView @JvmOverloads constructor(
         color = Color.parseColor("#263238")
         textSize = 13f * resources.displayMetrics.scaledDensity
     }
+    private val markerFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFB300")
+        style = Paint.Style.FILL
+        alpha = 170
+    }
+    private val markerHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#F4511E")
+        style = Paint.Style.STROKE
+        strokeWidth = 3f * density
+    }
+    private val markerLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#3E2723")
+        textAlign = Paint.Align.CENTER
+        textSize = 11f * resources.displayMetrics.scaledDensity
+    }
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#EEF2F5")
         style = Paint.Style.FILL
@@ -72,6 +90,12 @@ class TrackLayoutEditorView @JvmOverloads constructor(
         startPoint = layout.startPoint
         corners = layout.corners
         direction = layout.direction
+        invalidate()
+    }
+
+    fun renderMarkers(markers: List<TrackMarker>, highlightedLabels: Set<String>) {
+        this.markers = markers
+        this.highlightedLabels = highlightedLabels
         invalidate()
     }
 
@@ -90,6 +114,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
 
         val drawableBounds = resolveDrawableBounds() ?: return
         drawDirectionLegend(canvas, drawableBounds)
+        drawTrackMarkers(canvas, drawableBounds)
         drawStartMarker(canvas, drawableBounds)
         drawCornerMarkers(canvas, drawableBounds)
     }
@@ -136,6 +161,20 @@ class TrackLayoutEditorView @JvmOverloads constructor(
                 fillPaint = cornerFillPaint,
                 label = (index + 1).toString()
             )
+        }
+    }
+
+    private fun drawTrackMarkers(canvas: Canvas, drawableBounds: RectF) {
+        markers.forEach { marker ->
+            val centerX = drawableBounds.left + (marker.x * drawableBounds.width())
+            val centerY = drawableBounds.top + (marker.y * drawableBounds.height())
+            val markerRadius = (10f + (marker.severity.coerceIn(0f, 1f) * 14f)) * density
+            canvas.drawCircle(centerX, centerY, markerRadius, markerFillPaint)
+            canvas.drawCircle(centerX, centerY, markerRadius, outlinePaint)
+            if (highlightedLabels.contains(marker.label)) {
+                canvas.drawCircle(centerX, centerY, markerRadius + (3f * density), markerHighlightPaint)
+            }
+            canvas.drawText(centerX, centerY - markerRadius - (4f * density), marker.label, markerLabelPaint)
         }
     }
 

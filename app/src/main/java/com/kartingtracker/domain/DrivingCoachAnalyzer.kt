@@ -19,6 +19,8 @@ data class SessionTelemetryAnalysis(
 )
 
 class DrivingCoachAnalyzer {
+    private val autoCornerDetector = AutoCornerDetector()
+
     fun analyzeSession(
         session: Session,
         trackProfile: TrackProfile? = null,
@@ -31,6 +33,7 @@ class DrivingCoachAnalyzer {
         }
 
         val segmentation = resolveSegmentation(referenceLap)
+        val detectedCorners = autoCornerDetector.detectCorners(referenceLap)
         val referenceAnalysis = analyzeLap(referenceLap, segmentation)
         val comparableAnalyses = validLaps
             .filterNot { lap -> lap.id == referenceLap.id }
@@ -54,7 +57,7 @@ class DrivingCoachAnalyzer {
 
         val insights = buildList {
             topSegments.forEach { comparison ->
-                add(buildSegmentInsight(comparison, resolveCornerReference(comparison, trackLayout, trackProfile)))
+                add(buildSegmentInsight(comparison, resolveCornerReference(comparison, trackLayout, detectedCorners)))
             }
             consistencyInsight?.let(::add)
             generalImprovementInsight?.let(::add)
@@ -64,16 +67,16 @@ class DrivingCoachAnalyzer {
             insights = insights,
             theoreticalBestLapTimeMs = theoreticalBestLapTimeMs,
             topTimeLossSegments = topSegments.map { comparison ->
-                val reference = resolveCornerReference(comparison, trackLayout, trackProfile)
+                val reference = resolveCornerReference(comparison, trackLayout, detectedCorners)
                 TimeLossSegment(
                     segmentIndex = reference?.displayIndex ?: comparison.segment.displayIndex,
-                    segmentLabel = reference?.corner?.name ?: "Sector ${comparison.segment.displayIndex}",
+                    segmentLabel = reference?.insightLabel ?: "Sector ${comparison.segment.displayIndex}",
                     relativePosition = reference?.relativePosition.orEmpty(),
                     timeLoss = comparison.averageTimeLossMs / 1000f,
                     cause = comparison.cause.title
                 )
             },
-            segmentMarkers = buildSegmentMarkers(topSegments, trackLayout, trackProfile)
+            segmentMarkers = buildSegmentMarkers(topSegments, trackLayout, detectedCorners)
         )
     }
 
@@ -364,18 +367,18 @@ class DrivingCoachAnalyzer {
     private fun buildSegmentMarkers(
         topSegments: List<SegmentComparison>,
         trackLayout: TrackLayout?,
-        trackProfile: TrackProfile?
+        detectedCorners: List<DetectedCorner>
     ): List<SegmentMarker> {
         if (topSegments.isEmpty()) {
             return emptyList()
         }
         val maxLoss = topSegments.maxOf { comparison -> comparison.averageTimeLossMs }.coerceAtLeast(1L)
         return topSegments.map { comparison ->
-            val reference = resolveCornerReference(comparison, trackLayout, trackProfile)
+            val reference = resolveCornerReference(comparison, trackLayout, detectedCorners)
             SegmentMarker(
                 positionPercent = comparison.segment.positionPercent,
                 severity = (comparison.averageTimeLossMs.toFloat() / maxLoss.toFloat()).coerceIn(0.2f, 1f),
-                label = reference?.corner?.name ?: comparison.cause.shortLabel
+                label = reference?.markerLabel ?: comparison.cause.shortLabel
             )
         }
     }
@@ -383,15 +386,15 @@ class DrivingCoachAnalyzer {
     private fun resolveCornerReference(
         comparison: SegmentComparison,
         trackLayout: TrackLayout?,
-        trackProfile: TrackProfile?
+        detectedCorners: List<DetectedCorner>
     ): TrackCornerReference? {
-        val layout = trackLayout?.takeIf { candidate ->
-            candidate.imagePath.isNotBlank() && candidate.corners.isNotEmpty()
-        } ?: return null
+        if (detectedCorners.isEmpty()) {
+            return null
+        }
 
         return TrackLayoutMapper.findClosestCornerReference(
-            layout = layout,
-            trackProfile = trackProfile,
+            detectedCorners = detectedCorners,
+            trackLayout = trackLayout,
             segmentPercent = comparison.segment.positionPercent
         )
     }
@@ -405,14 +408,10 @@ class DrivingCoachAnalyzer {
         }
 
         return if (cornerReference.relativePosition.isBlank()) {
-            cornerReference.corner.name
+            cornerReference.insightLabel
         } else {
-            "${cornerReference.corner.name} (${cornerReference.relativePosition})"
+            "${cornerReference.insightLabel} (${cornerReference.relativePosition})"
         }
-    }
-
-    private fun percentLoss(delta: Float): Int {
-        return abs(delta / baseVelocityProxy * 100f).roundToInt().coerceAtLeast(1)
     }
 
     private fun slice(values: List<Float>, startInclusive: Int, endInclusive: Int): List<Float> {

@@ -27,3 +27,10 @@ data class TrackCorner(
     val name: String,
     val point: TrackPoint
 )
+
+data class TrackMarker(
+    val x: Float,
+    val y: Float,
+    val label: String,
+    val severity: Float
+)
