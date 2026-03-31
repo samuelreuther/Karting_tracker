@@ -58,6 +58,7 @@ Wichtig fuer dieses Dokument:
 - Theoretical-Best-Lap-Berechnung pro Session
 - Top-Time-Loss-Map und Chart-Marker fuer schwache Segmente
 - Track-Layout-Editor mit Bildimport, Startpunkt, Fahrtrichtung und manueller Kurvenpflege
+- automatische Centerline-Extraktion aus Track-Map-Bildern mit deterministischer Kurvenklassifikation (`TIGHT`/`MEDIUM`/`FAST`)
 - automatische Projektion erkannter Schwachstellen auf Track-Maps mit Corner-Fallback ohne Bildzwang
 - persistente Session-Speicherung als JSON
 - Anzeige von Sample-Count und Dateigroesse im Session-Browser
@@ -81,7 +82,7 @@ Wichtig fuer dieses Dokument:
 - echte Wiederaufnahme einer bereits laufenden Sensoraufnahme nach Prozess-Tod oder Reboot
 - vollstaendig orientierungsunabhaengige Richtungsdiagramme
 - Sensorfusion mit echter Pose-/Orientierungsrekonstruktion
-- automatisierte Tests
+- keine vollstaendige End-to-End-Testabdeckung; gezielte Domain-Unit-Tests fuer Kurvenklassifikation vorhanden
 - Laufvalidierung in dieser lokalen Umgebung
 
 ## Simulationsdaten fuer Debug
@@ -291,6 +292,29 @@ Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
 - `confidenceScore`
 
 `confidenceScore` beschreibt die Reife und Stabilitaet des Profils auf Skala `0.0` bis `1.0`.
+
+
+## TrackLayout und Kurvenklassifikation
+
+`TrackLayout` speichert neben manuellen Corner-Ankern jetzt auch automatisch erkannte Streckenstruktur:
+
+- `centerlinePoints`: normierte, geordnete Centerline-Punkte (`0..1`)
+- `detectedCorners`: Liste aus Segmenten mit
+  - `index`
+  - `startIndex`
+  - `peakIndex`
+  - `endIndex`
+  - `type` (`TIGHT`, `MEDIUM`, `FAST`)
+  - `curvature` (Peak-Kruemmung)
+
+Detektionspipeline (deterministisch):
+
+1. Centerline aus Layout nutzen oder aus Bitmap radial extrahieren
+2. Polylinie glätten
+3. Kruemmung über Richtungsänderung `p[i-k], p[i], p[i+k]` berechnen
+4. lokale Maxima über Schwellwert als Kurvenkandidaten markieren
+5. nahe Peaks mergen, Segmentgrenzen bestimmen, Corner-Typ klassifizieren
+6. Ergebnis im Layout persistieren und für Overlay/Analyse wiederverwenden
 
 ## Datenfluss
 

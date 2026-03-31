@@ -32,6 +32,7 @@ Implemented today:
 - periodic autosave during recording with separate partial-session files
 - dropdown-based track management with duplicate-safe creation flow
 - editable track layouts with image import, start-point selection, driving direction, and manually corrected corner anchors
+- automatic track-map centerline extraction with curvature-based corner detection/classification (`TIGHT`, `MEDIUM`, `FAST`)
 - bundled track-map metadata seeding with graceful fallback when no map image exists
 - track-specific learning with reusable profiles, quality guards, and weighted updates
 - session browser with filter, reload, and delete actions for sessions or full tracks
@@ -43,7 +44,7 @@ Not implemented yet:
 - export to CSV or external share target
 - fully orientation-invariant directional charts
 - full live recording recovery after process death or device reboot
-- automated tests
+- no end-to-end/instrumented UI test suite yet (domain unit tests exist for corner-type detection)
 - verified build/run in this environment
 
 ## Example Screenshots
@@ -215,6 +216,15 @@ Track-map overlay behavior:
 - if a saved track layout has image + corner anchors, marker positions are projected through those corner anchors
 - if only a map image exists, markers fall back to evenly distributed pseudo-corners
 - if no map image exists, the comparison still shows text fallback lines for detected weak segments
+
+
+Automatic corner typing from map layouts:
+
+- when a track layout is imported or saved, the app computes (or reuses) a centerline
+- curvature peaks are detected as local maxima above a minimum threshold
+- nearby peaks are merged and segmented into corner start/peak/end index ranges
+- each corner is classified as `TIGHT`, `MEDIUM`, or `FAST` based on peak curvature
+- detected centerline/corners are stored in the track layout for reuse by overlays and analysis
 
 Peak detection robustness:
 
