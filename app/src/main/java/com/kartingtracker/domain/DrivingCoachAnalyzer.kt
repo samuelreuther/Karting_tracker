@@ -90,9 +90,9 @@ class DrivingCoachAnalyzer {
             coachingInsights = aggregateInsights,
             theoreticalBestLapTimeMs = theoreticalBestLapTimeMs,
             topTimeLossSegments = aggregateInsights.map { insight ->
-                val defaultLabel = "Segment ${insight.segmentIndex + 1}"
+                val defaultLabel = "Segment ${insight.segmentIndex}"
                 TimeLossSegment(
-                    segmentIndex = insight.segmentIndex + 1,
+                    segmentIndex = insight.segmentIndex,
                     segmentLabel = insight.cornerName ?: defaultLabel,
                     relativePosition = "",
                     timeLoss = insight.timeLossMs / 1000f,
@@ -248,7 +248,7 @@ class DrivingCoachAnalyzer {
         val cornerReference = resolveCornerReference(segment, trackLayout, detectedCorners)
 
         return CoachingInsight(
-            segmentIndex = segment.index,
+            segmentIndex = cornerReference?.displayIndex ?: segment.displayIndex,
             cornerName = cornerReference?.insightLabel,
             timeLossMs = timeLossMs,
             cause = classification.cause,
@@ -311,7 +311,7 @@ class DrivingCoachAnalyzer {
     }
 
     private fun formatCoachingInsight(insight: CoachingInsight): String {
-        val corner = insight.cornerName ?: "Segment ${insight.segmentIndex + 1}"
+        val corner = insight.cornerName ?: "Segment ${insight.segmentIndex}"
         return "$corner: ${insight.cause} → ${insight.suggestion} → +${"%.2f".format(insight.timeLossMs / 1000f)}s"
     }
 
@@ -366,7 +366,8 @@ class DrivingCoachAnalyzer {
             return emptyList()
         }
         return insights.map { insight ->
-            val segment = segmentation.segments.firstOrNull { it.index == insight.segmentIndex }
+            val segment = segmentation.segments.firstOrNull { it.displayIndex == insight.segmentIndex }
+                ?: segmentation.segments.firstOrNull { it.index == insight.segmentIndex }
             SegmentMarker(
                 positionPercent = segment?.positionPercent ?: 0f,
                 severity = insight.severity.coerceIn(0.2f, 1f),
