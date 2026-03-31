@@ -11,6 +11,7 @@ data class Session(
     val laps: List<Lap>,
     val estimatedLapTimeMs: Long? = null,
     val insights: List<String> = emptyList(),
+    val coachingInsights: List<CoachingInsight> = emptyList(),
     val theoreticalBestLapTimeMs: Long? = null,
     val topTimeLossSegments: List<TimeLossSegment> = emptyList(),
     val segmentMarkers: List<SegmentMarker> = emptyList(),

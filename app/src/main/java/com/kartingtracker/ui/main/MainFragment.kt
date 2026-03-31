@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Filter
+import android.widget.LinearLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -57,6 +58,12 @@ class MainFragment : Fragment() {
         binding.stopButton.setOnClickListener {
             sessionViewModel.stopRecording()
         }
+        binding.editTrackButton.setOnClickListener {
+            showEditTrackDialog()
+        }
+        binding.deleteTrackButton.setOnClickListener {
+            confirmDeleteTrack()
+        }
         binding.editTrackLayoutButton.setOnClickListener {
             findNavController().navigate(R.id.action_mainFragment_to_trackLayoutFragment)
         }
@@ -87,6 +94,8 @@ class MainFragment : Fragment() {
                         state.hasValidSelectedTrack
                     binding.stopButton.isEnabled = state.isRecording || state.isCalibrating
                     binding.trackDropdown.isEnabled = !state.isRecording && !state.isCalibrating
+                    binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && state.hasValidSelectedTrack
+                    binding.deleteTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && state.hasValidSelectedTrack
                     binding.editTrackLayoutButton.isEnabled = !state.isRecording &&
                         !state.isCalibrating &&
                         state.hasValidSelectedTrack
@@ -240,6 +249,67 @@ class MainFragment : Fragment() {
 
         dialog.show()
         input.requestFocus()
+    }
+
+
+    private fun showEditTrackDialog() {
+        val currentTrack = sessionViewModel.uiState.value.selectedTrackName
+        if (currentTrack.isBlank()) return
+        val container = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
+        val nameLayout = TextInputLayout(requireContext()).apply { hint = getString(R.string.track_name_label) }
+        val nameInput = TextInputEditText(requireContext()).apply { setText(currentTrack); setSingleLine() }
+        val locationLayout = TextInputLayout(requireContext()).apply { hint = getString(R.string.track_location_label) }
+        val locationInput = TextInputEditText(requireContext()).apply { setSingleLine() }
+        val lengthLayout = TextInputLayout(requireContext()).apply { hint = getString(R.string.track_length_label) }
+        val lengthInput = TextInputEditText(requireContext()).apply { setSingleLine() }
+        nameLayout.addView(nameInput)
+        locationLayout.addView(locationInput)
+        lengthLayout.addView(lengthInput)
+        container.addView(nameLayout)
+        container.addView(locationLayout)
+        container.addView(lengthLayout)
+
+        val existing = sessionViewModel.uiState.value.trackOptions.firstOrNull { it.equals(currentTrack, ignoreCase = true) }
+        if (existing != null) {
+            sessionViewModel.loadTrack(existing)?.let { track ->
+                locationInput.setText(track.location.orEmpty())
+                lengthInput.setText(track.lengthMeters?.toString().orEmpty())
+            }
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.edit_track)
+            .setView(container)
+            .setPositiveButton(R.string.save_track) { _, _ ->
+                val newName = sessionViewModel.normalizeTrackName(nameInput.text?.toString().orEmpty())
+                if (newName.isNotBlank() && !newName.equals(currentTrack, ignoreCase = true)) {
+                    sessionViewModel.renameTrack(currentTrack, newName)
+                    sessionViewModel.selectTrack(newName)
+                }
+                val length = lengthInput.text?.toString()?.toFloatOrNull()
+                val updatedTrack = sessionViewModel.loadTrack(newName.ifBlank { currentTrack })?.copy(
+                    location = locationInput.text?.toString()?.trim().orEmpty().ifBlank { null },
+                    lengthMeters = length
+                )
+                if (updatedTrack != null) {
+                    sessionViewModel.updateTrack(updatedTrack)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteTrack() {
+        val trackName = sessionViewModel.uiState.value.selectedTrackName
+        if (trackName.isBlank()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.delete_track)
+            .setMessage(getString(R.string.delete_track_confirmation, trackName))
+            .setPositiveButton(R.string.delete_track) { _, _ ->
+                sessionViewModel.deleteTrack(trackName)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private class TrackDropdownAdapter(

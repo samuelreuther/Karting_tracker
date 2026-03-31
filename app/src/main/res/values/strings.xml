@@ -89,4 +89,13 @@
         <item quantity="one">%d corner detected</item>
         <item quantity="other">%d corners detected</item>
     </plurals>
+
+    <string name="export_csv">Export CSV</string>
+    <string name="csv_export_success">CSV exported: %1$s</string>
+    <string name="share_csv">Share CSV</string>
+    <string name="edit_track">Edit Track</string>
+    <string name="track_name_label">Track name</string>
+    <string name="track_location_label">Location</string>
+    <string name="track_length_label">Length (m)</string>
+
 </resources>

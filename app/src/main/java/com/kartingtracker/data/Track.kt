@@ -8,5 +8,9 @@ data class Track(
     val mapWidthMeters: Float? = null,
     val mapHeightMeters: Float? = null,
     val startPoint: PointF? = null,
-    val startDirectionDeg: Float? = null
+    val startDirectionDeg: Float? = null,
+    val lengthMeters: Float? = null,
+    val location: String? = null,
+    val isIndoor: Boolean? = null,
+    val lastUsedEpochMs: Long? = null
 )

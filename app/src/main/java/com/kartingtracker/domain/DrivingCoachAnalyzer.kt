@@ -46,20 +46,13 @@ class DrivingCoachAnalyzer {
     ): SessionTelemetryAnalysis {
         val referenceLap = selectReferenceLap(session.laps) ?: return SessionTelemetryAnalysis()
         val validLaps = session.laps.filter(::isPrimaryValidLap)
-        if (validLaps.size < minimumComparableLaps) {
-            return SessionTelemetryAnalysis()
-        }
+        if (validLaps.size < 2) return SessionTelemetryAnalysis()
 
         val segmentation = resolveSegmentation(referenceLap)
         val detectedCorners = autoCornerDetector.detectCorners(referenceLap)
         val referenceAnalysis = analyzeLap(referenceLap, segmentation)
-        val comparableAnalyses = validLaps
-            .filterNot { lap -> lap.id == referenceLap.id }
-            .map { lap -> analyzeLap(lap, segmentation) }
-
-        if (comparableAnalyses.isEmpty()) {
-            return SessionTelemetryAnalysis()
-        }
+        val comparableAnalyses = validLaps.filterNot { it.id == referenceLap.id }.map { analyzeLap(it, segmentation) }
+        if (comparableAnalyses.isEmpty()) return SessionTelemetryAnalysis()
 
         val aggregateInsights = segmentation.segments.mapNotNull { segment ->
             aggregateCoachingInsight(
@@ -148,24 +141,11 @@ class DrivingCoachAnalyzer {
                 startIndex = startIndex,
                 endIndex = LapNormalizer.DEFAULT_POINT_COUNT - 1
             )
-            Segmentation(segments = segments, usesSectorTimes = referenceLap.sectorTimesMs.size == segments.size)
-        } else {
-            val fallbackSegments = listOf(0, 25, 50, 75, 100)
-            val segments = fallbackSegments.zipWithNext().mapIndexed { index, (startPercent, endPercent) ->
-                SegmentDefinition(
-                    index = index,
-                    displayIndex = index + 1,
-                    startIndex = normalizedIndex(startPercent.toFloat()),
-                    endIndex = normalizedIndex(endPercent.toFloat()).coerceAtLeast(normalizedIndex(startPercent.toFloat()) + 1)
-                )
-            }
-            Segmentation(segments = segments, usesSectorTimes = false)
         }
-    }
 
-    private fun analyzeLap(lap: Lap, segmentation: Segmentation): AnalyzedLap {
-        val totalAcceleration = LapNormalizer.normalizeSignal(lap, LapNormalizer.DEFAULT_POINT_COUNT) { sample ->
-            sample.totalAcceleration
+        val textualInsights = coachingInsights.map { insight ->
+            val label = insight.cornerName ?: "Sector ${insight.segmentIndex}"
+            "$label: ${insight.cause} (+${"%.2f".format(insight.timeLossMs / 1000f)}s). ${insight.suggestion}"
         }
         val yawRateAbs = LapNormalizer.normalizeSignal(lap, LapNormalizer.DEFAULT_POINT_COUNT) { sample ->
             sample.yawRateAbs
@@ -335,27 +315,38 @@ class DrivingCoachAnalyzer {
         } else {
             null
         }
+        return AnalyzedLap(segmentMetrics)
     }
 
-    private fun buildGeneralImprovementInsight(theoreticalBestLapTimeMs: Long?, currentBestLapTimeMs: Long): String? {
-        val theoretical = theoreticalBestLapTimeMs ?: return null
-        val gainMs = currentBestLapTimeMs - theoretical
-        if (gainMs < minimumGeneralImprovementGainMs) {
-            return null
-        }
-        return "Theoretical best lap is ${"%.2f".format(gainMs / 1000f)}s quicker if you combine the strongest segments."
-    }
-
-    private fun computeTheoreticalBestLapTime(validLaps: List<Lap>, segmentation: Segmentation): Long? {
-        if (validLaps.size < minimumComparableLaps) {
-            return null
-        }
-        val analyzedLaps = validLaps.map { lap -> analyzeLap(lap, segmentation) }
-        return segmentation.segments.sumOf { segment ->
-            analyzedLaps.minOf { analyzedLap ->
-                analyzedLap.segmentMetrics.getValue(segment).segmentTimeMs
+    private fun resolveSegmentation(referenceLap: Lap): Segmentation {
+        val sectorBoundaries = referenceLap.sectorBoundaries.filter { it in 1..99 }.sorted()
+        if (sectorBoundaries.isNotEmpty()) {
+            val segments = mutableListOf<SegmentDefinition>()
+            var startIndex = 0
+            sectorBoundaries.forEachIndexed { index, boundary ->
+                val endIndex = normalizedIndex(boundary.toFloat())
+                segments += SegmentDefinition(index, index + 1, startIndex, endIndex.coerceAtLeast(startIndex + 1))
+                startIndex = endIndex.coerceAtLeast(startIndex + 1)
             }
-        }.takeIf { total -> total > 0L }
+            segments += SegmentDefinition(segments.size, segments.size + 1, startIndex, LapNormalizer.DEFAULT_POINT_COUNT - 1)
+            return Segmentation(segments, referenceLap.sectorTimesMs.size == segments.size)
+        }
+        val fallback = listOf(0, 25, 50, 75, 100)
+        return Segmentation(
+            fallback.zipWithNext().mapIndexed { index, (start, end) ->
+                SegmentDefinition(index, index + 1, normalizedIndex(start.toFloat()), normalizedIndex(end.toFloat()))
+            },
+            false
+        )
+    }
+
+    private fun computeSegmentTimeMs(lap: Lap, segmentation: Segmentation, segment: SegmentDefinition): Long {
+        return if (segmentation.usesSectorTimes && lap.sectorTimesMs.size == segmentation.segments.size) {
+            lap.sectorTimesMs[segment.index]
+        } else {
+            val fraction = (segment.endIndex - segment.startIndex).toFloat() / (LapNormalizer.DEFAULT_POINT_COUNT - 1)
+            (lap.lapTimeMs * fraction).toLong().coerceAtLeast(1L)
+        }
     }
 
     private fun buildSegmentMarkers(
@@ -381,9 +372,9 @@ class DrivingCoachAnalyzer {
         trackLayout: TrackLayout?,
         detectedCorners: List<DetectedCorner>
     ): TrackCornerReference? {
-        if (detectedCorners.isEmpty()) {
-            return null
-        }
+        if (detectedCorners.isEmpty()) return null
+        return TrackLayoutMapper.findClosestCornerReference(detectedCorners, trackLayout, segmentPercent)
+    }
 
         return TrackLayoutMapper.findClosestCornerReference(
             detectedCorners = detectedCorners,
@@ -412,17 +403,13 @@ class DrivingCoachAnalyzer {
     }
 
     private fun slice(values: List<Float>, startInclusive: Int, endInclusive: Int): List<Float> {
-        if (values.isEmpty()) {
-            return emptyList()
-        }
+        if (values.isEmpty()) return emptyList()
         val start = startInclusive.coerceIn(0, values.lastIndex)
         val end = endInclusive.coerceIn(start, values.lastIndex)
         return values.subList(start, end + 1)
     }
 
-    private fun averageOrZero(values: List<Float>): Float {
-        return if (values.isEmpty()) 0f else values.average().toFloat()
-    }
+    private fun averageOrZero(values: List<Float>): Float = if (values.isEmpty()) 0f else values.average().toFloat()
 
     private fun variance(values: List<Float>): Float {
         if (values.isEmpty()) {
@@ -457,7 +444,7 @@ class DrivingCoachAnalyzer {
         val endIndex: Int
     ) {
         val positionPercent: Float
-            get() = ((startIndex + endIndex) / 2f / (LapNormalizer.DEFAULT_POINT_COUNT - 1).toFloat()) * 100f
+            get() = ((startIndex + endIndex) / 2f / (LapNormalizer.DEFAULT_POINT_COUNT - 1)) * 100f
     }
 
     private data class AnalyzedLap(
