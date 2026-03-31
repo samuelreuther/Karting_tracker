@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.github.mikephil.charting.data.LineData
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentComparisonBinding
 import com.kartingtracker.ui.AppViewModelFactory
@@ -48,6 +49,17 @@ class ComparisonFragment : Fragment() {
         ChartUtils.configureLineChart(binding.longitudinalChart)
         ChartUtils.configureLineChart(binding.lateralChart)
         ChartUtils.configureLineChart(binding.deltaChart)
+        binding.trackMapOverlayView.setOnInsightTapListener { marker ->
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(marker.insight.cornerName ?: marker.label)
+                .setMessage(
+                    "Cause: ${marker.insight.cause}\n" +
+                        "Suggestion: ${marker.insight.suggestion}\n" +
+                        "Time loss: +${"%.2f".format(marker.insight.timeLossMs / 1000f)}s"
+                )
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
 
         binding.lapASpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -162,12 +174,12 @@ class ComparisonFragment : Fragment() {
         if (state.mapImagePath.isNullOrBlank()) {
             currentMapBitmap = null
             currentMapPath = null
-            binding.trackMapOverlayView.render(bitmap = null, curves = emptyList())
+            binding.trackMapOverlayView.render(bitmap = null, curves = emptyList(), insights = emptyList())
             return
         }
 
         if (currentMapPath == state.mapImagePath && currentMapBitmap != null) {
-            binding.trackMapOverlayView.render(bitmap = currentMapBitmap, curves = state.projectedCurves)
+            binding.trackMapOverlayView.render(bitmap = currentMapBitmap, curves = state.projectedCurves, insights = state.trackInsightMarkers)
             return
         }
 
@@ -181,7 +193,7 @@ class ComparisonFragment : Fragment() {
                 return@launch
             }
             currentMapBitmap = bitmap
-            binding.trackMapOverlayView.render(bitmap = bitmap, curves = projectedCurves)
+            binding.trackMapOverlayView.render(bitmap = bitmap, curves = projectedCurves, insights = state.trackInsightMarkers)
         }
     }
 }

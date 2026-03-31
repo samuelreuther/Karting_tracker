@@ -13,6 +13,16 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
+
+
+data class ProjectedInsight(
+    val x: Float,
+    val y: Float,
+    val severity: Float,
+    val label: String,
+    val segmentIndex: Int
+)
+
 data class ProjectedCurve(
     val index: Int,
     val label: String,
@@ -55,6 +65,32 @@ class MapOverlayProjector {
                 position = point,
                 intensity = curve.intensity,
                 peakPercent = curve.peakPercent
+            )
+        }
+    }
+
+
+    fun projectInsights(
+        trackLayout: TrackLayout?,
+        detectedCorners: List<DetectedCorner>,
+        segmentMarkers: List<com.kartingtracker.data.SegmentMarker>
+    ): List<ProjectedInsight> {
+        if (segmentMarkers.isEmpty()) return emptyList()
+
+        val references = TrackLayoutMapper.buildCornerReferences(detectedCorners, trackLayout)
+        return segmentMarkers.map { marker ->
+            val reference = references.minByOrNull { ref ->
+                kotlin.math.abs((ref.mappedPercent * 100f) - marker.positionPercent)
+            }
+            val point = reference?.corner?.point
+            val x = point?.x ?: ((marker.positionPercent / 100f).coerceIn(0.1f, 0.9f))
+            val y = point?.y ?: 0.15f
+            ProjectedInsight(
+                x = x,
+                y = y,
+                severity = marker.severity,
+                label = marker.label,
+                segmentIndex = reference?.displayIndex ?: marker.positionPercent.toInt()
             )
         }
     }

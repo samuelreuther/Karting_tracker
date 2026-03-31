@@ -71,6 +71,31 @@
             android:textColor="@color/karting_muted"
             android:visibility="gone" />
 
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/editTrackButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/edit_track" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/deleteTrackButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/delete_track" />
+        </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/editTrackLayoutButton"
             style="@style/Widget.Material3.Button.OutlinedButton"

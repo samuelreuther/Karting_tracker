@@ -1,16 +1,19 @@
 package com.kartingtracker.ui.sessions
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.content.FileProvider
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -95,7 +98,8 @@ class SessionListFragment : Fragment() {
                 arrayOf(
                     getString(R.string.open_laps),
                     getString(R.string.open_comparison),
-                    getString(R.string.reprocess_session)
+                    getString(R.string.reprocess_session),
+                    getString(R.string.export_csv)
                 )
             ) { _, which ->
                 when (which) {
@@ -111,6 +115,12 @@ class SessionListFragment : Fragment() {
 
                     2 -> {
                         sessionViewModel.reprocessSession(session)
+                    }
+
+                    3 -> {
+                        val file = sessionViewModel.exportSessionCsv(session)
+                        Toast.makeText(requireContext(), getString(R.string.csv_export_success, file.absolutePath), Toast.LENGTH_LONG).show()
+                        shareCsv(file)
                     }
                 }
             }
@@ -155,5 +165,19 @@ class SessionListFragment : Fragment() {
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun shareCsv(file: java.io.File) {
+        val uri = FileProvider.getUriForFile(
+            requireContext(),
+            "${requireContext().packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.share_csv)))
     }
 }

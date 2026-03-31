@@ -1,6 +1,7 @@
 package com.kartingtracker
 
 import android.content.Context
+import com.kartingtracker.data.SessionCsvExporter
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.SessionStorageManager
 import com.kartingtracker.data.SimulatedSessionGenerator
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
         trackLayoutManager = trackLayoutManager
     )
     private val drivingCoachAnalyzer = DrivingCoachAnalyzer()
+    private val sessionCsvExporter = SessionCsvExporter(context.applicationContext)
 
     init {
         trackMapManager.seedBundledMaps(trackManager)
@@ -49,7 +51,8 @@ class AppContainer(context: Context) {
         trackProfileManager = trackProfileManager,
         trackLayoutManager = trackLayoutManager,
         trackMapManager = trackMapManager,
-        drivingCoachAnalyzer = drivingCoachAnalyzer
+        drivingCoachAnalyzer = drivingCoachAnalyzer,
+        sessionCsvExporter = sessionCsvExporter
     )
 
     val sensorRecorder = SensorRecorder(

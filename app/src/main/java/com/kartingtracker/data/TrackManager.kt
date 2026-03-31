@@ -37,25 +37,21 @@ class TrackManager(
     }
 
     fun getTracksList(): List<String> {
-        val selectedTrack = readSelectedTrackName()
-        val sortedTracks = readTrackNames()
-            .map(::normalizeTrackName)
-            .filter { name -> name.isNotBlank() }
-            .distinctBy { name -> name.lowercase() }
-            .sortedBy { name -> name.lowercase() }
-
-        return if (!selectedTrack.isNullOrBlank() && sortedTracks.any { name -> name.equals(selectedTrack, ignoreCase = true) }) {
-            val selected = sortedTracks.first { name -> name.equals(selectedTrack, ignoreCase = true) }
-            listOf(selected) + sortedTracks.filterNot { name -> name.equals(selected, ignoreCase = true) }
-        } else {
-            sortedTracks
-        }
+        return getTracks().map(Track::name)
     }
 
     fun getTracks(): List<Track> {
-        return getTracksList().map { trackName ->
-            getTrack(trackName) ?: Track(name = trackName)
-        }
+        return readTrackNames()
+            .map(::normalizeTrackName)
+            .filter { name -> name.isNotBlank() }
+            .distinctBy { name -> name.lowercase() }
+            .map { trackName ->
+                getTrack(trackName) ?: Track(name = trackName)
+            }
+            .sortedWith(
+                compareByDescending<Track> { track -> track.lastUsedEpochMs ?: 0L }
+                    .thenBy { track -> track.name.lowercase() }
+            )
     }
 
     fun getTrack(trackName: String): Track? {
@@ -102,6 +98,46 @@ class TrackManager(
         return normalizedTrack
     }
 
+    fun renameTrack(oldName: String, newName: String): Boolean {
+        val normalizedOld = normalizeTrackName(oldName)
+        val normalizedNew = normalizeTrackName(newName)
+        if (normalizedOld.isBlank() || normalizedNew.isBlank()) {
+            return false
+        }
+        if (normalizedOld.equals(normalizedNew, ignoreCase = true)) {
+            return true
+        }
+
+        val existingTracks = readTrackNames()
+        val oldPersistedName = existingTracks.firstOrNull { existing ->
+            existing.equals(normalizedOld, ignoreCase = true)
+        } ?: return false
+
+        if (existingTracks.any { existing -> existing.equals(normalizedNew, ignoreCase = true) }) {
+            return false
+        }
+
+        val oldTrack = readPersistedTrack(oldPersistedName) ?: Track(name = oldPersistedName)
+        val renamedTrack = oldTrack.copy(name = normalizedNew)
+
+        val updatedNames = existingTracks.map { existing ->
+            if (existing.equals(oldPersistedName, ignoreCase = true)) normalizedNew else existing
+        }
+
+        val editor = preferences.edit()
+            .putStringSet(KEY_TRACKS, updatedNames.toSet())
+            .remove(buildTrackKey(oldPersistedName))
+            .putString(buildTrackKey(normalizedNew), gson.toJson(renamedTrack))
+
+        val selectedTrack = readSelectedTrackName()
+        if (selectedTrack.equals(oldPersistedName, ignoreCase = true)) {
+            editor.putString(KEY_SELECTED_TRACK, normalizedNew)
+        }
+        editor.apply()
+
+        return true
+    }
+
     fun getSelectedTrackName(): String? {
         val selected = readSelectedTrackName()
         if (selected.isBlank()) {
@@ -130,6 +166,9 @@ class TrackManager(
                 normalizedName
             }
 
+        val now = System.currentTimeMillis()
+        val existingTrack = getTrack(persistedTrack) ?: Track(name = persistedTrack)
+        persistTrack(existingTrack.copy(lastUsedEpochMs = now))
         preferences.edit().putString(KEY_SELECTED_TRACK, persistedTrack).apply()
     }
 
