@@ -51,11 +51,14 @@ Wichtig fuer dieses Dokument:
 - Peak-Detection fuer Bremsen und Cornering
 - lineare Interpolation fuer Lap-Normalisierung
 - Comparison Screen mit Overlay-Charts und Zeitverlust-Chart
+- Comparison Screen mit Track-Map-Overlay fuer Segmentmarker
 - Sektorvergleich zwischen zwei Laps
 - Ideal-Lap-Berechnung aus Best-Sektoren
 - strukturierte Telemetrie-Insights mit Segmentanalyse
 - Theoretical-Best-Lap-Berechnung pro Session
 - Top-Time-Loss-Map und Chart-Marker fuer schwache Segmente
+- Track-Layout-Editor mit Bildimport, Startpunkt, Fahrtrichtung und manueller Kurvenpflege
+- automatische Projektion erkannter Schwachstellen auf Track-Maps mit Corner-Fallback ohne Bildzwang
 - persistente Session-Speicherung als JSON
 - Anzeige von Sample-Count und Dateigroesse im Session-Browser
 - Reprocessing gespeicherter Sessions aus Rohdaten mit Processing-Versionierung
@@ -115,6 +118,8 @@ Aktuelles Verhalten:
   - `SessionStorageManager` fuer JSON-Persistenz
   - `TrackManager` fuer persistente Track-Verwaltung
   - `TrackProfileManager` fuer Profil-Persistenz und Profilaufbau aus Sessions
+  - `TrackLayoutManager` fuer persistente Layoutdaten je Strecke
+  - `TrackMapManager` fuer Map-Metadaten, Bundled-Asset-Seeding und Fallback-Kurven
 - `sensor`
   - `SensorRecorder` fuer Android-Sensorzugriff und Aufnahmesteuerung
   - `CalibrationManager` fuer Gravitationsermittlung und Projektion
@@ -134,9 +139,11 @@ Aktuelles Verhalten:
   - `TimeLossResult` als internes Ergebnis mit Delta-Kurve und Confidence
   - `SessionQualityEvaluator` fuer Session-Qualitaetsbewertung
   - `DrivingCoachAnalyzer` fuer Session-Telemetrieanalyse, Zeitverlust-Ursachen und Coaching
+  - `MapOverlayProjector` fuer Zuordnung von Zeitverlust-Segmenten auf Kartenmarker
+  - `TrackLayoutMapper` fuer Kurvensortierung und Mapping zwischen Detection und Layout
 - `ui`
   - `SessionViewModel` als zentraler State-Halter
-  - `MainFragment`, `LapsFragment`, `ComparisonFragment`, `SessionListFragment`
+  - `MainFragment`, `LapsFragment`, `ComparisonFragment`, `SessionListFragment`, `TrackLayoutFragment`
 
 ## Zentrale Designentscheidung
 
@@ -150,6 +157,12 @@ Die App verwendet zwei Signalarten parallel:
   - `yawRateAbs`
 
 Damit bleibt die bestehende Visualisierung nutzbar, waehrend die Rundenerkennung weniger von der Telefonlage abhaengt.
+
+Zusatz seit v21:
+
+- Vergleichsmarker koennen auf einer hinterlegten Streckenkarte visualisiert werden
+- wenn keine Karte verfuegbar ist, bleibt eine textuelle Fallback-Darstellung aktiv
+- wenn nur eine Karte ohne manuelle Kurvenpunkte vorhanden ist, wird ein gleichmaessiger Corner-Fallback fuer Markerpositionen genutzt
 
 ## Datenmodell
 

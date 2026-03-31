@@ -24,12 +24,15 @@ Implemented today:
 - track-profile driven stable sector usage when learned sector boundaries exist
 - braking and cornering peak markers
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, chart markers, and structured telemetry insights
+- map-supported comparison overlays with highlighted weak segments projected onto the current track map
 - session-level coaching insights with segment-based time-loss attribution and a theoretical best lap
 - persistent session storage as JSON
 - session browser metadata for sample count and JSON file size
 - processing-versioned session reanalysis from stored raw sensor data
 - periodic autosave during recording with separate partial-session files
 - dropdown-based track management with duplicate-safe creation flow
+- editable track layouts with image import, start-point selection, driving direction, and manually corrected corner anchors
+- bundled track-map metadata seeding with graceful fallback when no map image exists
 - track-specific learning with reusable profiles, quality guards, and weighted updates
 - session browser with filter, reload, and delete actions for sessions or full tracks
 - load-last-session shortcut
@@ -199,12 +202,19 @@ The comparison screen shows:
 - Lap A and Lap B overlay for lateral acceleration
 - time loss graph for `Lap A - Lap B`
 - highlighted markers for the biggest session-level loss segments
+- optional track-map panel that projects the same segment markers onto the configured map image
 - sector-by-sector delta lines
 - ideal lap total time and best sector lines
 - theoretical best lap for the loaded session
 - braking markers
 - cornering markers
 - prioritized telemetry coaching insights and a top time-loss map
+
+Track-map overlay behavior:
+
+- if a saved track layout has image + corner anchors, marker positions are projected through those corner anchors
+- if only a map image exists, markers fall back to evenly distributed pseudo-corners
+- if no map image exists, the comparison still shows text fallback lines for detected weak segments
 
 Peak detection robustness:
 
@@ -300,6 +310,24 @@ Track-name handling:
 - there is no implicit fallback like `General Track`
 - recording cannot start until a valid track is selected
 
+## Track Layout & Map Metadata
+
+Each track can store optional map metadata that is used by the comparison view.
+
+Implemented layout workflow:
+
+- import a track image in the Track Layout screen
+- set a start point on the image
+- set driving direction (`CLOCKWISE` / `COUNTER_CLOCKWISE`)
+- add, undo, clear, and re-save corner anchors (auto-sorted and re-numbered)
+- persist layout metadata per track and reuse it for map overlays in lap comparison
+
+Automatic fallback and seed behavior:
+
+- bundled map assets can seed predefined tracks with ready-to-use metadata
+- map metadata can be deleted together with a track
+- if no metadata exists, comparison and coaching still run without map dependency
+
 ## Track-Specific Learning
 
 The app builds a `TrackProfile` for each track from previous sessions.
@@ -392,6 +420,8 @@ This is intended for UI and chart validation when no real kart session has been 
   - lap list screen
 - `app/src/main/java/com/kartingtracker/ui/comparison`
   - comparison screen
+- `app/src/main/java/com/kartingtracker/ui/tracklayout`
+  - track layout editor screen, map markers, and image-backed corner placement
 - `app/src/main/java/com/kartingtracker/ui/sessions`
   - saved session browser
 
