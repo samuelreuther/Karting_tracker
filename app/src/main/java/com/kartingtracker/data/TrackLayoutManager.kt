@@ -1,10 +1,12 @@
 package com.kartingtracker.data
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.kartingtracker.domain.TrackCornerTypeDetector
 import java.io.File
 
 class TrackLayoutManager(
@@ -15,6 +17,7 @@ class TrackLayoutManager(
     private val preferences = appContext.getSharedPreferences("karting_track_layouts", Context.MODE_PRIVATE)
     private val layoutDirectory = File(appContext.filesDir, "track_layouts").apply { mkdirs() }
     private val imageDirectory = File(layoutDirectory, "images").apply { mkdirs() }
+    private val cornerTypeDetector = TrackCornerTypeDetector()
 
     fun loadLayout(trackName: String): TrackLayout? {
         val file = File(layoutDirectory, buildLayoutFileName(trackName))
@@ -73,6 +76,35 @@ class TrackLayoutManager(
         }
     }
 
+
+    fun detectAndClassifyCorners(layout: TrackLayout): TrackLayout {
+        if (layout.imagePath.isBlank() && layout.centerlinePoints.isEmpty()) {
+            return layout.copy(detectedCorners = emptyList())
+        }
+
+        val centerline = if (layout.centerlinePoints.isNotEmpty()) {
+            layout.centerlinePoints
+        } else {
+            val bitmap = BitmapFactory.decodeFile(layout.imagePath)
+            if (bitmap == null) {
+                Log.w(TAG, "Could not decode track image for corner detection: ${layout.trackName}")
+                emptyList()
+            } else {
+                cornerTypeDetector.extractCenterlineFromBitmap(bitmap).also { bitmap.recycle() }
+            }
+        }
+
+        if (centerline.isEmpty()) {
+            return layout.copy(detectedCorners = emptyList())
+        }
+
+        val detectedCorners = cornerTypeDetector.detectFromCenterline(centerline)
+        return layout.copy(
+            centerlinePoints = centerline,
+            detectedCorners = detectedCorners
+        )
+    }
+
     fun emptyLayout(trackName: String): TrackLayout {
         return TrackLayout(
             trackName = trackName,
@@ -80,7 +112,9 @@ class TrackLayoutManager(
             lengthMeters = null,
             startPoint = TrackLayout.DEFAULT_START_POINT,
             direction = TrackDirection.CLOCKWISE,
-            corners = emptyList()
+            corners = emptyList(),
+            detectedCorners = emptyList(),
+            centerlinePoints = emptyList()
         )
     }
 
@@ -190,13 +224,25 @@ class TrackLayoutManager(
                 )
             )
         }
+        val safeCenterline = centerlinePoints.map { point ->
+            TrackPoint(
+                x = point.x.coerceIn(0f, 1f),
+                y = point.y.coerceIn(0f, 1f)
+            )
+        }
+        val safeDetectedCorners = detectedCorners.mapIndexed { index, corner ->
+            corner.copy(index = index)
+        }
+
         return copy(
             imagePath = safeImagePath,
             startPoint = TrackPoint(
                 x = startPoint.x.coerceIn(0f, 1f),
                 y = startPoint.y.coerceIn(0f, 1f)
             ),
-            corners = safeCorners
+            corners = safeCorners,
+            detectedCorners = safeDetectedCorners,
+            centerlinePoints = safeCenterline
         )
     }
 
@@ -215,7 +261,9 @@ class TrackLayoutManager(
                         y = corner.point.y.coerceIn(0f, 1f)
                     )
                 )
-            }
+            },
+            detectedCorners = detectedCorners.orEmpty(),
+            centerlinePoints = centerlinePoints.orEmpty()
         )
     }
 
@@ -225,7 +273,9 @@ class TrackLayoutManager(
         val lengthMeters: Float? = null,
         val startPoint: TrackPoint? = null,
         val direction: TrackDirection? = null,
-        val corners: List<TrackCorner> = emptyList()
+        val corners: List<TrackCorner> = emptyList(),
+        val detectedCorners: List<DetectedTrackCorner> = emptyList(),
+        val centerlinePoints: List<TrackPoint> = emptyList()
     )
 
     private data class BundledTrackAsset(
@@ -240,14 +290,6 @@ class TrackLayoutManager(
         private const val bundledLayoutVersion = 7
         private const val bundledManifestAssetPath = "preloaded_tracks/manifest.json"
         private val legacyBundledTrackNames = listOf(
-            "Lörrach VM Kart Racing",
-            "LÃ¶rrach VM Kart Racing",
-            "Lorrach VM Kart Racing",
-            "lorrach_vm_kart_racing",
-            "test_track_a",
-            "test_track_b",
-            "Test Track A",
-            "Test Track B",
             "Loerrach VM Kart Racing",
             "Rheinfelden Kartbahn",
             "Basel Kart"

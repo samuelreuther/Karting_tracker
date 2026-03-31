@@ -217,7 +217,9 @@ class SessionRepository(
         }
         val imagePath = trackLayoutManager.importTrackImage(normalizedName, imageUri) ?: return null
         val updatedLayout = normalizeTrackLayout(
-            trackLayoutManager.loadOrCreateLayout(normalizedName).copy(imagePath = imagePath)
+            trackLayoutManager.detectAndClassifyCorners(
+                trackLayoutManager.loadOrCreateLayout(normalizedName).copy(imagePath = imagePath)
+            )
         )
         trackLayoutManager.saveLayout(updatedLayout)
         upsertTrackFromLayout(updatedLayout)
@@ -230,7 +232,9 @@ class SessionRepository(
 
     fun saveTrackLayout(layout: TrackLayout): TrackLayout {
         val normalizedLayout = normalizeTrackLayout(
-            layout.copy(trackName = trackManager.normalizeTrackName(layout.trackName))
+            trackLayoutManager.detectAndClassifyCorners(
+                layout.copy(trackName = trackManager.normalizeTrackName(layout.trackName))
+            )
         )
         trackLayoutManager.saveLayout(normalizedLayout)
         upsertTrackFromLayout(normalizedLayout)

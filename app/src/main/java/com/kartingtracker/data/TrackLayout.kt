@@ -6,7 +6,9 @@ data class TrackLayout(
     val lengthMeters: Float?,
     val startPoint: TrackPoint = DEFAULT_START_POINT,
     val direction: TrackDirection = TrackDirection.CLOCKWISE,
-    val corners: List<TrackCorner> = emptyList()
+    val corners: List<TrackCorner> = emptyList(),
+    val detectedCorners: List<DetectedTrackCorner> = emptyList(),
+    val centerlinePoints: List<TrackPoint> = emptyList()
 ) {
     companion object {
         val DEFAULT_START_POINT = TrackPoint(0.5f, 0.5f)
@@ -33,4 +35,20 @@ data class TrackMarker(
     val y: Float,
     val label: String,
     val severity: Float
+)
+
+
+enum class TrackCornerType {
+    TIGHT,
+    MEDIUM,
+    FAST
+}
+
+data class DetectedTrackCorner(
+    val index: Int,
+    val startIndex: Int,
+    val peakIndex: Int,
+    val endIndex: Int,
+    val type: TrackCornerType,
+    val curvature: Float
 )
