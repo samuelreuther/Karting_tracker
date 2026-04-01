@@ -1196,7 +1196,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 | Robustheit | Orientation-unabhaengige Yaw-Erkennung | Erfuellt | Gyro-Magnitude |
 | Robustheit | Voll orientierungsfreie Richtungsdiagramme | Nicht erfuellt | Charts nutzen weiterhin angenaeherten Richtungsbezug |
 | Export | CSV/Share | Nicht erfuellt | derzeit nicht vorhanden |
-| Qualitaet | Automatisierte Tests | Nicht erfuellt | derzeit nicht vorhanden |
+| Qualitaet | Automatisierte Tests | Teilweise erfuellt | `ReliabilityWorkflowTest` fuer 3 simulierte Sessions (8/12/15 min) vorhanden |
 
 ## Bekannte Grenzen
 
@@ -1210,7 +1210,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 - auch mit Schutzlogik bleibt Track-Learning heuristisch und datenabhaengig
 - ein bereits laufendes Recording kann nach Prozess-Tod nicht nahtlos live fortgesetzt oder automatisch per Sticky-Restart wiederaufgenommen werden
 - keine Exportfunktion
-- keine Tests im Projekt
+- noch keine vollstaendige Testabdeckung; ein Reliability-Workflow-Unit-Test ist vorhanden
 
 ## Was noch offen ist
 
@@ -1232,6 +1232,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
   - `SessionStorageManager`
   - `TrackManager`
   - `LapNormalizer`
+  - Zuverlaessigkeits-Workflow erweitert (`ReliabilityWorkflowTest`)
 - UI-Tests fuer:
   - Track-Erstellung
   - Session-Laden
@@ -1252,7 +1253,7 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 3. Schwellenwerte der globalen Segmentierung und Confidence-Berechnung anhand echter Fahrdaten feinjustieren.
 4. Exportfunktion einfuehren.
 5. Service-Recovery und OEM-Verhalten im Feldtest pruefen.
-6. Tests fuer Persistenz und Lap-Detection nachziehen.
+6. Persistenz- und Lap-Detection-Tests weiter ausbauen (aufbauend auf `ReliabilityWorkflowTest`).
 
 ## Relevante Dateien
 
@@ -1294,4 +1295,4 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 
 ## Hinweis zur Build-Validierung
 
-Die Dokumentation wurde gegen den vorhandenen Quellcode abgeglichen. Fuer dieses Doku-Update wurde kein echter Android-Build und kein Lauf auf einem Geraet ausgefuehrt.
+Die Dokumentation wurde gegen den vorhandenen Quellcode abgeglichen. Build/Test-Ausfuehrung haengt von Netzwerkkonnektivitaet fuer den Gradle-Wrapper (`8.7`) und Abhaengigkeiten ab.

@@ -14,21 +14,26 @@ class SessionStorageManager(
     private val sessionDirectory = File(context.filesDir, "sessions").apply { mkdirs() }
     private val corruptDirectory = File(context.filesDir, "corrupt_sessions").apply { mkdirs() }
 
-    fun saveSession(session: Session) {
-        try {
+    fun saveSession(session: Session): Boolean {
+        return try {
             val file = File(sessionDirectory, buildSessionFileName(session))
             val partialFile = File(sessionDirectory, buildPartialFileName(session.trackName, session.startTimeEpochMs))
             if (session.isPartial) {
-                Log.i(TAG, "Saving partial session ${session.id}")
+                Log.i(TAG, "$LOG_TAG: autosave partial session=${session.id} samples=${session.samples.size}")
             } else {
-                Log.i(TAG, "Saving FINAL session ${session.id}")
+                Log.i(TAG, "$LOG_TAG: saving final session=${session.id} laps=${session.laps.size}")
             }
             writeAtomically(file, gson.toJson(session))
+            if (!file.exists() || !file.canRead() || file.length() <= 0L) {
+                throw IllegalStateException("Saved file verification failed for ${file.name}")
+            }
             if (!session.isPartial && partialFile.exists() && !partialFile.delete()) {
                 Log.w(TAG, "Failed to delete partial session file ${partialFile.name}")
             }
+            true
         } catch (exception: Exception) {
             Log.e(TAG, "Failed to save session ${session.id}", exception)
+            false
         }
     }
 
@@ -238,7 +243,12 @@ class SessionStorageManager(
 
     private fun writeAtomically(targetFile: File, contents: String) {
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
-        tempFile.writeText(contents)
+        tempFile.outputStream().use { output ->
+            output.write(contents.toByteArray())
+            output.flush()
+            runCatching { (output as java.io.FileOutputStream).fd.sync() }
+                .onFailure { exception -> Log.w(TAG, "Failed to fsync temp file ${tempFile.name}", exception) }
+        }
         if (targetFile.exists() && !targetFile.delete()) {
             throw IllegalStateException("Failed to replace existing file ${targetFile.name}")
         }
@@ -247,6 +257,14 @@ class SessionStorageManager(
             if (!tempFile.delete()) {
                 Log.w(TAG, "Failed to delete temp file ${tempFile.name}")
             }
+        }
+        runCatching {
+            targetFile.outputStream().use { output ->
+                output.flush()
+                (output as java.io.FileOutputStream).fd.sync()
+            }
+        }.onFailure { exception ->
+            Log.w(TAG, "Failed to fsync target file ${targetFile.name}", exception)
         }
     }
 
@@ -297,6 +315,7 @@ class SessionStorageManager(
         private const val JSON_SUFFIX = ".json"
         private const val PARTIAL_SUFFIX = "_partial.json"
         private const val MAX_SESSION_FILE_SIZE_BYTES = 64L * 1024L * 1024L
+        private const val LOG_TAG = "KartingTracker"
     }
 
     private data class SessionFileMetadata(

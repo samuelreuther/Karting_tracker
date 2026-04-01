@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
+import kotlin.system.measureTimeMillis
 
 class SessionRepository(
     private val lapDetector: LapDetector,
@@ -96,6 +97,7 @@ class SessionRepository(
             _sampleCount.value = 0
             _lastSample.value = null
             _isRecording.value = true
+            Log.i(TAG, "$LOG_TAG: recording start session=$currentSessionId track=${_currentTrackName.value}")
             startAutosaveLocked()
         }
     }
@@ -118,6 +120,10 @@ class SessionRepository(
                 return _latestSession.value
             }
 
+            val flushSnapshot = buildPartialSessionSnapshot()
+            if (flushSnapshot != null) {
+                persistSessionWithVerification(flushSnapshot, "final-stop-flush")
+            }
             _isRecording.value = false
             stopAutosaveLocked()
             completedSession = if (currentSamples.isEmpty()) {
@@ -148,7 +154,9 @@ class SessionRepository(
 
             _latestSession.value = completedSession
             _currentSession.value = completedSession
-            completedSession?.let(sessionStorageManager::saveSession)
+            completedSession?.let { session ->
+                persistSessionWithVerification(session, "final-save")
+            }
             refreshStoredSessions()
         }
 
@@ -524,7 +532,7 @@ class SessionRepository(
             while (isActive) {
                 delay(AUTOSAVE_INTERVAL_MS)
                 val partialSession = buildPartialSessionSnapshot() ?: continue
-                sessionStorageManager.saveSession(partialSession)
+                persistSessionWithVerification(partialSession, "autosave")
             }
         }
     }
@@ -662,50 +670,91 @@ class SessionRepository(
     }
 
     private fun processSessionInternal(session: Session): Session {
-        val trackProfile = loadUsableTrackProfile(session.trackName)
-        val detectionResult = lapDetector.detect(session.samples, trackProfile)
-        val laps = classifyLaps(
-            detectionResult.laps.map { lap ->
-                val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
-                val smoothedAcceleration = smoothSignal(lap.samples.map { sample -> sample.totalAcceleration })
-                val smoothedYawRate = smoothSignal(lap.samples.map { sample -> sample.yawRateAbs })
-                lap.copy(
-                    brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples, smoothedAcceleration),
-                    corneringPeakIndices = peakDetector.findCorneringPeaks(
-                        samples = lap.samples,
-                        yawRateAbs = smoothedYawRate,
-                        totalAcceleration = smoothedAcceleration
-                    ),
-                    sectorBoundaries = sectorBoundaries,
-                    sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
+        return try {
+            val trackProfile = loadUsableTrackProfile(session.trackName)
+            val detectionResult = measureOperation("LapDetector.detect") {
+                lapDetector.detect(session.samples, trackProfile)
+            }
+            val laps = measureOperation("Lap/Sector/Peak processing") {
+                classifyLaps(
+                    detectionResult.laps.map { lap ->
+                        val sectorBoundaries = resolveSectorBoundaries(trackProfile, lap)
+                        val smoothedAcceleration = smoothSignal(lap.samples.map { sample -> sample.totalAcceleration })
+                        val smoothedYawRate = smoothSignal(lap.samples.map { sample -> sample.yawRateAbs })
+                        lap.copy(
+                            brakingPeakIndices = peakDetector.findBrakingPeaks(lap.samples, smoothedAcceleration),
+                            corneringPeakIndices = peakDetector.findCorneringPeaks(
+                                samples = lap.samples,
+                                yawRateAbs = smoothedYawRate,
+                                totalAcceleration = smoothedAcceleration
+                            ),
+                            sectorBoundaries = sectorBoundaries,
+                            sectorTimesMs = SectorDetector.computeSectorTimes(lap, sectorBoundaries)
+                        )
+                    }
                 )
             }
-        )
 
-        val processedSession = session.copy(
-            laps = laps,
-            estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
-            insights = emptyList(),
-            coachingInsights = emptyList(),
-            theoreticalBestLapTimeMs = null,
-            topTimeLossSegments = emptyList(),
-            segmentMarkers = emptyList(),
-            quality = null,
-            isPartial = false
-        ).withQuality()
+            val processedSession = session.copy(
+                laps = laps,
+                estimatedLapTimeMs = detectionResult.estimatedLapTimeMs,
+                insights = emptyList(),
+                coachingInsights = emptyList(),
+                theoreticalBestLapTimeMs = null,
+                topTimeLossSegments = emptyList(),
+                segmentMarkers = emptyList(),
+                quality = null,
+                isPartial = false
+            ).withQuality()
 
-        val telemetryAnalysis = drivingCoachAnalyzer.analyzeSession(
-            session = processedSession,
-            trackProfile = trackProfile,
-            trackLayout = loadTrackLayout(processedSession.trackName)
-        )
-        return processedSession.copy(
-            insights = telemetryAnalysis.insights,
-            coachingInsights = telemetryAnalysis.coachingInsights,
-            theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
-            topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
-            segmentMarkers = telemetryAnalysis.segmentMarkers
-        )
+            val telemetryAnalysis = measureOperation("DrivingCoachAnalyzer.analyzeSession") {
+                drivingCoachAnalyzer.analyzeSession(
+                    session = processedSession,
+                    trackProfile = trackProfile,
+                    trackLayout = loadTrackLayout(processedSession.trackName)
+                )
+            }
+            processedSession.copy(
+                insights = telemetryAnalysis.insights,
+                coachingInsights = telemetryAnalysis.coachingInsights,
+                theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
+                topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
+                segmentMarkers = telemetryAnalysis.segmentMarkers
+            )
+        } catch (exception: Exception) {
+            Log.e(TAG, "$LOG_TAG: processing pipeline failed for session=${session.id}", exception)
+            session.copy(
+                laps = emptyList(),
+                estimatedLapTimeMs = null,
+                insights = listOf("Partial analysis: session saved with limited insights due to processing error."),
+                coachingInsights = emptyList(),
+                theoreticalBestLapTimeMs = null,
+                topTimeLossSegments = emptyList(),
+                segmentMarkers = emptyList(),
+                quality = null,
+                isPartial = false
+            )
+        }
+    }
+
+    private fun persistSessionWithVerification(session: Session, stage: String) {
+        val saved = sessionStorageManager.saveSession(session)
+        if (!saved) {
+            Log.e(TAG, "$LOG_TAG: failed to persist session=${session.id} stage=$stage")
+        }
+    }
+
+    private fun <T> measureOperation(label: String, block: () -> T): T {
+        lateinit var result: T
+        val durationMs = measureTimeMillis {
+            result = block()
+        }
+        if (durationMs > SLOW_OPERATION_THRESHOLD_MS) {
+            Log.w(TAG, "$LOG_TAG: slow operation label=$label took=${durationMs}ms")
+        } else {
+            Log.i(TAG, "$LOG_TAG: operation label=$label took=${durationMs}ms")
+        }
+        return result
     }
 
     private fun smoothSignal(values: List<Float>): List<Float> {
@@ -752,5 +801,7 @@ class SessionRepository(
         private const val minimumDisturbedConfidence = 0.55f
         private const val minimumPeaksPerType = 2
         private const val smoothingWindowSize = 5
+        private const val SLOW_OPERATION_THRESHOLD_MS = 100L
+        private const val LOG_TAG = "KartingTracker"
     }
 }

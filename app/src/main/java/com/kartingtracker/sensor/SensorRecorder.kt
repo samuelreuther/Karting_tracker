@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +54,7 @@ class SensorRecorder(
 
     fun startRecording() {
         if (!hasRequiredSensors || active) {
+            Log.w(TAG, "$LOG_TAG: start ignored active=$active hasSensors=$hasRequiredSensors")
             return
         }
         active = true
@@ -62,79 +64,105 @@ class SensorRecorder(
         lastGyro = floatArrayOf(0f, 0f, 0f)
         lastSensorTimestampNs = 0L
         _recorderPhase.value = RecorderPhase.CALIBRATING
-        registerListeners()
+        Log.i(TAG, "$LOG_TAG: sensor recorder start")
+        if (!registerListeners()) {
+            active = false
+            _recorderPhase.value = RecorderPhase.IDLE
+            calibrationManager.reset()
+            Log.e(TAG, "$LOG_TAG: failed to register sensor listeners")
+        }
     }
 
     fun stopRecording() {
         if (!active) {
             return
         }
-        unregisterListeners()
-        active = false
-        val phaseAtStop = _recorderPhase.value
-        _recorderPhase.value = RecorderPhase.IDLE
-        if (phaseAtStop == RecorderPhase.RECORDING) {
-            val lastTimestamp = sessionRepository.lastSample.value?.timestampNs ?: lastSensorTimestampNs
-            sessionRepository.stopSession(lastTimestamp)
+        Log.i(TAG, "$LOG_TAG: sensor recorder stop phase=${_recorderPhase.value}")
+        try {
+            unregisterListeners()
+        } catch (exception: Exception) {
+            Log.e(TAG, "$LOG_TAG: listener unregistration failed", exception)
+        } finally {
+            active = false
+            val phaseAtStop = _recorderPhase.value
+            _recorderPhase.value = RecorderPhase.IDLE
+            if (phaseAtStop == RecorderPhase.RECORDING) {
+                val lastTimestamp = sessionRepository.lastSample.value?.timestampNs ?: lastSensorTimestampNs
+                runCatching { sessionRepository.stopSession(lastTimestamp) }
+                    .onFailure { exception ->
+                        Log.e(TAG, "$LOG_TAG: stopSession failed", exception)
+                    }
+            }
+            calibrationManager.reset()
         }
-        calibrationManager.reset()
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_GYROSCOPE -> {
-                lastSensorTimestampNs = event.timestamp
-                lastGyro = gyroFilter.apply(event.values.copyOf())
+        try {
+            if (!active || event.values.size < 3) {
+                return
             }
+            when (event.sensor.type) {
+                Sensor.TYPE_GYROSCOPE -> {
+                    lastSensorTimestampNs = event.timestamp
+                    lastGyro = gyroFilter.apply(event.values.copyOf())
+                }
 
-            Sensor.TYPE_ACCELEROMETER -> {
-                lastSensorTimestampNs = event.timestamp
-                val filteredAccel = accelFilter.apply(event.values.copyOf())
-                if (_recorderPhase.value == RecorderPhase.CALIBRATING) {
-                    val calibrationFinished = calibrationManager.addCalibrationSample(filteredAccel, event.timestamp)
-                    if (calibrationFinished) {
-                        sessionRepository.startSession(event.timestamp)
-                        _recorderPhase.value = RecorderPhase.RECORDING
+                Sensor.TYPE_ACCELEROMETER -> {
+                    lastSensorTimestampNs = event.timestamp
+                    val filteredAccel = accelFilter.apply(event.values.copyOf())
+                    if (_recorderPhase.value == RecorderPhase.CALIBRATING) {
+                        val calibrationFinished = calibrationManager.addCalibrationSample(filteredAccel, event.timestamp)
+                        if (calibrationFinished) {
+                            sessionRepository.startSession(event.timestamp)
+                            _recorderPhase.value = RecorderPhase.RECORDING
+                        }
+                        return
                     }
-                    return
-                }
 
-                if (_recorderPhase.value != RecorderPhase.RECORDING) {
-                    return
-                }
+                    if (_recorderPhase.value != RecorderPhase.RECORDING) {
+                        return
+                    }
 
-                val calibratedAcceleration = calibrationManager.projectAcceleration(filteredAccel)
-                val sample = SensorSample(
-                    timestampNs = event.timestamp,
-                    accelX = filteredAccel[0],
-                    accelY = filteredAccel[1],
-                    accelZ = filteredAccel[2],
-                    gyroX = lastGyro[0],
-                    gyroY = lastGyro[1],
-                    gyroZ = lastGyro[2],
-                    longitudinalAccel = calibratedAcceleration.longitudinalAcceleration,
-                    lateralAccel = calibratedAcceleration.lateralAcceleration,
-                    totalAcceleration = calibratedAcceleration.totalAcceleration,
-                    yawRateAbs = calculateGyroMagnitude(lastGyro)
-                )
-                sessionRepository.appendSample(sample)
+                    val calibratedAcceleration = calibrationManager.projectAcceleration(filteredAccel)
+                    val sample = SensorSample(
+                        timestampNs = event.timestamp,
+                        accelX = filteredAccel.getOrElse(0) { 0f },
+                        accelY = filteredAccel.getOrElse(1) { 0f },
+                        accelZ = filteredAccel.getOrElse(2) { 0f },
+                        gyroX = lastGyro.getOrElse(0) { 0f },
+                        gyroY = lastGyro.getOrElse(1) { 0f },
+                        gyroZ = lastGyro.getOrElse(2) { 0f },
+                        longitudinalAccel = calibratedAcceleration.longitudinalAcceleration,
+                        lateralAccel = calibratedAcceleration.lateralAcceleration,
+                        totalAcceleration = calibratedAcceleration.totalAcceleration,
+                        yawRateAbs = calculateGyroMagnitude(lastGyro)
+                    )
+                    sessionRepository.appendSample(sample)
+                }
             }
+        } catch (exception: Exception) {
+            Log.e(TAG, "$LOG_TAG: sensor callback failed", exception)
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
-    private fun registerListeners() {
+    private fun registerListeners(): Boolean {
         if (listenersRegistered || !hasRequiredSensors) {
-            return
+            return listenersRegistered
         }
-        accelerometer?.also { sensor ->
+        val accelRegistered = accelerometer?.let { sensor ->
             sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, sensorHandler)
-        }
-        gyroscope?.also { sensor ->
+        } ?: false
+        val gyroRegistered = gyroscope?.let { sensor ->
             sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, sensorHandler)
+        } ?: false
+        listenersRegistered = accelRegistered && gyroRegistered
+        if (!listenersRegistered) {
+            sensorManager.unregisterListener(this)
         }
-        listenersRegistered = true
+        return listenersRegistered
     }
 
     private fun unregisterListeners() {
@@ -151,5 +179,10 @@ class SensorRecorder(
                 (gyroValues[1] * gyroValues[1]) +
                 (gyroValues[2] * gyroValues[2])
         )
+    }
+
+    companion object {
+        private const val TAG = "SensorRecorder"
+        private const val LOG_TAG = "KartingTracker"
     }
 }
