@@ -412,6 +412,22 @@ For debug builds, the app seeds three simulated sessions once on app start:
 
 This is intended for UI and chart validation when no real kart session has been recorded yet.
 
+## Reliability Validation Workflow
+
+The repository includes a repeatable unit-test workflow for reliability validation:
+
+- simulates 3 sessions with durations `8`, `12`, and `15` minutes
+- runs lap detection and peak/sector enrichment
+- verifies lap detection returns data
+- verifies comparison time-loss data is produced and contains no `NaN`/`Infinite` values
+- verifies coaching insights and segment markers are generated
+
+Run:
+
+```bash
+./gradlew :app:testDebugUnitTest --tests com.kartingtracker.domain.ReliabilityWorkflowTest
+```
+
 ## Project Structure
 
 - `app/src/main/java/com/kartingtracker/data`
@@ -513,7 +529,7 @@ Practical advice:
 - no database
 - no fully sensor-fused 3D orientation estimation
 - recording continuity is greatly improved in background, but a killed process cannot fully reconstruct a live sensor stream mid-session
-- recording is intentionally not auto-resumed through sticky service restart after process death; a fresh manual start is required
+- the service can restart while active, but a killed process still cannot fully reconstruct a live in-progress sensor stream
 - background behavior still depends partly on OEM battery policies despite the foreground service
 - lap detection is heuristic and not validated against reference timing hardware
 - comparison charts still use derived longitudinal/lateral axes, not purely orientation-invariant signals
@@ -533,4 +549,4 @@ Project documentation is intended to stay in sync with code changes after each i
 
 ## Build Status In This Workspace
 
-No Android build or device run was executed for this documentation update in this workspace.
+Build and tests depend on network access for downloading the configured Gradle wrapper (`8.7`) and dependencies.

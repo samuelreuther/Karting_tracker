@@ -45,6 +45,7 @@ class RecordingForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
+            Log.i(TAG, "$LOG_TAG: service onStartCommand action=${intent?.action ?: "null"}")
             when (intent?.action) {
                 ACTION_STOP -> stopRecordingAndService()
                 ACTION_START -> handleStart(intent)
@@ -54,7 +55,7 @@ class RecordingForegroundService : Service() {
             Log.e(TAG, "Recording service failed during startup", exception)
             stopServiceInternal("Service startup failed")
         }
-        return START_NOT_STICKY
+        return if (sensorRecorder.isActive || sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) START_STICKY else START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -95,6 +96,7 @@ class RecordingForegroundService : Service() {
             acquireWakeLock()
             try {
                 sensorRecorder.startRecording()
+                Log.i(TAG, "$LOG_TAG: recording started track=${sessionRepository.currentTrackName.value}")
             } catch (exception: Exception) {
                 Log.e(TAG, "Failed to start sensor recording", exception)
                 stopServiceInternal("Sensor recorder startup failed")
@@ -170,6 +172,7 @@ class RecordingForegroundService : Service() {
     }
 
     private fun stopServiceInternal(reason: String) {
+        Log.i(TAG, "$LOG_TAG: stopServiceInternal reason=$reason")
         notificationJob?.cancel()
         notificationJob = null
         safeStopRecording(reason)
@@ -185,6 +188,7 @@ class RecordingForegroundService : Service() {
         }
         try {
             sensorRecorder.stopRecording()
+            Log.i(TAG, "$LOG_TAG: recording stopped reason=$reason")
         } catch (exception: Exception) {
             Log.e(TAG, "$reason: recorder shutdown failed", exception)
         }
@@ -222,7 +226,7 @@ class RecordingForegroundService : Service() {
 
     private fun acquireWakeLock() {
         if (!wakeLock.isHeld) {
-            wakeLock.acquire()
+            wakeLock.acquire(WAKELOCK_TIMEOUT_MS)
         }
     }
 
@@ -238,11 +242,13 @@ class RecordingForegroundService : Service() {
 
     companion object {
         private const val TAG = "RecordingService"
+        private const val LOG_TAG = "KartingTracker"
         const val ACTION_START = "com.kartingtracker.action.START_RECORDING"
         const val ACTION_STOP = "com.kartingtracker.action.STOP_RECORDING"
         const val EXTRA_TRACK_NAME = "extra_track_name"
 
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
+        private const val WAKELOCK_TIMEOUT_MS = 20 * 60 * 1000L
     }
 }
 
