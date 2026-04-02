@@ -15,6 +15,8 @@ data class Session(
     val theoreticalBestLapTimeMs: Long? = null,
     val topTimeLossSegments: List<TimeLossSegment> = emptyList(),
     val segmentMarkers: List<SegmentMarker> = emptyList(),
+    val cornerCoachingInsights: List<CornerCoachingInsight> = emptyList(),
+    val cornerCoachingSummary: CornerCoachingSummary? = null,
     val quality: SessionQuality? = null,
     val processingVersion: Int = DEFAULT_PROCESSING_VERSION,
     val isPartial: Boolean = false

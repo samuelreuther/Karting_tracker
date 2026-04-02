@@ -9,6 +9,7 @@ import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.domain.SectorDetector
 import com.kartingtracker.domain.SessionQualityEvaluator
 import com.kartingtracker.domain.TrackLayoutMapper
+import com.kartingtracker.domain.corner.CornerCoachingAnalyzer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +32,7 @@ class SessionRepository(
     private val trackLayoutManager: TrackLayoutManager,
     private val trackMapManager: TrackMapManager,
     private val drivingCoachAnalyzer: DrivingCoachAnalyzer,
+    private val cornerCoachingAnalyzer: CornerCoachingAnalyzer,
     private val sessionCsvExporter: SessionCsvExporter,
     private val appBackupManager: AppBackupManager
 ) {
@@ -142,6 +144,8 @@ class SessionRepository(
                     theoreticalBestLapTimeMs = null,
                     topTimeLossSegments = emptyList(),
                     segmentMarkers = emptyList(),
+                    cornerCoachingInsights = emptyList(),
+                    cornerCoachingSummary = null,
                     quality = null
                 )
             } else {
@@ -431,6 +435,8 @@ class SessionRepository(
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
+                cornerCoachingInsights = emptyList(),
+                cornerCoachingSummary = null,
                 quality = null
             )
         )
@@ -580,6 +586,8 @@ class SessionRepository(
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
+                cornerCoachingInsights = emptyList(),
+                cornerCoachingSummary = null,
                 processingVersion = 0,
                 isPartial = true
             )
@@ -609,6 +617,8 @@ class SessionRepository(
             theoreticalBestLapTimeMs = null,
             topTimeLossSegments = emptyList(),
             segmentMarkers = emptyList(),
+            cornerCoachingInsights = emptyList(),
+            cornerCoachingSummary = null,
             quality = null
         )
 
@@ -719,6 +729,8 @@ class SessionRepository(
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
+                cornerCoachingInsights = emptyList(),
+                cornerCoachingSummary = null,
                 quality = null,
                 isPartial = false
             ).withQuality()
@@ -730,12 +742,22 @@ class SessionRepository(
                     trackLayout = loadTrackLayout(processedSession.trackName)
                 )
             }
-            processedSession.copy(
+            val analyzedSession = processedSession.copy(
                 insights = telemetryAnalysis.insights,
                 coachingInsights = telemetryAnalysis.coachingInsights,
                 theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
                 topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
                 segmentMarkers = telemetryAnalysis.segmentMarkers
+            )
+            val cornerCoachingAnalysis = measureOperation("CornerCoachingAnalyzer.analyze") {
+                cornerCoachingAnalyzer.analyze(
+                    session = analyzedSession,
+                    trackLayout = loadTrackLayout(analyzedSession.trackName)
+                )
+            }
+            analyzedSession.copy(
+                cornerCoachingInsights = cornerCoachingAnalysis.insights,
+                cornerCoachingSummary = cornerCoachingAnalysis.summary
             )
         } catch (exception: Exception) {
             Log.e(TAG, "$LOG_TAG: processing pipeline failed for session=${session.id}", exception)
@@ -747,6 +769,8 @@ class SessionRepository(
                 theoreticalBestLapTimeMs = null,
                 topTimeLossSegments = emptyList(),
                 segmentMarkers = emptyList(),
+                cornerCoachingInsights = emptyList(),
+                cornerCoachingSummary = null,
                 quality = null,
                 isPartial = false
             )
@@ -809,7 +833,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 7
+        private const val CURRENT_PROCESSING_VERSION = 8
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

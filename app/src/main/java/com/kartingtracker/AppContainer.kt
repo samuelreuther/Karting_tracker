@@ -13,6 +13,7 @@ import com.kartingtracker.data.TrackProfileManager
 import com.kartingtracker.domain.DrivingCoachAnalyzer
 import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
+import com.kartingtracker.domain.corner.CornerCoachingAnalyzer
 import com.kartingtracker.sensor.SensorRecorder
 
 class AppContainer(context: Context) {
@@ -29,6 +30,7 @@ class AppContainer(context: Context) {
         trackLayoutManager = trackLayoutManager
     )
     private val drivingCoachAnalyzer = DrivingCoachAnalyzer()
+    private val cornerCoachingAnalyzer = CornerCoachingAnalyzer()
     private val sessionCsvExporter = SessionCsvExporter(context.applicationContext)
     private val appBackupManager = AppBackupManager(context.applicationContext)
 
@@ -54,6 +56,7 @@ class AppContainer(context: Context) {
         trackLayoutManager = trackLayoutManager,
         trackMapManager = trackMapManager,
         drivingCoachAnalyzer = drivingCoachAnalyzer,
+        cornerCoachingAnalyzer = cornerCoachingAnalyzer,
         sessionCsvExporter = sessionCsvExporter,
         appBackupManager = appBackupManager
     )

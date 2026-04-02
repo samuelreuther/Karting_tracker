@@ -84,6 +84,7 @@ Wichtig fuer dieses Dokument:
 - Sektorvergleich zwischen zwei Laps
 - Ideal-Lap-Berechnung aus Best-Sektoren
 - strukturierte Telemetrie-Insights mit Segmentanalyse
+- deterministische Corner-Coaching-Analyse mit Kurven-Mapping, Confidence-Gating und Top-3-Aktionshinweisen
 - Theoretical-Best-Lap-Berechnung pro Session
 - Top-Time-Loss-Map und Chart-Marker fuer schwache Segmente
 - Track-Layout-Editor mit Bildimport, Startpunkt, Fahrtrichtung und manueller Kurvenpflege

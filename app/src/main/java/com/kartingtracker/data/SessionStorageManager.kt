@@ -118,6 +118,8 @@ class SessionStorageManager(
                 theoreticalBestLapTimeMs = parseTheoreticalBestLapTime(jsonObject),
                 topTimeLossSegments = parseTopTimeLossSegments(jsonObject),
                 segmentMarkers = parseSegmentMarkers(jsonObject),
+                cornerCoachingInsights = parseCornerCoachingInsights(jsonObject),
+                cornerCoachingSummary = parseCornerCoachingSummary(jsonObject),
                 processingVersion = if (!jsonObject.has(PROCESSING_VERSION_FIELD) || parsedSession.processingVersion <= 0) {
                     Session.DEFAULT_PROCESSING_VERSION
                 } else {
@@ -165,6 +167,18 @@ class SessionStorageManager(
         return rawMarkers.mapNotNull { element ->
             runCatching { gson.fromJson(element, SegmentMarker::class.java) }.getOrNull()
         }
+    }
+
+    private fun parseCornerCoachingInsights(jsonObject: com.google.gson.JsonObject): List<CornerCoachingInsight> {
+        val rawInsights = jsonObject.getAsJsonArray(CORNER_COACHING_INSIGHTS_FIELD) ?: return emptyList()
+        return rawInsights.mapNotNull { element ->
+            runCatching { gson.fromJson(element, CornerCoachingInsight::class.java) }.getOrNull()
+        }
+    }
+
+    private fun parseCornerCoachingSummary(jsonObject: com.google.gson.JsonObject): CornerCoachingSummary? {
+        val rawSummary = jsonObject.get(CORNER_COACHING_SUMMARY_FIELD) ?: return null
+        return runCatching { gson.fromJson(rawSummary, CornerCoachingSummary::class.java) }.getOrNull()
     }
 
     private fun listSessionFiles(): List<File> {
@@ -311,6 +325,8 @@ class SessionStorageManager(
         private const val TOP_TIME_LOSS_SEGMENTS_FIELD = "topTimeLossSegments"
         private const val SEGMENT_MARKERS_FIELD = "segmentMarkers"
         private const val PROCESSING_VERSION_FIELD = "processingVersion"
+        private const val CORNER_COACHING_INSIGHTS_FIELD = "cornerCoachingInsights"
+        private const val CORNER_COACHING_SUMMARY_FIELD = "cornerCoachingSummary"
         private const val IS_PARTIAL_FIELD = "isPartial"
         private const val JSON_SUFFIX = ".json"
         private const val PARTIAL_SUFFIX = "_partial.json"

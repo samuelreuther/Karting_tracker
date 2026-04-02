@@ -275,6 +275,31 @@
                 android:textColor="@color/karting_text_secondary" />
 
             <TextView
+                android:id="@+id/lastSessionCornerActions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                android:textColor="@color/karting_text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/lastSessionStrongestCorner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                android:textColor="@color/karting_text_secondary" />
+
+            <TextView
+                android:id="@+id/lastSessionCornerOpportunity"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                android:textColor="@color/karting_text_secondary" />
+
+            <TextView
                 android:id="@+id/lastSessionActionLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

@@ -264,6 +264,23 @@
                 android:layout_marginTop="6dp"
                 style="@style/KartingBodyMuted"
                 android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/cornerCoachingTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Corner Coaching"
+                style="@style/KartingSectionTitle"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/cornerCoachingLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                style="@style/KartingBodyMuted"
+                android:visibility="gone" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

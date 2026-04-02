@@ -57,6 +57,7 @@ Implemented today:
 - lap comparison with overlay charts, a time loss chart, sector deltas, ideal lap reference, chart markers, and structured telemetry insights
 - map-supported comparison overlays with highlighted weak segments projected onto the current track map
 - session-level coaching insights with segment-based time-loss attribution and a theoretical best lap
+- corner-centric coaching insights with deterministic per-corner actions, confidence gating, strongest/inconsistent corner detection, and top-3 next-run recommendations
 - persistent session storage as JSON
 - session browser metadata for sample count and JSON file size
 - processing-versioned session reanalysis from stored raw sensor data

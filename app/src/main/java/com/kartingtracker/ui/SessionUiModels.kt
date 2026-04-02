@@ -36,6 +36,9 @@ data class LastSessionSummaryUiState(
     val quality: String = "No session loaded yet",
     val biggestLoss: String = "No time-loss segment available",
     val coachingHint: String = "Record a run to unlock coaching recommendations",
+    val topCornerActions: List<String> = emptyList(),
+    val strongestCorner: String = "Strongest corner unavailable",
+    val biggestCornerOpportunity: String = "Biggest corner opportunity unavailable",
     val actionLabel: String = "Open deep analysis",
     val canOpenComparison: Boolean = false
 )
@@ -62,6 +65,7 @@ data class ComparisonUiState(
     val idealLapSectorLines: List<String> = emptyList(),
     val insights: List<String> = emptyList(),
     val topTimeLossLines: List<String> = emptyList(),
+    val cornerCoachingLines: List<String> = emptyList(),
     val mapImagePath: String? = null,
     val projectedCurves: List<ProjectedCurveUiState> = emptyList(),
     val trackInsightMarkers: List<TrackInsightMarker> = emptyList(),

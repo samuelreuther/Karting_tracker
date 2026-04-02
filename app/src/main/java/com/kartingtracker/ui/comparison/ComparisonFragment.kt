@@ -105,6 +105,9 @@ class ComparisonFragment : Fragment() {
                     binding.sessionInsightsLabel.text = state.topTimeLossLines.joinToString(separator = "\n") { insight -> "- $insight" }
                     binding.sessionInsightsTitle.visibility = if (state.topTimeLossLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.sessionInsightsLabel.visibility = if (state.topTimeLossLines.isEmpty()) View.GONE else View.VISIBLE
+                    binding.cornerCoachingLabel.text = state.cornerCoachingLines.joinToString(separator = "\n")
+                    binding.cornerCoachingTitle.visibility = if (state.cornerCoachingLines.isEmpty()) View.GONE else View.VISIBLE
+                    binding.cornerCoachingLabel.visibility = if (state.cornerCoachingLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.trackMapTitle.visibility =
                         if (state.mapImagePath.isNullOrBlank() && state.fallbackCurveLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.trackMapTitle.text = if (state.mapImagePath.isNullOrBlank()) {
