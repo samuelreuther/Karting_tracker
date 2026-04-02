@@ -3,13 +3,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="@dimen/screen_padding">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/session_filter_label"
-        android:textStyle="bold" />
+        style="@style/KartingSectionTitle" />
 
     <Spinner
         android:id="@+id/trackFilterSpinner"
@@ -21,8 +21,10 @@
         android:id="@+id/sessionRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:layout_weight="1" />
+        android:layout_marginTop="14dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="20dp" />
 
     <TextView
         android:id="@+id/emptyStateLabel"
@@ -30,6 +32,6 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:text="@string/no_saved_sessions"
-        android:textColor="@color/karting_muted" />
+        style="@style/KartingBodyMuted" />
 
 </LinearLayout>

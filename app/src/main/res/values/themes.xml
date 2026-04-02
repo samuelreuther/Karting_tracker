@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.KartingTracker" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">@color/karting_green</item>
+        <item name="colorPrimary">@color/karting_primary</item>
         <item name="colorOnPrimary">@android:color/white</item>
-        <item name="colorSecondary">@color/karting_blue</item>
+        <item name="colorPrimaryContainer">@color/karting_surface_tint</item>
+        <item name="colorOnPrimaryContainer">@color/karting_primary_dark</item>
+        <item name="colorSecondary">@color/karting_secondary</item>
         <item name="colorOnSecondary">@android:color/white</item>
-        <item name="android:statusBarColor" tools:targetApi="l">@color/karting_surface</item>
+        <item name="colorSurface">@color/karting_panel</item>
+        <item name="colorOnSurface">@color/karting_text_primary</item>
+        <item name="colorSurfaceVariant">@color/karting_panel_alt</item>
+        <item name="colorOutline">@color/karting_stroke</item>
+        <item name="android:statusBarColor" tools:targetApi="l">@color/karting_background</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
-        <item name="android:windowBackground">@color/karting_surface</item>
-        <item name="colorSurface">@color/karting_surface</item>
-        <item name="colorOnSurface">@color/karting_dark</item>
+        <item name="android:windowBackground">@drawable/bg_screen_surface</item>
     </style>
 </resources>

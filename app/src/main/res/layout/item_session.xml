@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/KartingPanelCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
-    app:cardCornerRadius="18dp">
+    android:layout_marginBottom="12dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,29 +16,28 @@
             android:id="@+id/sessionTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-            android:textStyle="bold" />
+            style="@style/KartingSectionTitle" />
 
         <TextView
             android:id="@+id/sessionDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/karting_muted" />
+            android:layout_marginTop="4dp"
+            style="@style/KartingBodyMuted" />
 
         <TextView
             android:id="@+id/sessionMeta"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/karting_muted" />
+            android:layout_marginTop="4dp"
+            style="@style/KartingBodyMuted" />
 
         <TextView
             android:id="@+id/sessionFileSize"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="@color/karting_muted" />
+            android:layout_marginTop="4dp"
+            style="@style/KartingBodyMuted" />
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

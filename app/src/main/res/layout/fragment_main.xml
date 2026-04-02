@@ -3,117 +3,163 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:padding="@dimen/screen_padding"
+        android:paddingBottom="28dp">
 
-        <TextView
-            android:id="@+id/recordingIndicator"
-            android:layout_width="wrap_content"
+        <com.google.android.material.card.MaterialCardView
+            style="@style/KartingPanelCard"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_recording_indicator"
-            android:paddingStart="14dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="14dp"
-            android:paddingBottom="8dp"
-            android:text="@string/status_ready"
-            android:textColor="@android:color/white"
-            android:textStyle="bold" />
+            android:background="@drawable/bg_header_hero"
+            app:cardBackgroundColor="@android:color/transparent"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Session control"
+                    android:textColor="#CFE1FF"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Race-ready telemetry with instant lap intelligence"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
+                    android:textColor="@android:color/white" />
+
+                <TextView
+                    android:id="@+id/recordingIndicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_recording_indicator"
+                    android:paddingStart="14dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="8dp"
+                    android:text="@string/status_ready"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <TextView
             android:id="@+id/sensorAvailabilityLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/content_gap"
             android:text="@string/sensor_missing"
-            android:textColor="@color/karting_red"
+            android:textColor="@color/karting_error"
             android:visibility="gone" />
 
-        <TextView
+        <com.google.android.material.card.MaterialCardView
+            style="@style/KartingPanelCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/device_mount_note"
-            android:textColor="@color/karting_muted" />
+            android:layout_marginTop="@dimen/section_gap">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/track_selection_label"
-            android:textStyle="bold" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/select_track_hint"
-            app:endIconMode="dropdown_menu">
-
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/trackDropdown"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:completionThreshold="0"
-                android:importantForAutofill="no"
-                android:inputType="none" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="vertical"
+                android:padding="18dp">
 
-        <TextView
-            android:id="@+id/trackProfileLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/karting_muted"
-            android:visibility="gone" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/track_selection_label"
+                    style="@style/KartingSectionTitle" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/device_mount_note"
+                    style="@style/KartingBodyMuted" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:hint="@string/select_track_hint"
+                    app:endIconMode="dropdown_menu">
+
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                        android:id="@+id/trackDropdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:completionThreshold="0"
+                        android:importantForAutofill="no"
+                        android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <TextView
+                    android:id="@+id/trackProfileLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    style="@style/KartingBodyMuted"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/editTrackButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/edit_track" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/deleteTrackButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/delete_track" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/editTrackLayoutButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/edit_track_layout" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/editTrackButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/edit_track" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/deleteTrackButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="@string/delete_track" />
-        </LinearLayout>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/editTrackLayoutButton"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/edit_track_layout" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="@dimen/section_gap"
             android:orientation="horizontal">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/startButton"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="52dp"
                 android:layout_weight="1"
                 android:text="@string/start_recording" />
 
@@ -121,18 +167,17 @@
                 android:id="@+id/stopButton"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="52dp"
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:text="@string/stop_recording" />
         </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
+            style="@style/KartingPanelCard.Emphasis"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            app:cardCornerRadius="18dp"
-            app:cardUseCompatPadding="true">
+            android:layout_marginTop="@dimen/section_gap">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -144,12 +189,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/live_telemetry"
-                    android:textStyle="bold" />
+                    style="@style/KartingSectionTitle" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="14dp"
                     android:orientation="horizontal">
 
                     <LinearLayout
@@ -162,13 +207,13 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/samples_label"
-                            android:textColor="@color/karting_muted" />
+                            style="@style/KartingBodyMuted" />
 
                         <TextView
                             android:id="@+id/samplesValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="3dp"
                             android:text="0"
                             android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
                     </LinearLayout>
@@ -183,13 +228,13 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/detected_laps_label"
-                            android:textColor="@color/karting_muted" />
+                            style="@style/KartingBodyMuted" />
 
                         <TextView
                             android:id="@+id/detectedLapsValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="3dp"
                             android:text="0"
                             android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
                     </LinearLayout>
@@ -198,59 +243,53 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginTop="16dp"
-                    android:background="@color/karting_divider" />
+                    android:layout_marginTop="14dp"
+                    android:background="@color/karting_stroke" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:orientation="vertical">
+                    android:layout_marginTop="14dp"
+                    android:text="@string/longitudinal_label"
+                    style="@style/KartingBodyMuted" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/longitudinal_label"
-                        android:textColor="@color/karting_muted" />
+                <TextView
+                    android:id="@+id/longitudinalValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="0.00 m/s^2"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
 
-                    <TextView
-                        android:id="@+id/longitudinalValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="0.00 m/s^2"
-                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/lateral_label"
+                    style="@style/KartingBodyMuted" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="@string/lateral_label"
-                        android:textColor="@color/karting_muted" />
+                <TextView
+                    android:id="@+id/lateralValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="0.00 m/s^2"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
 
-                    <TextView
-                        android:id="@+id/lateralValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="0.00 m/s^2"
-                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/estimated_lap_label"
+                    style="@style/KartingBodyMuted" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="@string/estimated_lap_label"
-                        android:textColor="@color/karting_muted" />
-
-                    <TextView
-                        android:id="@+id/estimatedLapValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="n/a"
-                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/estimatedLapValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="n/a"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -259,7 +298,7 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="@dimen/section_gap"
             android:text="@string/view_detected_laps" />
 
         <com.google.android.material.button.MaterialButton
@@ -267,7 +306,7 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:text="@string/compare_laps" />
 
         <com.google.android.material.button.MaterialButton
@@ -275,7 +314,7 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:text="@string/load_last_session" />
 
         <com.google.android.material.button.MaterialButton
@@ -283,7 +322,7 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:text="@string/browse_sessions" />
     </LinearLayout>
 

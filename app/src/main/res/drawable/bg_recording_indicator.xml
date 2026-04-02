@@ -3,7 +3,7 @@
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <corners android:radius="999dp" />
-            <solid android:color="@color/karting_red" />
+            <solid android:color="@color/karting_error" />
         </shape>
     </item>
     <item>

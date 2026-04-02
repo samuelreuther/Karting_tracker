@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="@dimen/screen_padding">
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/lapRecyclerView"
@@ -18,6 +18,6 @@
         android:layout_gravity="center"
         android:gravity="center"
         android:text="@string/no_laps_detected"
-        android:textColor="@color/karting_muted" />
+        style="@style/KartingBodyMuted" />
 
 </FrameLayout>
