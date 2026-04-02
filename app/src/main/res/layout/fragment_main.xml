@@ -11,51 +11,145 @@
         android:layout_height="wrap_content"
         android:background="@drawable/bg_header_hero"
         app:cardBackgroundColor="@android:color/transparent"
-        app:cardCornerRadius="20dp"
-        app:strokeWidth="0dp">
+        app:cardCornerRadius="22dp"
+        app:strokeColor="#253043"
+        app:strokeWidth="1dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:padding="14dp">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Karting Tracker"
+                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                        android:textColor="#EEF3FF"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Select track, review key insights, and record your next session"
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        android:textColor="#BFCCE3" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/recordingIndicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_recording_indicator"
+                    android:paddingStart="12dp"
+                    android:paddingTop="7dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="7dp"
+                    android:text="@string/status_ready"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/selected_track_label"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                    android:textColor="#8FA4C9" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Karting Coach"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
-                    android:textColor="#D7E7FF"
-                    android:textStyle="bold" />
+                    android:text="@string/recording_controls_label"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                    android:textColor="#8FA4C9" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
-                    android:layout_width="match_parent"
+                    android:id="@+id/heroTrackValue"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Select track, review learnings, then start your next run"
-                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                    android:textColor="@android:color/white" />
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/no_track_selected"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                    android:textColor="#F4F8FF"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/startButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="42dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="@string/start_session_recording"
+                        android:textAllCaps="false"
+                        android:textSize="11sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/stopButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="8dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="@string/stop_session_recording"
+                        android:textAllCaps="false"
+                        android:textColor="#D9E4F8"
+                        android:textSize="11sp"
+                        app:strokeColor="#6F86A8" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView
-                android:id="@+id/recordingIndicator"
-                android:layout_width="wrap_content"
+                android:id="@+id/heroRecommendation"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_recording_indicator"
-                android:paddingStart="12dp"
-                android:paddingTop="7dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="7dp"
-                android:text="@string/status_ready"
-                android:textColor="@android:color/white"
-                android:textStyle="bold" />
+                android:layout_marginTop="10dp"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                android:textColor="#C6D6F2" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
@@ -87,11 +181,11 @@
                 android:orientation="horizontal">
 
                 <TextView
+                    style="@style/KartingSectionTitle"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/track_selection_label"
-                    style="@style/KartingSectionTitle" />
+                    android:text="@string/track_selection_label" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/addTrackButton"
@@ -116,10 +210,10 @@
 
             <TextView
                 android:id="@+id/trackProfileLabel"
+                style="@style/KartingBodyMuted"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                style="@style/KartingBodyMuted" />
+                android:layout_marginTop="4dp" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
@@ -142,17 +236,17 @@
 
             <TextView
                 android:id="@+id/lastSessionTitle"
+                style="@style/KartingSectionTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/last_session_title"
-                style="@style/KartingSectionTitle" />
+                android:text="@string/last_session_title" />
 
             <TextView
                 android:id="@+id/lastSessionHeadline"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                 android:textColor="@color/karting_text_primary"
                 android:textStyle="bold" />
 
@@ -196,29 +290,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:orientation="horizontal">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/startButton"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:text="@string/start_recording" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/stopButton"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:text="@string/stop_recording" />
-    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"

@@ -71,6 +71,10 @@ class MainFragment : Fragment() {
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
                     binding.compareLapsButton.isEnabled = state.lastSessionSummary.canOpenComparison
+                    binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
+                        getString(R.string.no_track_selected)
+                    }
+                    binding.heroRecommendation.text = state.lastSessionSummary.headline
                     binding.lastSessionHeadline.text = state.lastSessionSummary.headline
                     binding.lastSessionQuality.text = state.lastSessionSummary.quality
                     binding.lastSessionTimeLoss.text = state.lastSessionSummary.biggestLoss
