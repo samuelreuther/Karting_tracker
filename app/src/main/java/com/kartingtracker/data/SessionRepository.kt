@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
-import kotlin.system.measureTimeMillis
 
 class SessionRepository(
     private val lapDetector: LapDetector,
@@ -114,8 +113,7 @@ class SessionRepository(
     }
 
     fun stopSession(endTimestampNs: Long): Session? {
-        var completedSession: Session? = null
-        synchronized(lock) {
+        val completedSession = synchronized(lock) {
             if (!_isRecording.value) {
                 return _latestSession.value
             }
@@ -126,7 +124,7 @@ class SessionRepository(
             }
             _isRecording.value = false
             stopAutosaveLocked()
-            completedSession = if (currentSamples.isEmpty()) {
+            val finalizedSession = if (currentSamples.isEmpty()) {
                 Session(
                     id = currentSessionId,
                     trackName = _currentTrackName.value,
@@ -152,12 +150,13 @@ class SessionRepository(
                 )
             }
 
-            _latestSession.value = completedSession
-            _currentSession.value = completedSession
-            completedSession?.let { session ->
+            _latestSession.value = finalizedSession
+            _currentSession.value = finalizedSession
+            finalizedSession?.let { session ->
                 persistSessionWithVerification(session, "final-save")
             }
             refreshStoredSessions()
+            finalizedSession
         }
 
         completedSession?.trackName?.takeIf { trackName -> trackName.isNotBlank() }?.let(::refreshTrackProfileState)
@@ -745,17 +744,15 @@ class SessionRepository(
     }
 
     private fun <T> measureOperation(label: String, block: () -> T): T {
-        var result: Any? = null
-        val durationMs = measureTimeMillis {
-            result = block()
-        }
+        val startTimeNs = System.nanoTime()
+        val result = block()
+        val durationMs = (System.nanoTime() - startTimeNs) / 1_000_000
         if (durationMs > SLOW_OPERATION_THRESHOLD_MS) {
             Log.w(TAG, "$LOG_TAG: slow operation label=$label took=${durationMs}ms")
         } else {
             Log.i(TAG, "$LOG_TAG: operation label=$label took=${durationMs}ms")
         }
-        @Suppress("UNCHECKED_CAST")
-        return result as T
+        return result
     }
 
     private fun smoothSignal(values: List<Float>): List<Float> {
