@@ -3,13 +3,13 @@
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <corners android:radius="999dp" />
-            <solid android:color="@color/karting_error" />
+            <solid android:color="#D7264B" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="999dp" />
-            <solid android:color="#2E3A4F" />
+            <solid android:color="#283647" />
         </shape>
     </item>
 </selector>

@@ -4,13 +4,8 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="#111823"
-                android:endColor="#0D1420" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@color/karting_background" />
+                android:startColor="#0B121D"
+                android:endColor="#04060A" />
         </shape>
     </item>
 </layer-list>
