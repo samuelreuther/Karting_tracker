@@ -12,6 +12,23 @@
 4. Track auswaehlen/anlegen und Recording mit 2-Sekunden-Kalibrierung starten.
 5. Session stoppen und Analyse in Laps/Comparison pruefen.
 
+## Dokumentationsstatus und Pflege
+
+Diese Datei ist die technische Referenzdokumentation. Das `README.md` ist die kompakte Einstiegsversion.
+
+Pflege-Regel fuer Aenderungen:
+
+1. Zuerst `README.md` auf Nutzer- und Setup-Auswirkungen aktualisieren.
+2. Danach diese Datei fuer Architektur-, Domain- und Persistenzdetails aktualisieren.
+
+Empfohlene Checkliste pro Feature-Aenderung:
+
+- Implementiert/Nicht-implementiert-Liste aktualisieren
+- betroffene Schichten/Klassen in der Architektursektion aktualisieren
+- Datenmodell-Felder und Bedeutungen pruefen
+- Verarbeitungsfluss (Recording/Detection/Comparison/Persistenz) nachziehen
+- Test- und Validierungsabschnitt sowie bekannte Grenzen anpassen
+
 ## Zweck und Scope
 
 Karting Tracker ist eine Android-App zur Analyse von Indoor-Kartfahrten mit Smartphone-Sensoren ohne GPS.

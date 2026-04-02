@@ -2,6 +2,10 @@
 
 Android app for indoor karting telemetry with smartphone sensors only. No GPS is required.
 
+> Last updated: 2026-04-02
+>
+> This README and `docs/PROJEKTDOKUMENTATION.md` were reviewed together and aligned in this update.
+
 The app records accelerometer and gyroscope data, processes the signal on-device, segments laps deterministically from IMU patterns, stores sessions as JSON files, and lets you compare laps visually.
 
 ## Documentation Index
@@ -573,6 +577,19 @@ The detailed documentation covers both the implemented `LapDetector 2.0` pipelin
 ## Documentation Policy
 
 Project documentation is intended to stay in sync with code changes after each implemented feature change.
+
+When adding or changing behavior, update both files in this order:
+
+1. `README.md` for user-facing summary and setup impact.
+2. `docs/PROJEKTDOKUMENTATION.md` for architecture, algorithms, and data-model details.
+
+Recommended doc-update checklist for each feature:
+
+- scope/feature list (`Implemented`/`Not implemented`)
+- architecture or data-model impact
+- behavior impact in recording/detection/comparison/persistence flows
+- reliability/testing workflow impact
+- known limitations if applicable
 
 ## Build Status In This Workspace
 
