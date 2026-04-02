@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="track_dialog_padding_horizontal">24dp</dimen>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="content_gap">12dp</dimen>
+    <dimen name="section_gap">20dp</dimen>
+    <dimen name="premium_corner">20dp</dimen>
 </resources>

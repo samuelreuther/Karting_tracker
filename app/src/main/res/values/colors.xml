@@ -1,13 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="karting_green">#2E7D32</color>
-    <color name="karting_red">#C62828</color>
-    <color name="karting_orange">#EF6C00</color>
-    <color name="karting_blue">#1565C0</color>
-    <color name="karting_teal">#00897B</color>
-    <color name="karting_dark">#102027</color>
-    <color name="karting_surface">#F7F8F4</color>
-    <color name="karting_muted">#5F6A6A</color>
-    <color name="karting_divider">#D8DEDC</color>
-    <color name="karting_gray">#607D8B</color>
+    <color name="karting_green">#45D483</color>
+    <color name="karting_red">#FF5C79</color>
+    <color name="karting_orange">#FF9E44</color>
+    <color name="karting_blue">#5AA8FF</color>
+    <color name="karting_teal">#33D5C8</color>
+    <color name="karting_dark">#0A1020</color>
+    <color name="karting_surface">#F3F6FB</color>
+    <color name="karting_muted">#667085</color>
+    <color name="karting_divider">#D5DCE8</color>
+    <color name="karting_gray">#334155</color>
+
+    <color name="karting_primary">#2563EB</color>
+    <color name="karting_primary_dark">#1D4ED8</color>
+    <color name="karting_secondary">#00B8D9</color>
+    <color name="karting_background">#EEF3FA</color>
+    <color name="karting_panel">#FFFFFF</color>
+    <color name="karting_panel_alt">#F8FAFF</color>
+    <color name="karting_surface_tint">#E8F0FF</color>
+    <color name="karting_text_primary">#111827</color>
+    <color name="karting_text_secondary">#60718A</color>
+    <color name="karting_stroke">#D8E2F0</color>
+    <color name="karting_success">#18A66A</color>
+    <color name="karting_warning">#F59E0B</color>
+    <color name="karting_error">#E11D48</color>
 </resources>
