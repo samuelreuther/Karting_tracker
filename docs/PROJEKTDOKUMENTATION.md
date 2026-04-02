@@ -1,5 +1,17 @@
 # Projektdokumentation Karting Tracker
 
+> Letzte Ueberarbeitung: 2026-04-02
+>
+> Diese Dokumentation beschreibt den aktuell implementierten Stand der App und wurde mit dem README synchronisiert.
+
+## Schnellstart fuer Entwickler
+
+1. Projekt in Android Studio oeffnen.
+2. Gradle-Sync abschliessen.
+3. App auf physischem Android-Geraet starten (empfohlen fuer echte Sensorwerte).
+4. Track auswaehlen/anlegen und Recording mit 2-Sekunden-Kalibrierung starten.
+5. Session stoppen und Analyse in Laps/Comparison pruefen.
+
 ## Zweck und Scope
 
 Karting Tracker ist eine Android-App zur Analyse von Indoor-Kartfahrten mit Smartphone-Sensoren ohne GPS.
@@ -1296,3 +1308,10 @@ Das war ein frueherer Fehlerpfad und ist jetzt explizit behoben.
 ## Hinweis zur Build-Validierung
 
 Die Dokumentation wurde gegen den vorhandenen Quellcode abgeglichen. Build/Test-Ausfuehrung haengt von Netzwerkkonnektivitaet fuer den Gradle-Wrapper (`8.7`) und Abhaengigkeiten ab.
+
+
+## Dokumentationspflege
+
+- `README.md` enthaelt den kompakten Schnellueberblick auf Englisch.
+- Diese Datei enthaelt die vertiefte technische Beschreibung auf Deutsch.
+- Bei Funktionsaenderungen sollten beide Dateien im gleichen Commit aktualisiert werden.

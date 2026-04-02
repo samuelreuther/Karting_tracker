@@ -4,6 +4,33 @@ Android app for indoor karting telemetry with smartphone sensors only. No GPS is
 
 The app records accelerometer and gyroscope data, processes the signal on-device, segments laps deterministically from IMU patterns, stores sessions as JSON files, and lets you compare laps visually.
 
+## Documentation Index
+
+- `README.md` (this file): quick overview, setup, and feature summary
+- `docs/PROJEKTDOKUMENTATION.md`: detailed architecture and algorithm documentation (German)
+
+## Quick Start
+
+### Requirements
+
+- Android Studio (current stable release)
+- Android SDK + platform tools installed through Android Studio
+- A physical Android device for realistic sensor testing (emulator works for UI, not for realistic IMU telemetry)
+
+### Build
+
+1. Open this folder in Android Studio.
+2. Let Gradle sync complete.
+3. Build via **Build > Make Project**.
+
+### Run
+
+1. Start the app on a device.
+2. Select or create a track.
+3. Press `Start` and keep the phone stable during the 2-second calibration phase.
+4. Drive a session.
+5. Press `Stop` in the app or via the foreground notification action.
+
 ## Current Scope
 
 This is a practical usable app version, not a throwaway prototype.
