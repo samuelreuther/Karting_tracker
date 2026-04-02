@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Karting Tracker</string>
-    <string name="status_ready">Ready</string>
+    <string name="status_ready">System ready</string>
     <string name="sensor_missing">This device is missing the required accelerometer or gyroscope.</string>
     <string name="device_mount_note">Mount assumption: phone is roughly aligned with the kart and lies stable. The app calibrates gravity for about 2 seconds before recording starts.</string>
     <string name="start_recording">Start</string>
     <string name="stop_recording">Stop</string>
+    <string name="pit_lane_status">Race control</string>
+    <string name="recording_controls_hint">Controls for starting or stopping karting session telemetry capture.</string>
     <string name="selected_track_label">Selected track</string>
-    <string name="recording_controls_label">Session recording</string>
+    <string name="recording_controls_label">Recording controls</string>
     <string name="no_track_selected">No track selected</string>
-    <string name="start_session_recording">Start session</string>
-    <string name="stop_session_recording">Stop session</string>
+    <string name="start_session_recording">Start session recording</string>
+    <string name="stop_session_recording">Stop session recording</string>
     <string name="track_selection_label">Track</string>
     <string name="add_track">+ Track</string>
     <string name="select_track_hint">Select track</string>

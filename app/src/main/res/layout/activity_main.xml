@@ -21,7 +21,7 @@
             android:paddingEnd="8dp"
             app:title="@string/app_name"
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
-            app:titleTextColor="@color/karting_text_primary" />
+            app:titleTextColor="#EAF1FF" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.fragment.app.FragmentContainerView
