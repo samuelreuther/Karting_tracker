@@ -709,7 +709,7 @@ class SessionRepository(
             val telemetryAnalysis = measureOperation("DrivingCoachAnalyzer.analyzeSession") {
                 drivingCoachAnalyzer.analyzeSession(
                     session = processedSession,
-                    trackProfile = trackProfile,
+                    _trackProfile = trackProfile,
                     trackLayout = loadTrackLayout(processedSession.trackName)
                 )
             }
