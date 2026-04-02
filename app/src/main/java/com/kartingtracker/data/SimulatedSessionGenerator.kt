@@ -4,6 +4,7 @@ import android.content.Context
 import kotlin.math.acos
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -40,8 +41,8 @@ object SimulatedSessionGenerator {
         val random = Random(baseSeed xor trackName.hashCode().toLong() xor seed.toLong())
         val totalSampleCount = ((durationMinutes * 60_000L) / sampleIntervalMs).toInt().coerceAtLeast(8_000)
         val targetLapMs = random.nextLong(24_400L, 25_600L)
-        val lapCount = ((durationMinutes * 60_000L).toFloat() / targetLapMs.toFloat()).toInt()
-            .coerceIn(minimumLapCount, maximumLapCount)
+        val requestedLapCount = ((durationMinutes * 60_000L).toFloat() / targetLapMs.toFloat()).toInt()
+        val lapCount = resolveLapCount(totalSampleCount, requestedLapCount)
         val lapSampleCounts = buildLapSampleCounts(random, totalSampleCount, lapCount)
         val trackPattern = resolveTrackPattern(trackName)
         val totalDurationMs = lapSampleCounts.sumOf { lapSamples -> lapSamples * sampleIntervalMs }
@@ -171,6 +172,26 @@ object SimulatedSessionGenerator {
     }
 
     private fun buildLapSampleCounts(random: Random, totalSampleCount: Int, lapCount: Int): List<Int> {
+        val minPossible = lapCount * minimumLapSamples
+        val maxPossible = lapCount * maximumLapSamples
+        if (totalSampleCount !in minPossible..maxPossible) {
+            val baseline = (totalSampleCount / lapCount).coerceAtLeast(1)
+            val counts = MutableList(lapCount) { baseline }
+            var remainder = totalSampleCount - counts.sum()
+            var cursor = 0
+            while (remainder != 0) {
+                val index = cursor % counts.size
+                val delta = if (remainder > 0) 1 else -1
+                val candidate = counts[index] + delta
+                if (candidate >= 1) {
+                    counts[index] = candidate
+                    remainder -= delta
+                }
+                cursor += 1
+            }
+            return counts
+        }
+
         val counts = MutableList(lapCount) { lapIndex ->
             val baseline = totalSampleCount / lapCount
             val waveAdjustment = (sine((lapIndex.toFloat() / lapCount.toFloat()) * twoPi) * 10f).toInt()
@@ -179,6 +200,7 @@ object SimulatedSessionGenerator {
 
         var remaining = totalSampleCount - counts.sum()
         var cursor = 0
+        var attemptsWithoutProgress = 0
         while (remaining != 0) {
             val direction = if (remaining > 0) 1 else -1
             val index = cursor % counts.size
@@ -186,10 +208,35 @@ object SimulatedSessionGenerator {
             if (candidate in minimumLapSamples..maximumLapSamples) {
                 counts[index] = candidate
                 remaining -= direction
+                attemptsWithoutProgress = 0
+            } else {
+                attemptsWithoutProgress += 1
             }
             cursor += 1
+            if (attemptsWithoutProgress > counts.size * 2) {
+                val fallbackIndex = random.nextInt(counts.size)
+                counts[fallbackIndex] = (counts[fallbackIndex] + remaining).coerceAtLeast(1)
+                remaining = 0
+            }
         }
         return counts
+    }
+
+    private fun resolveLapCount(totalSampleCount: Int, requestedLapCount: Int): Int {
+        val feasibleMinLapCount = max(
+            minimumLapCount,
+            ceil(totalSampleCount.toDouble() / maximumLapSamples.toDouble()).toInt()
+        )
+        val feasibleMaxLapCount = min(
+            maximumLapCount,
+            totalSampleCount / minimumLapSamples
+        )
+
+        if (feasibleMinLapCount <= feasibleMaxLapCount) {
+            return requestedLapCount.coerceIn(feasibleMinLapCount, feasibleMaxLapCount)
+        }
+
+        return requestedLapCount.coerceIn(minimumLapCount, maximumLapCount)
     }
 
     private fun buildLapProfile(
