@@ -745,7 +745,7 @@ class SessionRepository(
     }
 
     private fun <T> measureOperation(label: String, block: () -> T): T {
-        lateinit var result: T
+        var result: Any? = null
         val durationMs = measureTimeMillis {
             result = block()
         }
@@ -754,7 +754,8 @@ class SessionRepository(
         } else {
             Log.i(TAG, "$LOG_TAG: operation label=$label took=${durationMs}ms")
         }
-        return result
+        @Suppress("UNCHECKED_CAST")
+        return result as T
     }
 
     private fun smoothSignal(values: List<Float>): List<Float> {

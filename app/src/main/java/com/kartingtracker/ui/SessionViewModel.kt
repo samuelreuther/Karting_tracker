@@ -198,16 +198,61 @@ class SessionViewModel(
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
 
+    private data class ComparisonInputs(
+        val laps: List<Lap>,
+        val idealLap: IdealLap?,
+        val currentSession: Session?,
+        val selectedA: Int,
+        val selectedB: Int,
+        val tracks: List<Track>,
+        val currentTrackName: String,
+        val currentTrackLayout: TrackLayout?
+    )
+
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
-        laps,
-        idealLap,
-        sessionRepository.currentSession,
-        selectedLapAIndex,
-        selectedLapBIndex,
-        sessionRepository.availableTracks,
-        sessionRepository.currentTrackName,
-        sessionRepository.currentTrackLayout
-    ) { laps, idealLap, currentSession, selectedA, selectedB, tracks, currentTrackName, currentTrackLayout ->
+        combine(
+            laps,
+            idealLap,
+            sessionRepository.currentSession,
+            selectedLapAIndex
+        ) { laps, idealLap, currentSession, selectedA ->
+            ComparisonInputs(
+                laps = laps,
+                idealLap = idealLap,
+                currentSession = currentSession,
+                selectedA = selectedA,
+                selectedB = 0,
+                tracks = emptyList(),
+                currentTrackName = "",
+                currentTrackLayout = null
+            )
+        },
+        combine(
+            selectedLapBIndex,
+            sessionRepository.availableTracks,
+            sessionRepository.currentTrackName,
+            sessionRepository.currentTrackLayout
+        ) { selectedB, tracks, currentTrackName, currentTrackLayout ->
+            ComparisonInputs(
+                laps = emptyList(),
+                idealLap = null,
+                currentSession = null,
+                selectedA = 0,
+                selectedB = selectedB,
+                tracks = tracks,
+                currentTrackName = currentTrackName,
+                currentTrackLayout = currentTrackLayout
+            )
+        }
+    ) { primary, secondary ->
+        val laps = primary.laps
+        val idealLap = primary.idealLap
+        val currentSession = primary.currentSession
+        val selectedA = primary.selectedA
+        val selectedB = secondary.selectedB
+        val tracks = secondary.tracks
+        val currentTrackName = secondary.currentTrackName
+        val currentTrackLayout = secondary.currentTrackLayout
         val currentTrack = tracks.firstOrNull { track -> track.name.equals(currentTrackName, ignoreCase = true) }
         val mapImagePath = currentTrack?.mapImagePath ?: currentTrackLayout?.imagePath?.takeIf { path -> path.isNotBlank() }
         val savedCurves = currentTrackName
