@@ -8,11 +8,8 @@
                 android:endColor="#0D1420" />
         </shape>
     </item>
-    <item android:top="132dp">
+    <item>
         <shape android:shape="rectangle">
-            <corners
-                android:topLeftRadius="28dp"
-                android:topRightRadius="28dp" />
             <solid android:color="@color/karting_background" />
         </shape>
     </item>

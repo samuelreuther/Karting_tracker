@@ -13,12 +13,21 @@ import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.sqrt
 
 enum class RecorderPhase {
     IDLE,
+    PREPARING,
     CALIBRATING,
-    RECORDING
+    RECORDING,
+    STOPPING
 }
 
 class SensorRecorder(
@@ -35,6 +44,9 @@ class SensorRecorder(
 
     private val sensorThread = HandlerThread("karting-sensor-thread").apply { start() }
     private val sensorHandler = Handler(sensorThread.looper)
+    private val recorderScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var preStartCountdownJob: Job? = null
+    private var stopProcessingJob: Job? = null
 
     @Volatile
     private var active = false
@@ -45,6 +57,10 @@ class SensorRecorder(
 
     private val _recorderPhase = MutableStateFlow(RecorderPhase.IDLE)
     val recorderPhase: StateFlow<RecorderPhase> = _recorderPhase.asStateFlow()
+    private val _preStartSecondsRemaining = MutableStateFlow(0)
+    val preStartSecondsRemaining: StateFlow<Int> = _preStartSecondsRemaining.asStateFlow()
+    private val _recordingStartedAtEpochMs = MutableStateFlow<Long?>(null)
+    val recordingStartedAtEpochMs: StateFlow<Long?> = _recordingStartedAtEpochMs.asStateFlow()
 
     val hasRequiredSensors: Boolean
         get() = accelerometer != null && gyroscope != null
@@ -60,21 +76,40 @@ class SensorRecorder(
         active = true
         accelFilter.reset()
         gyroFilter.reset()
-        calibrationManager.startCalibration()
         lastGyro = floatArrayOf(0f, 0f, 0f)
         lastSensorTimestampNs = 0L
-        _recorderPhase.value = RecorderPhase.CALIBRATING
-        Log.i(TAG, "$LOG_TAG: sensor recorder start")
-        if (!registerListeners()) {
-            active = false
-            _recorderPhase.value = RecorderPhase.IDLE
-            calibrationManager.reset()
-            Log.e(TAG, "$LOG_TAG: failed to register sensor listeners")
+        _recordingStartedAtEpochMs.value = null
+        preStartCountdownJob?.cancel()
+        _recorderPhase.value = RecorderPhase.PREPARING
+        preStartCountdownJob = recorderScope.launch {
+            for (seconds in PRE_START_COUNTDOWN_SECONDS downTo 1) {
+                if (!active) {
+                    return@launch
+                }
+                _preStartSecondsRemaining.value = seconds
+                delay(1_000L)
+            }
+            _preStartSecondsRemaining.value = 0
+            if (!active) {
+                return@launch
+            }
+            calibrationManager.startCalibration()
+            _recorderPhase.value = RecorderPhase.CALIBRATING
+            Log.i(TAG, "$LOG_TAG: sensor recorder start calibration")
+            if (!registerListeners()) {
+                active = false
+                _recorderPhase.value = RecorderPhase.IDLE
+                calibrationManager.reset()
+                Log.e(TAG, "$LOG_TAG: failed to register sensor listeners")
+            }
         }
     }
 
     fun stopRecording() {
-        if (!active) {
+        preStartCountdownJob?.cancel()
+        preStartCountdownJob = null
+        _preStartSecondsRemaining.value = 0
+        if (!active && _recorderPhase.value == RecorderPhase.IDLE) {
             return
         }
         Log.i(TAG, "$LOG_TAG: sensor recorder stop phase=${_recorderPhase.value}")
@@ -83,17 +118,35 @@ class SensorRecorder(
         } catch (exception: Exception) {
             Log.e(TAG, "$LOG_TAG: listener unregistration failed", exception)
         } finally {
-            active = false
             val phaseAtStop = _recorderPhase.value
-            _recorderPhase.value = RecorderPhase.IDLE
-            if (phaseAtStop == RecorderPhase.RECORDING) {
+            active = false
+            _recorderPhase.value = RecorderPhase.STOPPING
+            if (phaseAtStop == RecorderPhase.RECORDING || phaseAtStop == RecorderPhase.STOPPING) {
                 val lastTimestamp = sessionRepository.lastSample.value?.timestampNs ?: lastSensorTimestampNs
-                runCatching { sessionRepository.stopSession(lastTimestamp) }
-                    .onFailure { exception ->
-                        Log.e(TAG, "$LOG_TAG: stopSession failed", exception)
-                    }
+                stopProcessingJob?.cancel()
+                stopProcessingJob = recorderScope.launch {
+                    runCatching { sessionRepository.stopSession(lastTimestamp) }
+                        .onFailure { exception ->
+                            Log.e(TAG, "$LOG_TAG: stopSession failed", exception)
+                        }
+                    _recorderPhase.value = RecorderPhase.IDLE
+                    _recordingStartedAtEpochMs.value = null
+                }
+            } else {
+                _recorderPhase.value = RecorderPhase.IDLE
+                _recordingStartedAtEpochMs.value = null
             }
             calibrationManager.reset()
+        }
+    }
+
+    fun shutdown() {
+        stopRecording()
+        recorderScope.cancel()
+        runCatching {
+            sensorThread.quitSafely()
+        }.onFailure { exception ->
+            Log.w(TAG, "Failed to stop sensor thread", exception)
         }
     }
 
@@ -116,6 +169,7 @@ class SensorRecorder(
                         if (calibrationFinished) {
                             sessionRepository.startSession(event.timestamp)
                             _recorderPhase.value = RecorderPhase.RECORDING
+                            _recordingStartedAtEpochMs.value = System.currentTimeMillis()
                         }
                         return
                     }
@@ -184,5 +238,6 @@ class SensorRecorder(
     companion object {
         private const val TAG = "SensorRecorder"
         private const val LOG_TAG = "KartingTracker"
+        private const val PRE_START_COUNTDOWN_SECONDS = 5
     }
 }

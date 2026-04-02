@@ -27,13 +27,16 @@ import com.kartingtracker.sensor.RecorderPhase
 import com.kartingtracker.sensor.SensorRecorder
 import com.kartingtracker.ui.common.formatLapTime
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import java.io.File
 
@@ -123,6 +126,8 @@ class SessionViewModel(
 
     val uiState: StateFlow<SessionUiState> = combine(
         sensorRecorder.recorderPhase,
+        sensorRecorder.preStartSecondsRemaining,
+        sensorRecorder.recordingStartedAtEpochMs,
         sessionRepository.isRecording,
         sessionRepository.sampleCount,
         sessionRepository.lastSample,
@@ -130,23 +135,35 @@ class SessionViewModel(
         sessionRepository.availableTracks,
         sessionRepository.currentTrackName,
         sessionRepository.storedSessions,
-        sessionRepository.currentTrackProfile
+        sessionRepository.currentTrackProfile,
+        flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(1_000L)
+            }
+        }
     ) { args: Array<Any?> ->
         val recorderPhase = args[0] as RecorderPhase
-        val isRecording = args[1] as Boolean
-        val sampleCount = args[2] as Int
-        val lastSample = args[3] as SensorSample?
-        val session = args[4] as Session?
+        val preStartSecondsRemaining = args[1] as Int
+        val recordingStartedAtEpochMs = args[2] as Long?
+        val isRecording = args[3] as Boolean
+        val sampleCount = args[4] as Int
+        val lastSample = args[5] as SensorSample?
+        val session = args[6] as Session?
         @Suppress("UNCHECKED_CAST")
-        val tracks = args[5] as List<Track>
-        val currentTrackName = args[6] as String
+        val tracks = args[7] as List<Track>
+        val currentTrackName = args[8] as String
         @Suppress("UNCHECKED_CAST")
-        val storedSessions = args[7] as List<Session>
-        val trackProfile = args[8] as TrackProfile?
+        val storedSessions = args[9] as List<Session>
+        val trackProfile = args[10] as TrackProfile?
+        val nowEpochMs = args[11] as Long
+        val elapsedMs = recordingStartedAtEpochMs?.let { nowEpochMs - it }?.coerceAtLeast(0L) ?: 0L
 
         SessionUiState(
             isRecording = recorderPhase == RecorderPhase.RECORDING || isRecording,
+            isPreparing = recorderPhase == RecorderPhase.PREPARING,
             isCalibrating = recorderPhase == RecorderPhase.CALIBRATING,
+            isStopping = recorderPhase == RecorderPhase.STOPPING,
             hasRequiredSensors = sensorRecorder.hasRequiredSensors,
             sampleCount = sampleCount,
             liveLongitudinalAccel = lastSample?.longitudinalAccel ?: 0f,
@@ -161,9 +178,12 @@ class SessionViewModel(
             trackProfileSummary = formatTrackProfileSummary(trackProfile),
             canLoadLastSession = storedSessions.isNotEmpty(),
             lastSessionSummary = buildLastSessionSummary(currentTrackName, storedSessions),
+            recordingTimerLabel = formatDurationLabel(elapsedMs),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
+                recorderPhase == RecorderPhase.PREPARING -> "Session starts in $preStartSecondsRemaining… Please stow the phone now"
                 recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
+                recorderPhase == RecorderPhase.STOPPING -> "Stopping session and saving data…"
                 recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording"
                 currentTrackName.isBlank() -> "Select a track to start recording"
                 session == null -> "Ready"
@@ -516,6 +536,18 @@ class SessionViewModel(
         return sessionRepository.exportSessionCsv(session)
     }
 
+    suspend fun exportBackup(targetUri: Uri): Boolean {
+        return withContext(Dispatchers.IO) {
+            sessionRepository.exportBackup(targetUri)
+        }
+    }
+
+    suspend fun importBackup(sourceUri: Uri): Boolean {
+        return withContext(Dispatchers.IO) {
+            sessionRepository.importBackup(sourceUri)
+        }
+    }
+
     fun selectSessionFilter(filter: String) {
         selectedSessionFilter.value = filter
     }
@@ -727,5 +759,17 @@ class SessionViewModel(
 
     companion object {
         const val ALL_TRACKS_FILTER = "All tracks"
+    }
+
+    private fun formatDurationLabel(elapsedMs: Long): String {
+        val totalSeconds = (elapsedMs / 1_000L).coerceAtLeast(0L)
+        val seconds = totalSeconds % 60
+        val minutes = (totalSeconds / 60) % 60
+        val hours = totalSeconds / 3600
+        return if (hours > 0) {
+            String.format("%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
     }
 }

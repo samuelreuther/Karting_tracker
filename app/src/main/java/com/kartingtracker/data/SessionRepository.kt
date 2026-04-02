@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,7 +31,8 @@ class SessionRepository(
     private val trackLayoutManager: TrackLayoutManager,
     private val trackMapManager: TrackMapManager,
     private val drivingCoachAnalyzer: DrivingCoachAnalyzer,
-    private val sessionCsvExporter: SessionCsvExporter
+    private val sessionCsvExporter: SessionCsvExporter,
+    private val appBackupManager: AppBackupManager
 ) {
     private val lock = Any()
     private var currentSessionId: Long = System.currentTimeMillis()
@@ -345,6 +347,21 @@ class SessionRepository(
 
     fun exportSessionCsv(session: Session): java.io.File {
         return sessionCsvExporter.export(session)
+    }
+
+    suspend fun exportBackup(targetUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        appBackupManager.exportBackup(targetUri)
+    }
+
+    suspend fun importBackup(sourceUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        val imported = appBackupManager.importBackup(sourceUri)
+        if (imported) {
+            refreshTracks()
+            refreshStoredSessions()
+            _currentTrackName.value = trackManager.getSelectedTrackName().orEmpty()
+            refreshCurrentTrackState(_currentTrackName.value)
+        }
+        imported
     }
 
     fun deleteTrack(trackName: String): Boolean {

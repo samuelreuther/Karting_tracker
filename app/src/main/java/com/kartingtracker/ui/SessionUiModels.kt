@@ -9,7 +9,9 @@ import com.kartingtracker.domain.DetectedCorner
 
 data class SessionUiState(
     val isRecording: Boolean = false,
+    val isPreparing: Boolean = false,
     val isCalibrating: Boolean = false,
+    val isStopping: Boolean = false,
     val hasRequiredSensors: Boolean = true,
     val sampleCount: Int = 0,
     val liveLongitudinalAccel: Float = 0f,
@@ -23,6 +25,7 @@ data class SessionUiState(
     val usingTrackProfile: Boolean = false,
     val trackProfileSummary: String = "No learned track profile yet.",
     val canLoadLastSession: Boolean = false,
+    val recordingTimerLabel: String = "00:00",
     val statusLabel: String = "Idle",
     val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState()
 )

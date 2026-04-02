@@ -1,6 +1,7 @@
 package com.kartingtracker.ui.sessions
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -14,6 +15,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.core.content.FileProvider
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -35,6 +37,28 @@ class SessionListFragment : Fragment() {
 
     private val adapter = SessionListAdapter(::showOpenOptions, ::showDeleteOptions)
     private var suppressFilterCallbacks = false
+
+    private val exportBackupDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri == null) {
+            return@registerForActivityResult
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val success = sessionViewModel.exportBackup(uri)
+            val message = if (success) getString(R.string.backup_export_success) else getString(R.string.backup_export_failed)
+            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val importBackupDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) {
+            return@registerForActivityResult
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val success = sessionViewModel.importBackup(uri)
+            val message = if (success) getString(R.string.backup_import_success) else getString(R.string.backup_import_failed)
+            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -60,6 +84,20 @@ class SessionListFragment : Fragment() {
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        binding.exportBackupButton.setOnClickListener {
+            val backupName = "karting_tracker_backup_${System.currentTimeMillis()}.zip"
+            exportBackupDocumentLauncher.launch(backupName)
+        }
+        binding.importBackupButton.setOnClickListener {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.import_backup)
+                .setMessage(R.string.backup_import_warning)
+                .setPositiveButton(R.string.import_backup) { _, _ ->
+                    importBackupDocumentLauncher.launch(arrayOf("application/zip"))
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
