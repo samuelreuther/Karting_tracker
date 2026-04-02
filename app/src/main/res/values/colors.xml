@@ -11,16 +11,18 @@
     <color name="karting_divider">#D5DCE8</color>
     <color name="karting_gray">#334155</color>
 
-    <color name="karting_primary">#2563EB</color>
-    <color name="karting_primary_dark">#1D4ED8</color>
-    <color name="karting_secondary">#00B8D9</color>
-    <color name="karting_background">#EEF3FA</color>
+    <color name="karting_primary">#1F5EFF</color>
+    <color name="karting_primary_dark">#133FC4</color>
+    <color name="karting_secondary">#00B6D9</color>
+    <color name="karting_background">#E8EEF9</color>
     <color name="karting_panel">#FFFFFF</color>
-    <color name="karting_panel_alt">#F8FAFF</color>
-    <color name="karting_surface_tint">#E8F0FF</color>
-    <color name="karting_text_primary">#111827</color>
-    <color name="karting_text_secondary">#60718A</color>
-    <color name="karting_stroke">#D8E2F0</color>
+    <color name="karting_panel_alt">#EFF4FF</color>
+    <color name="karting_surface_tint">#E3ECFF</color>
+    <color name="karting_surface_tint_strong">#D9E6FF</color>
+    <color name="karting_text_primary">#081126</color>
+    <color name="karting_text_secondary">#2F4360</color>
+    <color name="karting_stroke">#C8D6EA</color>
+    <color name="karting_stroke_strong">#9FB5D7</color>
     <color name="karting_success">#18A66A</color>
     <color name="karting_warning">#F59E0B</color>
     <color name="karting_error">#E11D48</color>

@@ -154,11 +154,13 @@ class SessionViewModel(
             lapCount = session?.laps?.size ?: 0,
             estimatedLapTimeMs = session?.estimatedLapTimeMs,
             trackOptions = tracks.map { track -> track.name },
+            availableTracks = tracks,
             selectedTrackName = currentTrackName,
             hasValidSelectedTrack = currentTrackName.isNotBlank(),
             usingTrackProfile = trackProfile != null,
             trackProfileSummary = formatTrackProfileSummary(trackProfile),
             canLoadLastSession = storedSessions.isNotEmpty(),
+            lastSessionSummary = buildLastSessionSummary(currentTrackName, storedSessions),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
                 recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
@@ -676,6 +678,51 @@ class SessionViewModel(
         } else {
             "Using track profile from ${trackProfile.sessionCount} sessions."
         }
+    }
+
+    private fun buildLastSessionSummary(
+        trackName: String,
+        storedSessions: List<Session>
+    ): LastSessionSummaryUiState {
+        if (trackName.isBlank()) {
+            return LastSessionSummaryUiState()
+        }
+        val lastTrackSession = storedSessions
+            .filter { session -> session.trackName.equals(trackName, ignoreCase = true) }
+            .maxByOrNull { session -> session.endTimeEpochMs }
+            ?: return LastSessionSummaryUiState(
+                headline = "No saved session for $trackName yet.",
+                quality = "Quality score unavailable",
+                biggestLoss = "Run one session to identify biggest time-loss areas",
+                coachingHint = "After one run, coaching hints and comparison entry become available",
+                canOpenComparison = false
+            )
+
+        val qualityScore = ((lastTrackSession.quality?.overallScore ?: 0f) * 100f).toInt().coerceIn(0, 100)
+        val qualityLabel = when {
+            qualityScore >= 80 -> "Session quality: strong ($qualityScore/100)"
+            qualityScore >= 60 -> "Session quality: fair ($qualityScore/100)"
+            else -> "Session quality: low confidence ($qualityScore/100)"
+        }
+        val topLoss = lastTrackSession.topTimeLossSegments.firstOrNull()
+        val topInsight = lastTrackSession.coachingInsights.maxByOrNull { insight -> insight.severity }
+            ?: lastTrackSession.coachingInsights.firstOrNull()
+        val bestLapLabel = lastTrackSession.laps.minByOrNull { lap -> lap.lapTimeMs }
+            ?.lapTimeMs
+            ?.let(::formatLapTime)
+            ?: "n/a"
+        return LastSessionSummaryUiState(
+            headline = "Best lap $bestLapLabel · ${lastTrackSession.laps.size} laps",
+            quality = qualityLabel,
+            biggestLoss = topLoss?.let { segment ->
+                "Biggest time loss: ${segment.segmentLabel.ifBlank { "segment ${segment.segmentIndex}" }} (+${"%.2f".format(segment.timeLoss)}s)"
+            } ?: "No clear time-loss hotspot in latest run",
+            coachingHint = topInsight?.let { insight ->
+                "Top coaching hint: ${insight.suggestion}"
+            } ?: lastTrackSession.insights.firstOrNull()?.let { insight -> "Top coaching hint: $insight" }
+            ?: "Top coaching hint unavailable for this run",
+            canOpenComparison = lastTrackSession.laps.size >= 2
+        )
     }
 
     companion object {
