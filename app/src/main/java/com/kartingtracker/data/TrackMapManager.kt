@@ -238,7 +238,7 @@ class TrackMapManager(
     companion object {
         private const val TAG = "TrackMapManager"
         private const val KEY_BUNDLED_MAP_VERSION = "bundled_map_version"
-        private const val bundledMapVersion = 1
+        private const val bundledMapVersion = 3
         private const val DEFAULT_MAP_FILE_NAME = "map.png"
         private const val METADATA_FILE_NAME = "metadata.json"
         private const val BUNDLED_MANIFEST_ASSET_PATH = "track_maps/manifest.json"

@@ -1,6 +1,6 @@
 [
   {
-    "trackName": "Test Track",
+    "trackName": "Basel Kart",
     "imageAsset": "preloaded_tracks/images/Basel Kart.png",
     "layoutAsset": "preloaded_tracks/layouts/basel_kart.json",
     "mapWidthMeters": 820.0
@@ -12,7 +12,7 @@
     "mapWidthMeters": 360.0
   },
   {
-    "trackName": "Demo Indoor Track",
+    "trackName": "Rheinfelden Kartbahn",
     "imageAsset": "preloaded_tracks/images/Rheinfelden Kartbahn.png",
     "layoutAsset": "preloaded_tracks/layouts/rheinfelden_kartbahn.json",
     "mapWidthMeters": 660.0

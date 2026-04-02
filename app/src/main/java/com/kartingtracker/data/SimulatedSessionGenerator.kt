@@ -17,8 +17,8 @@ object SimulatedSessionGenerator {
     private const val baseSeed = 20_260_328L
     private const val debugPrefsName = "simulated_session_generator"
     private const val debugSeedVersionKey = "debug_seed_version"
-    private const val debugSeedVersion = 2
-    private const val defaultDebugTrackName = "Test Track"
+    private const val debugSeedVersion = 3
+    private const val defaultDebugTrackName = "Rheinfelden Kartbahn"
     private const val debugBaseStartTimeEpochMs = 1_775_000_000_000L
     private val debugSeeds = listOf(42, 1337, 9001)
     private const val minimumLapSamples = 484

@@ -6,12 +6,12 @@
     "x": 0.74,
     "y": 0.74
   },
-  "direction": "CLOCKWISE",
+  "direction": "COUNTER_CLOCKWISE",
   "corners": [
     {
       "name": "Kurve 1",
       "point": {
-        "x": 0.10,
+        "x": 0.1,
         "y": 0.83
       }
     },
@@ -25,7 +25,7 @@
     {
       "name": "Kurve 3",
       "point": {
-        "x": 0.60,
+        "x": 0.6,
         "y": 0.09
       }
     },

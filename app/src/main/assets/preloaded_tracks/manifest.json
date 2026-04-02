@@ -5,12 +5,12 @@
     "layoutAsset": "preloaded_tracks/layouts/loerrach_vm_kart_racing.json"
   },
   {
-    "trackName": "Demo Indoor Track",
+    "trackName": "Rheinfelden Kartbahn",
     "imageAsset": "preloaded_tracks/images/Rheinfelden Kartbahn.png",
     "layoutAsset": "preloaded_tracks/layouts/rheinfelden_kartbahn.json"
   },
   {
-    "trackName": "Test Track",
+    "trackName": "Basel Kart",
     "imageAsset": "preloaded_tracks/images/Basel Kart.png",
     "layoutAsset": "preloaded_tracks/layouts/basel_kart.json"
   }
