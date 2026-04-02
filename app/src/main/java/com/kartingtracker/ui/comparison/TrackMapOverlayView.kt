@@ -25,7 +25,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
     private var onInsightTapped: ((TrackInsightMarker) -> Unit)? = null
     private val density = resources.displayMetrics.density
 
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { filterBitmap = true }
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
     private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE

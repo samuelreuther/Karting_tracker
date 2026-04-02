@@ -177,8 +177,8 @@ class MapOverlayProjector {
 
         return path.map { point ->
             PointF(
-                x = (startPoint.x + (point.x * scale)).coerceIn(perimeterPadding, 1f - perimeterPadding),
-                y = (startPoint.y + (point.y * scale)).coerceIn(perimeterPadding, 1f - perimeterPadding)
+                (startPoint.x + (point.x * scale)).coerceIn(perimeterPadding, 1f - perimeterPadding),
+                (startPoint.y + (point.y * scale)).coerceIn(perimeterPadding, 1f - perimeterPadding)
             )
         }
     }

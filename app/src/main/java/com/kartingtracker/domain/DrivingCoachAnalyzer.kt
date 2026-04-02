@@ -19,7 +19,7 @@ data class SessionTelemetryAnalysis(
     val segmentMarkers: List<SegmentMarker> = emptyList()
 )
 
-data class SegmentFeatures(
+data class DrivingSegmentFeatures(
     val entrySpeed: Float,
     val brakeIntensity: Float,
     val midStability: Float,
@@ -192,16 +192,16 @@ class DrivingCoachAnalyzer {
     private fun extractSegmentFeatures(
         segmentAcceleration: List<Float>,
         segmentYaw: List<Float>
-    ): SegmentFeatures {
+    ): DrivingSegmentFeatures {
         if (segmentAcceleration.isEmpty() || segmentYaw.isEmpty()) {
-            return SegmentFeatures(0f, 0f, 0f, 0f, 0f)
+            return DrivingSegmentFeatures(0f, 0f, 0f, 0f, 0f)
         }
 
         val entry = subSliceByPercent(segmentAcceleration, 0f, 10f)
         val midYaw = subSliceByPercent(segmentYaw, 40f, 60f)
         val exit = subSliceByPercent(segmentAcceleration, 80f, 100f)
 
-        return SegmentFeatures(
+        return DrivingSegmentFeatures(
             entrySpeed = averageOrZero(entry),
             brakeIntensity = segmentAcceleration.minOrNull() ?: 0f,
             midStability = variance(midYaw),
@@ -467,7 +467,7 @@ class DrivingCoachAnalyzer {
 
     private data class SegmentMetrics(
         val segmentTimeMs: Long,
-        val features: SegmentFeatures
+        val features: DrivingSegmentFeatures
     )
 
     private data class CauseClassification(
