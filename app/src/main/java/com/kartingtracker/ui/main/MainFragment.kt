@@ -88,6 +88,14 @@ class MainFragment : Fragment() {
                     binding.lastSessionQuality.text = state.lastSessionSummary.quality
                     binding.lastSessionTimeLoss.text = state.lastSessionSummary.biggestLoss
                     binding.lastSessionHint.text = state.lastSessionSummary.coachingHint
+                    binding.lastSessionCornerActions.text = if (state.lastSessionSummary.topCornerActions.isEmpty()) {
+                        "Corner coaching actions: unavailable"
+                    } else {
+                        state.lastSessionSummary.topCornerActions.joinToString(separator = "\n")
+                    }
+                    binding.lastSessionStrongestCorner.text = "Strongest corner: ${state.lastSessionSummary.strongestCorner}"
+                    binding.lastSessionCornerOpportunity.text =
+                        "Biggest corner opportunity: ${state.lastSessionSummary.biggestCornerOpportunity}"
                     binding.lastSessionActionLabel.text = if (state.lastSessionSummary.canOpenComparison) {
                         getString(R.string.open_compare_analysis)
                     } else {

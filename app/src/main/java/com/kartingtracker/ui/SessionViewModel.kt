@@ -287,6 +287,7 @@ class SessionViewModel(
                 insights = currentSession?.insights.orEmpty(),
                 theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
                 topTimeLossLines = createTopTimeLossLines(currentSession),
+                cornerCoachingLines = createCornerCoachingLines(currentSession),
                 mapImagePath = mapImagePath,
                 fallbackCurveLines = buildFallbackCurveLines(savedCurves, includePosition = true)
             )
@@ -388,6 +389,7 @@ class SessionViewModel(
             idealLapSectorLines = createIdealLapSectorLines(idealLap),
             insights = currentSession?.insights.orEmpty(),
             topTimeLossLines = createTopTimeLossLines(currentSession),
+            cornerCoachingLines = createCornerCoachingLines(currentSession),
             mapImagePath = mapImagePath,
             projectedCurves = projectedCurves,
             trackInsightMarkers = projectedInsights,
@@ -635,6 +637,19 @@ class SessionViewModel(
         }
     }
 
+    private fun createCornerCoachingLines(session: Session?): List<String> {
+        val summary = session?.cornerCoachingSummary
+        val topActions = summary?.topActions.orEmpty()
+        if (topActions.isNotEmpty()) {
+            return topActions.mapIndexed { index, insight ->
+                "${index + 1}) ${insight.headline}"
+            }
+        }
+        return session?.cornerCoachingInsights.orEmpty().take(5).map { insight ->
+            "- ${insight.headline}"
+        }
+    }
+
     private fun createSegmentMarkerEntries(session: Session?): List<Entry> {
         return session?.segmentMarkers.orEmpty().map { marker ->
             Entry(marker.positionPercent, marker.severity)
@@ -727,6 +742,9 @@ class SessionViewModel(
                 quality = "Quality score unavailable",
                 biggestLoss = "Run one session to identify biggest time-loss areas",
                 coachingHint = "After one run, coaching hints and comparison entry become available",
+                topCornerActions = emptyList(),
+                strongestCorner = "Strongest corner unavailable",
+                biggestCornerOpportunity = "Corner opportunity unavailable",
                 canOpenComparison = false
             )
 
@@ -743,6 +761,14 @@ class SessionViewModel(
             ?.lapTimeMs
             ?.let(::formatLapTime)
             ?: "n/a"
+        val cornerSummary = lastTrackSession.cornerCoachingSummary
+        val topCornerActions = cornerSummary?.topActions.orEmpty()
+            .take(3)
+            .mapIndexed { index, insight -> "${index + 1}) ${insight.headline}" }
+        val strongestCorner = cornerSummary?.strongestCorner?.headline
+            ?: "Strongest corner unavailable"
+        val biggestCornerOpportunity = cornerSummary?.biggestOpportunityCorner?.headline
+            ?: "Corner opportunity unavailable"
         return LastSessionSummaryUiState(
             headline = "Best lap $bestLapLabel · ${lastTrackSession.laps.size} laps",
             quality = qualityLabel,
@@ -753,6 +779,9 @@ class SessionViewModel(
                 "Top coaching hint: ${insight.suggestion}"
             } ?: lastTrackSession.insights.firstOrNull()?.let { insight -> "Top coaching hint: $insight" }
             ?: "Top coaching hint unavailable for this run",
+            topCornerActions = topCornerActions,
+            strongestCorner = strongestCorner,
+            biggestCornerOpportunity = biggestCornerOpportunity,
             canOpenComparison = lastTrackSession.laps.size >= 2
         )
     }
