@@ -205,8 +205,10 @@ class RecordingForegroundService : Service() {
     private fun buildNotification() = notificationHelper.buildNotification(
         trackName = sessionRepository.currentTrackName.value,
         phaseLabel = when (sensorRecorder.recorderPhase.value) {
+            RecorderPhase.PREPARING -> getString(R.string.recording_phase_preparing)
             RecorderPhase.CALIBRATING -> getString(R.string.recording_phase_calibrating)
             RecorderPhase.RECORDING -> getString(R.string.recording_phase_recording)
+            RecorderPhase.STOPPING -> getString(R.string.recording_phase_stopping)
             RecorderPhase.IDLE -> getString(R.string.recording_phase_starting)
         },
         elapsedMs = getElapsedTimeMs(),

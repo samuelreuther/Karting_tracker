@@ -73,6 +73,21 @@
                 android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                 android:textColor="#CFDCF4" />
 
+            <TextView
+                android:id="@+id/recordingTimerLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="#121A27"
+                android:paddingStart="10dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="6dp"
+                android:text="00:00"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textColor="#F5F8FF"
+                android:textStyle="bold" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -293,12 +308,12 @@
         android:orientation="horizontal">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/compareLapsButton"
+            android:id="@+id/detailsButton"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/compare_laps" />
+            android:text="@string/tap_for_details" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/editTrackButton"

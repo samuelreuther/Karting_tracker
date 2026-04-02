@@ -49,28 +49,29 @@ class MainFragment : Fragment() {
         binding.startButton.setOnClickListener { sessionViewModel.startRecording() }
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
         binding.addTrackButton.setOnClickListener { showAddTrackDialog() }
-        binding.compareLapsButton.setOnClickListener {
-            findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
-        }
+        binding.detailsButton.setOnClickListener { showDetailsNavigationDialog() }
         binding.editTrackButton.setOnClickListener { showTrackManagementDialog() }
         binding.lastSessionCard.setOnClickListener {
-            findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
+            showDetailsNavigationDialog()
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sessionViewModel.uiState.collect { state ->
-                    binding.recordingIndicator.isSelected = state.isRecording || state.isCalibrating
+                    binding.recordingIndicator.isSelected = state.isRecording || state.isCalibrating || state.isPreparing || state.isStopping
                     binding.recordingIndicator.text = state.statusLabel
+                    binding.recordingTimerLabel.text = state.recordingTimerLabel
                     binding.startButton.isEnabled = !state.isRecording &&
+                        !state.isPreparing &&
                         !state.isCalibrating &&
+                        !state.isStopping &&
                         state.hasRequiredSensors &&
                         state.hasValidSelectedTrack
-                    binding.stopButton.isEnabled = state.isRecording || state.isCalibrating
-                    binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && state.hasValidSelectedTrack
+                    binding.stopButton.isEnabled = state.isRecording || state.isCalibrating || state.isPreparing || state.isStopping
+                    binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && !state.isPreparing && !state.isStopping && state.hasValidSelectedTrack
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
-                    binding.compareLapsButton.isEnabled = state.lastSessionSummary.canOpenComparison
+                    binding.detailsButton.isEnabled = true
                     binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
                         getString(R.string.no_track_selected)
                     }
@@ -211,6 +212,37 @@ class MainFragment : Fragment() {
             .setMessage(getString(R.string.delete_track_confirmation, trackName))
             .setPositiveButton(R.string.delete_track) { _, _ -> sessionViewModel.deleteTrack(trackName) }
             .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showDetailsNavigationDialog() {
+        val state = sessionViewModel.uiState.value
+        val actions = mutableListOf(
+            getString(R.string.open_last_session),
+            getString(R.string.open_session_list),
+            getString(R.string.open_lap_analysis),
+            getString(R.string.open_coaching_insights),
+            getString(R.string.open_time_loss_analysis),
+            getString(R.string.open_sector_analysis),
+            getString(R.string.open_track_learnings)
+        )
+        if (state.lastSessionSummary.canOpenComparison) {
+            actions.add(2, getString(R.string.compare_laps))
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.tap_for_details)
+            .setItems(actions.toTypedArray()) { _, which ->
+                when (actions[which]) {
+                    getString(R.string.open_last_session) -> sessionViewModel.loadLastSession()
+                    getString(R.string.open_session_list) -> findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
+                    getString(R.string.compare_laps),
+                    getString(R.string.open_lap_analysis),
+                    getString(R.string.open_coaching_insights),
+                    getString(R.string.open_time_loss_analysis),
+                    getString(R.string.open_sector_analysis) -> findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
+                    getString(R.string.open_track_learnings) -> findNavController().navigate(R.id.action_mainFragment_to_trackLayoutFragment)
+                }
+            }
             .show()
     }
 }
