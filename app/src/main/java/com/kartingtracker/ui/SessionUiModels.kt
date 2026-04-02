@@ -1,9 +1,10 @@
 package com.kartingtracker.ui
 
 import com.github.mikephil.charting.data.Entry
-import com.kartingtracker.data.Session
 import com.kartingtracker.data.CoachingInsight
 import com.kartingtracker.data.CurveDefinition
+import com.kartingtracker.data.Session
+import com.kartingtracker.data.Track
 import com.kartingtracker.domain.DetectedCorner
 
 data class SessionUiState(
@@ -16,12 +17,24 @@ data class SessionUiState(
     val lapCount: Int = 0,
     val estimatedLapTimeMs: Long? = null,
     val trackOptions: List<String> = emptyList(),
+    val availableTracks: List<Track> = emptyList(),
     val selectedTrackName: String = "",
     val hasValidSelectedTrack: Boolean = false,
     val usingTrackProfile: Boolean = false,
     val trackProfileSummary: String = "No learned track profile yet.",
     val canLoadLastSession: Boolean = false,
-    val statusLabel: String = "Idle"
+    val statusLabel: String = "Idle",
+    val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState()
+)
+
+data class LastSessionSummaryUiState(
+    val title: String = "Last-session coaching summary",
+    val headline: String = "Select a track to see your most useful takeaways instantly.",
+    val quality: String = "No session loaded yet",
+    val biggestLoss: String = "No time-loss segment available",
+    val coachingHint: String = "Record a run to unlock coaching recommendations",
+    val actionLabel: String = "Open deep analysis",
+    val canOpenComparison: Boolean = false
 )
 
 data class ComparisonUiState(
