@@ -3,7 +3,7 @@
   "imagePath": "",
   "lengthMeters": 820.0,
   "startPoint": {
-    "x": 0.60,
+    "x": 0.6,
     "y": 0.16
   },
   "direction": "CLOCKWISE",
@@ -39,8 +39,8 @@
     {
       "name": "Kurve 5",
       "point": {
-        "x": 0.40,
-        "y": 0.70
+        "x": 0.4,
+        "y": 0.7
       }
     },
     {
