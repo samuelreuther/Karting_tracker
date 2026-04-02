@@ -246,7 +246,7 @@ class SessionStorageManager(
         tempFile.outputStream().use { output ->
             output.write(contents.toByteArray())
             output.flush()
-            runCatching { (output as java.io.FileOutputStream).fd.sync() }
+            runCatching { output.fd.sync() }
                 .onFailure { exception -> Log.w(TAG, "Failed to fsync temp file ${tempFile.name}", exception) }
         }
         if (targetFile.exists() && !targetFile.delete()) {
@@ -261,7 +261,7 @@ class SessionStorageManager(
         runCatching {
             targetFile.outputStream().use { output ->
                 output.flush()
-                (output as java.io.FileOutputStream).fd.sync()
+                output.fd.sync()
             }
         }.onFailure { exception ->
             Log.w(TAG, "Failed to fsync target file ${targetFile.name}", exception)

@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import com.kartingtracker.ui.ProjectedCurveUiState
@@ -33,7 +34,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 12f * resources.displayMetrics.scaledDensity
+        textSize = spToPx(12f)
         textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
@@ -43,8 +44,12 @@ class TrackMapOverlayView @JvmOverloads constructor(
     }
     private val emptyTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#546E7A")
-        textSize = 14f * resources.displayMetrics.scaledDensity
+        textSize = spToPx(14f)
         textAlign = Paint.Align.CENTER
+    }
+
+    private fun spToPx(sp: Float): Float {
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
     }
 
     fun render(bitmap: Bitmap?, curves: List<ProjectedCurveUiState>, insights: List<TrackInsightMarker> = emptyList()) {

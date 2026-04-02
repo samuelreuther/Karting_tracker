@@ -41,7 +41,7 @@ class DrivingCoachAnalyzer {
 
     fun analyzeSession(
         session: Session,
-        trackProfile: TrackProfile? = null,
+        _trackProfile: TrackProfile? = null,
         trackLayout: TrackLayout? = null
     ): SessionTelemetryAnalysis {
         val referenceLap = selectReferenceLap(session.laps) ?: return SessionTelemetryAnalysis()
