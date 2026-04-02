@@ -49,11 +49,15 @@ class MainFragment : Fragment() {
         binding.startButton.setOnClickListener { sessionViewModel.startRecording() }
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
         binding.addTrackButton.setOnClickListener { showAddTrackDialog() }
-        binding.detailsButton.setOnClickListener { showDetailsNavigationDialog() }
-        binding.editTrackButton.setOnClickListener { showTrackManagementDialog() }
-        binding.lastSessionCard.setOnClickListener {
-            showDetailsNavigationDialog()
+        binding.detailsButton.setOnClickListener { openComparisonTools() }
+        binding.openComparisonButton.setOnClickListener { openComparisonTools() }
+        binding.openInsightsButton.setOnClickListener { openComparisonTools() }
+        binding.openLastSessionButton.setOnClickListener { sessionViewModel.loadLastSession() }
+        binding.openSessionsButton.setOnClickListener {
+            findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
         }
+        binding.editTrackButton.setOnClickListener { showTrackManagementDialog() }
+        binding.lastSessionCard.setOnClickListener { showDetailsNavigationDialog() }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -72,6 +76,10 @@ class MainFragment : Fragment() {
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
                     binding.detailsButton.isEnabled = true
+                    binding.openComparisonButton.isEnabled = true
+                    binding.openInsightsButton.isEnabled = true
+                    binding.openLastSessionButton.isEnabled = state.canLoadLastSession
+                    binding.openSessionsButton.isEnabled = true
                     binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
                         getString(R.string.no_track_selected)
                     }
@@ -102,6 +110,11 @@ class MainFragment : Fragment() {
         }
         binding.trackRecycler.layoutManager = GridLayoutManager(requireContext(), 3)
         binding.trackRecycler.adapter = trackTileAdapter
+    }
+
+
+    private fun openComparisonTools() {
+        findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
     }
 
     private fun showAddTrackDialog() {
@@ -239,7 +252,7 @@ class MainFragment : Fragment() {
                     getString(R.string.open_lap_analysis),
                     getString(R.string.open_coaching_insights),
                     getString(R.string.open_time_loss_analysis),
-                    getString(R.string.open_sector_analysis) -> findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
+                    getString(R.string.open_sector_analysis) -> openComparisonTools()
                     getString(R.string.open_track_learnings) -> findNavController().navigate(R.id.action_mainFragment_to_trackLayoutFragment)
                 }
             }

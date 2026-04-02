@@ -55,11 +55,12 @@ class TrackTileAdapter(
                 showFallback(track.name)
             }
 
-            val cardColor = if (isSelected) R.color.karting_primary else R.color.karting_stroke_strong
-            val bgColor = if (isSelected) R.color.karting_surface_tint_strong else R.color.karting_panel
+            val cardColor = if (isSelected) R.color.karting_primary else R.color.karting_stroke
+            val bgColor = if (isSelected) R.color.karting_surface_tint_strong else R.color.karting_panel_alt
             binding.trackTileCard.strokeColor = binding.root.context.getColor(cardColor)
             binding.trackTileCard.setCardBackgroundColor(binding.root.context.getColor(bgColor))
-            binding.trackTileCard.strokeWidth = if (isSelected) 3 else 1
+            binding.trackTileCard.strokeWidth = if (isSelected) 2 else 1
+            binding.trackTileSelectedBadge.isVisible = isSelected
 
             binding.root.setOnClickListener {
                 onTrackSelected(track.name)
