@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import com.kartingtracker.ui.ProjectedCurveUiState
@@ -25,7 +26,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
     private var onInsightTapped: ((TrackInsightMarker) -> Unit)? = null
     private val density = resources.displayMetrics.density
 
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { filterBitmap = true }
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
     private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
@@ -33,7 +34,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 12f * resources.displayMetrics.scaledDensity
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, resources.displayMetrics)
         textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
@@ -43,7 +44,7 @@ class TrackMapOverlayView @JvmOverloads constructor(
     }
     private val emptyTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#546E7A")
-        textSize = 14f * resources.displayMetrics.scaledDensity
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14f, resources.displayMetrics)
         textAlign = Paint.Align.CENTER
     }
 

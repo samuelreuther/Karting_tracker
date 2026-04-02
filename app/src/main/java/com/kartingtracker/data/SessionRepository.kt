@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
-import kotlin.system.measureTimeMillis
 
 class SessionRepository(
     private val lapDetector: LapDetector,
@@ -745,10 +744,9 @@ class SessionRepository(
     }
 
     private fun <T> measureOperation(label: String, block: () -> T): T {
-        lateinit var result: T
-        val durationMs = measureTimeMillis {
-            result = block()
-        }
+        val startNs = System.nanoTime()
+        val result = block()
+        val durationMs = (System.nanoTime() - startNs) / 1_000_000
         if (durationMs > SLOW_OPERATION_THRESHOLD_MS) {
             Log.w(TAG, "$LOG_TAG: slow operation label=$label took=${durationMs}ms")
         } else {

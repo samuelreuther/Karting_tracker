@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.net.Uri
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.MotionEvent
 import androidx.appcompat.widget.AppCompatImageView
 import com.kartingtracker.data.TrackCorner
@@ -49,7 +50,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
-        textSize = 12f * resources.displayMetrics.scaledDensity
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, resources.displayMetrics)
     }
     private val legendPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#263238")
@@ -59,7 +60,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
     }
     private val legendTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#263238")
-        textSize = 13f * resources.displayMetrics.scaledDensity
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 13f, resources.displayMetrics)
     }
     private val markerFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#FFB300")
@@ -74,7 +75,7 @@ class TrackLayoutEditorView @JvmOverloads constructor(
     private val markerLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#3E2723")
         textAlign = Paint.Align.CENTER
-        textSize = 11f * resources.displayMetrics.scaledDensity
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, resources.displayMetrics)
     }
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#EEF2F5")
