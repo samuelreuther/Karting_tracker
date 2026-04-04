@@ -6,6 +6,8 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 class SessionStorageManager(
     context: Context
@@ -17,7 +19,6 @@ class SessionStorageManager(
     fun saveSession(session: Session): Boolean {
         return try {
             val file = File(sessionDirectory, buildSessionFileName(session))
-            val partialFile = File(sessionDirectory, buildPartialFileName(session.trackName, session.startTimeEpochMs))
             if (session.isPartial) {
                 Log.i(TAG, "$LOG_TAG: autosave partial session=${session.id} samples=${session.samples.size}")
             } else {
@@ -26,9 +27,6 @@ class SessionStorageManager(
             writeAtomically(file, gson.toJson(session))
             if (!file.exists() || !file.canRead() || file.length() <= 0L) {
                 throw IllegalStateException("Saved file verification failed for ${file.name}")
-            }
-            if (!session.isPartial && partialFile.exists() && !partialFile.delete()) {
-                Log.w(TAG, "Failed to delete partial session file ${partialFile.name}")
             }
             true
         } catch (exception: Exception) {
@@ -84,6 +82,11 @@ class SessionStorageManager(
             }
         }
         return deleteCount
+    }
+
+    fun deletePartialSnapshot(trackName: String, startTimeEpochMs: Long): Boolean {
+        val partialFile = File(sessionDirectory, buildPartialFileName(trackName, startTimeEpochMs))
+        return !partialFile.exists() || partialFile.delete()
     }
 
     private fun parseSession(file: File): Session? {
@@ -256,6 +259,12 @@ class SessionStorageManager(
     }
 
     private fun writeAtomically(targetFile: File, contents: String) {
+        if (contents.isBlank() || contents.toByteArray().size < MIN_PLAUSIBLE_JSON_BYTES) {
+            throw IllegalArgumentException("Refusing to write implausibly small session file ${targetFile.name}")
+        }
+        runCatching { JsonParser.parseString(contents).asJsonObject }.getOrElse { parseException ->
+            throw IllegalArgumentException("Session JSON validation failed for ${targetFile.name}", parseException)
+        }
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
         tempFile.outputStream().use { output ->
             output.write(contents.toByteArray())
@@ -263,23 +272,29 @@ class SessionStorageManager(
             runCatching { output.fd.sync() }
                 .onFailure { exception -> Log.w(TAG, "Failed to fsync temp file ${tempFile.name}", exception) }
         }
-        if (targetFile.exists() && !targetFile.delete()) {
-            throw IllegalStateException("Failed to replace existing file ${targetFile.name}")
+        if (!tempFile.exists() || tempFile.length() < MIN_PLAUSIBLE_JSON_BYTES) {
+            throw IllegalStateException("Temp write is too small for ${targetFile.name}")
         }
-        if (!tempFile.renameTo(targetFile)) {
-            tempFile.copyTo(targetFile, overwrite = true)
-            if (!tempFile.delete()) {
-                Log.w(TAG, "Failed to delete temp file ${tempFile.name}")
-            }
+        val previousBackup = if (targetFile.exists()) File(targetFile.parentFile, "${targetFile.name}.bak") else null
+        if (targetFile.exists()) {
+            targetFile.copyTo(previousBackup!!, overwrite = true)
         }
         runCatching {
-            targetFile.outputStream().use { output ->
-                output.flush()
-                output.fd.sync()
-            }
-        }.onFailure { exception ->
-            Log.w(TAG, "Failed to fsync target file ${targetFile.name}", exception)
+            Files.move(
+                tempFile.toPath(),
+                targetFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE
+            )
+        }.onFailure {
+            tempFile.copyTo(targetFile, overwrite = true)
+            tempFile.delete()
         }
+        if (targetFile.length() < MIN_PLAUSIBLE_JSON_BYTES) {
+            previousBackup?.takeIf { it.exists() }?.copyTo(targetFile, overwrite = true)
+            throw IllegalStateException("Target file became implausibly small ${targetFile.name}")
+        }
+        previousBackup?.delete()
     }
 
     private fun sanitizeTrackName(trackName: String): String {
@@ -331,6 +346,7 @@ class SessionStorageManager(
         private const val JSON_SUFFIX = ".json"
         private const val PARTIAL_SUFFIX = "_partial.json"
         private const val MAX_SESSION_FILE_SIZE_BYTES = 64L * 1024L * 1024L
+        private const val MIN_PLAUSIBLE_JSON_BYTES = 32
         private const val LOG_TAG = "KartingTracker"
     }
 

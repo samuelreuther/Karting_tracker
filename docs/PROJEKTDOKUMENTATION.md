@@ -1,6 +1,6 @@
 # Projektdokumentation Karting Tracker
 
-> Letzte Ueberarbeitung: 2026-04-02
+> Letzte Ueberarbeitung: 2026-04-04
 >
 > Diese Dokumentation beschreibt den aktuell implementierten Stand der App und wurde mit dem README synchronisiert.
 
@@ -50,6 +50,26 @@ Wichtig fuer dieses Dokument:
 - explizit als "offen" markierte Abschnitte beschreiben noch nicht umgesetzte Weiterentwicklungen
 
 ## Zusammenfassung des Ist-Stands
+
+### Zuverlaessigkeits-Update (2026-04-04)
+
+- Stop/Finalize wurde in eine explizite, asynchrone Pipeline getrennt.
+- Doppeltes Stoppen ohne aktive Aufnahme wird als No-Op behandelt (kein erneuter Finalize-Lauf).
+- Raw-first Persistenz: Session-Rohdaten werden garantiert vor Analyse gespeichert.
+- Analysefehler fuehren nicht mehr zu Datenverlust; Session bleibt als reprocess-faehiger Zustand erhalten.
+- Partial-Write-Haertung:
+  - temp-first schreiben
+  - JSON-/Groessenvalidierung
+  - Backup-Restore bei fehlerhafter Ersetzung
+  - keine Akzeptanz von 0-Byte/implausibel kleinen Snapshots
+- Partial-zu-Final Transition:
+  - Partial wird erst geloescht, wenn finaler Write erfolgreich war.
+- Backup-Export validiert Sessiondateien vor dem Zip und schreibt einen Diagnoseabschnitt ins Manifest:
+  - final/partial counts
+  - empty/corrupt counts
+  - exportierte und invalide Sessiondateien
+- Lap-Detection schreibt strukturierte Debugdaten (`lapDetectionDebugInfo`) in die Session fuer spaetere Diagnose/Export.
+- Schwache 1-Lap-Fallback-Ergebnisse werden als Warnzustand markiert (`analysisWarnings`) statt als voll robuste Analyse dargestellt.
 
 ### Implementiert
 

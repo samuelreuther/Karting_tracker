@@ -13,6 +13,7 @@ import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.Track
 import com.kartingtracker.data.TrackLayout
 import com.kartingtracker.data.TrackProfile
+import com.kartingtracker.data.StopPipelineStage
 import com.kartingtracker.domain.AutoStartDetector
 import com.kartingtracker.domain.AutoCornerDetector
 import com.kartingtracker.domain.CurveDetector
@@ -136,6 +137,7 @@ class SessionViewModel(
         sessionRepository.currentTrackName,
         sessionRepository.storedSessions,
         sessionRepository.currentTrackProfile,
+        sessionRepository.stopPipelineStatus,
         flow {
             while (true) {
                 emit(System.currentTimeMillis())
@@ -156,7 +158,8 @@ class SessionViewModel(
         @Suppress("UNCHECKED_CAST")
         val storedSessions = args[9] as List<Session>
         val trackProfile = args[10] as TrackProfile?
-        val nowEpochMs = args[11] as Long
+        val stopStatus = args[11] as com.kartingtracker.data.StopPipelineStatus
+        val nowEpochMs = args[12] as Long
         val elapsedMs = recordingStartedAtEpochMs?.let { nowEpochMs - it }?.coerceAtLeast(0L) ?: 0L
 
         SessionUiState(
@@ -183,10 +186,15 @@ class SessionViewModel(
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
                 recorderPhase == RecorderPhase.PREPARING -> "Session starts in $preStartSecondsRemaining… Please stow the phone now"
                 recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
-                recorderPhase == RecorderPhase.STOPPING -> "Stopping session and saving data…"
+                recorderPhase == RecorderPhase.STOPPING || stopStatus.stage == StopPipelineStage.STOPPING_RECORDING -> "Stopping recording…"
+                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving raw session…"
+                stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Processing laps…"
+                stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing session…"
+                stopStatus.stage == StopPipelineStage.FAILED -> "Finalization failed; raw session preserved"
                 recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording"
                 currentTrackName.isBlank() -> "Select a track to start recording"
                 session == null -> "Ready"
+                session.analysisWarnings.isNotEmpty() -> "Stopped with warnings"
                 session.laps.isEmpty() -> "Stopped"
                 else -> "Stopped - ${session.laps.size} laps detected"
             }

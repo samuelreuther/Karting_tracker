@@ -2,11 +2,27 @@
 
 Android app for indoor karting telemetry with smartphone sensors only. No GPS is required.
 
-> Last updated: 2026-04-02
+> Last updated: 2026-04-04
 >
 > This README and `docs/PROJEKTDOKUMENTATION.md` were reviewed together and aligned in this update.
 
 The app records accelerometer and gyroscope data, processes the signal on-device, segments laps deterministically from IMU patterns, stores sessions as JSON files, and lets you compare laps visually.
+
+## Reliability hardening (2026-04-04)
+
+- Stop now runs as an explicit asynchronous pipeline with progress states: `Stopping recording…`, `Saving raw session…`, `Processing laps…`, `Finalizing session…`.
+- A repeated `Stop` when no active recording is present is now treated as a safe no-op and does not restart finalization work.
+- Session finalization is now raw-first: a recoverable raw-final session is saved before heavy processing.
+- Partial files are never replaced by implausibly small/blank writes; writes are now temp-first with validation and backup restore on replacement failure.
+- Partial snapshots are removed only after a valid processed final session is persisted.
+- Sessions now carry processing recovery metadata:
+  - `processingState`
+  - `processingFailureReason`
+  - `isReprocessable`
+  - `analysisWarnings`
+  - `lapDetectionDebugInfo`
+- Backup export validates session files pre-zip and emits validation data in backup `manifest.json` (counts + invalid file list).
+- Low-confidence single-lap fallback sessions are explicitly flagged via warnings instead of being presented as normal high-confidence analysis.
 
 ## Documentation Index
 

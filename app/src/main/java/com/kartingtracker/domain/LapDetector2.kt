@@ -2,7 +2,9 @@ package com.kartingtracker.domain
 
 import android.util.Log
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.LapDetectionDebugInfo
 import com.kartingtracker.data.LapPhase
+import com.kartingtracker.data.LapPeakCount
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.TrackProfile
 import kotlin.math.exp
@@ -15,22 +17,22 @@ class LapDetector2(
 ) {
     fun detect(samples: List<SensorSample>, trackProfile: TrackProfile? = null): LapDetectionResult {
         if (samples.size < minimumSampleCount) {
-            return fallbackLap(samples)
+            return fallbackLap(samples, "too_few_samples")
         }
 
         val frames = resample(samples, bucketNs)
         if (frames.size < minimumFrameCount) {
-            return fallbackLap(samples)
+            return fallbackLap(samples, "too_few_resampled_frames")
         }
 
-        val prior = estimateLapPrior(frames, trackProfile) ?: return fallbackLap(samples)
+        val prior = estimateLapPrior(frames, trackProfile) ?: return fallbackLap(samples, "lap_prior_unavailable")
         val boundaryResult = boundaryGenerator.generate(frames, prior, trackProfile)
         val segmentationPath = globalSegmenter.segment(
             frames = frames,
             boundaryResult = boundaryResult,
             prior = prior,
             trackProfile = trackProfile
-        ) ?: return fallbackLap(samples)
+        ) ?: return fallbackLap(samples, "segmentation_path_missing")
 
         val laps = materializeLaps(
             samples = samples,
@@ -43,7 +45,7 @@ class LapDetector2(
 
         if (!isStableSolution(laps, segmentationPath.totalScore, prior)) {
             Log.i(TAG, "LapDetector2 fallback: unstable global solution, segments=${segmentationPath.segments.size}")
-            return fallbackLap(samples)
+            return fallbackLap(samples, "unstable_solution")
         }
 
         Log.i(
@@ -54,7 +56,20 @@ class LapDetector2(
         return LapDetectionResult(
             laps = laps,
             estimatedLapTimeMs = prior.expectedLapMs,
-            confidenceScores = laps.map { lap -> lap.confidenceScore }
+            confidenceScores = laps.map { lap -> lap.confidenceScore },
+            debugInfo = LapDetectionDebugInfo(
+                estimatedLapTimePriorMs = prior.expectedLapMs,
+                usedTrackProfile = trackProfile != null,
+                boundaryCandidateCount = boundaryResult.candidates.size,
+                candidateSegmentCount = countSegmentCandidates(boundaryResult.candidates.size),
+                chosenSegmentCount = segmentationPath.segments.size,
+                confidenceScores = laps.map { it.confidenceScore },
+                interruptedLapCount = laps.count { it.isInterrupted },
+                disturbedLapCount = laps.count { it.isDisturbed },
+                lowActivityRatio = frames.count { it.activity < 0.25f }.toFloat() / frames.size.coerceAtLeast(1),
+                fallbackToSingleLap = false,
+                fallbackReasons = emptyList()
+            )
         )
     }
 
@@ -282,9 +297,16 @@ class LapDetector2(
             totalScore > minimumPathScore
     }
 
-    private fun fallbackLap(samples: List<SensorSample>): LapDetectionResult {
+    private fun fallbackLap(samples: List<SensorSample>, reason: String): LapDetectionResult {
         if (samples.isEmpty()) {
-            return LapDetectionResult(emptyList(), null)
+            return LapDetectionResult(
+                emptyList(),
+                null,
+                debugInfo = LapDetectionDebugInfo(
+                    fallbackToSingleLap = true,
+                    fallbackReasons = listOf(reason)
+                )
+            )
         }
 
         val lap = Lap(
@@ -298,8 +320,33 @@ class LapDetector2(
         return LapDetectionResult(
             laps = listOf(lap),
             estimatedLapTimeMs = lap.lapTimeMs,
-            confidenceScores = listOf(lap.confidenceScore)
+            confidenceScores = listOf(lap.confidenceScore),
+            debugInfo = LapDetectionDebugInfo(
+                estimatedLapTimePriorMs = lap.lapTimeMs,
+                usedTrackProfile = false,
+                boundaryCandidateCount = 0,
+                candidateSegmentCount = 0,
+                chosenSegmentCount = 1,
+                confidenceScores = listOf(lap.confidenceScore),
+                interruptedLapCount = 0,
+                disturbedLapCount = 0,
+                lowActivityRatio = 0f,
+                fallbackToSingleLap = true,
+                fallbackReasons = listOf(reason),
+                peakCountsPerLap = listOf(
+                    LapPeakCount(
+                        lapId = lap.id,
+                        brakingPeaks = 0,
+                        corneringPeaks = 0
+                    )
+                )
+            )
         )
+    }
+
+    private fun countSegmentCandidates(boundaryCount: Int): Int {
+        if (boundaryCount < 2) return 0
+        return (boundaryCount * (boundaryCount - 1)) / 2
     }
 
     private fun resample(samples: List<SensorSample>, bucketNs: Long): List<ResampledFrame> {

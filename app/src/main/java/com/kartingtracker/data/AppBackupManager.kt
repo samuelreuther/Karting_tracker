@@ -3,6 +3,7 @@ package com.kartingtracker.data
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.google.gson.JsonParser
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -21,10 +22,21 @@ class AppBackupManager(
         return runCatching {
             appContext.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
                 ZipOutputStream(outputStream.buffered()).use { zipOutputStream ->
+                    val sessionsDir = File(appContext.filesDir, "sessions")
+                    val sessionValidation = validateSessionFiles(sessionsDir)
                     val manifest = JSONObject().apply {
                         put("formatVersion", BACKUP_FORMAT_VERSION)
                         put("createdAtEpochMs", System.currentTimeMillis())
                         put("appPackage", appContext.packageName)
+                        put("summary", JSONObject().apply {
+                            put("finalSessionCount", sessionValidation.finalSessions)
+                            put("partialSessionCount", sessionValidation.partialSessions)
+                            put("emptySessionFiles", sessionValidation.emptyFiles)
+                            put("corruptSessionFiles", sessionValidation.corruptFiles)
+                            put("trackProfileCount", countFiles(File(appContext.filesDir, "track_profiles")))
+                            put("trackLayoutCount", countFiles(File(appContext.filesDir, "track_layouts")))
+                        })
+                        put("sessionValidation", sessionValidation.toJson())
                         put(
                             "includedRoots",
                             listOf("files/sessions", "files/track_layouts", "files/track_maps", "files/track_profiles", "shared_prefs")
@@ -35,7 +47,11 @@ class AppBackupManager(
                         "$exportRootName/manifest.json",
                         manifest.toString(2)
                     )
-                    addDirectoryToZip(File(appContext.filesDir, "sessions"), zipOutputStream, "$exportRootName/files/sessions")
+                    addDirectoryToZip(
+                        sessionsDir,
+                        zipOutputStream,
+                        "$exportRootName/files/sessions"
+                    ) { file -> sessionValidation.exportableSessionNames.contains(file.name) }
                     addDirectoryToZip(File(appContext.filesDir, "track_layouts"), zipOutputStream, "$exportRootName/files/track_layouts")
                     addDirectoryToZip(File(appContext.filesDir, "track_maps"), zipOutputStream, "$exportRootName/files/track_maps")
                     addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles")
@@ -112,12 +128,18 @@ class AppBackupManager(
         zipOutputStream.closeEntry()
     }
 
-    private fun addDirectoryToZip(sourceDirectory: File, zipOutputStream: ZipOutputStream, zipRoot: String) {
+    private fun addDirectoryToZip(
+        sourceDirectory: File,
+        zipOutputStream: ZipOutputStream,
+        zipRoot: String,
+        fileFilter: ((File) -> Boolean)? = null
+    ) {
         if (!sourceDirectory.exists()) {
             return
         }
         sourceDirectory.walkTopDown()
             .filter { file -> file.isFile }
+            .filter { file -> fileFilter?.invoke(file) ?: true }
             .forEach { file ->
                 val relativePath = file.relativeTo(sourceDirectory).invariantSeparatorsPath
                 val entryName = "$zipRoot/$relativePath"
@@ -132,5 +154,74 @@ class AppBackupManager(
     companion object {
         private const val TAG = "AppBackupManager"
         private const val BACKUP_FORMAT_VERSION = 1
+    }
+
+    private fun countFiles(directory: File): Int {
+        return directory.listFiles { file -> file.isFile }?.size ?: 0
+    }
+
+    private fun validateSessionFiles(directory: File): SessionValidationSummary {
+        if (!directory.exists()) {
+            return SessionValidationSummary()
+        }
+        val files = directory.listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }.orEmpty()
+        val exportable = mutableSetOf<String>()
+        val invalidEntries = mutableListOf<JSONObject>()
+        var finalSessions = 0
+        var partialSessions = 0
+        var emptyFiles = 0
+        var corruptFiles = 0
+        files.forEach { file ->
+            val isPartial = file.name.endsWith("_partial.json")
+            if (isPartial) partialSessions += 1 else finalSessions += 1
+            if (file.length() <= 0L) {
+                emptyFiles += 1
+                invalidEntries += JSONObject().apply {
+                    put("file", file.name)
+                    put("reason", "empty")
+                    put("sizeBytes", file.length())
+                }
+                return@forEach
+            }
+            val validJson = runCatching { JsonParser.parseString(file.readText()).asJsonObject }.isSuccess
+            if (!validJson) {
+                corruptFiles += 1
+                invalidEntries += JSONObject().apply {
+                    put("file", file.name)
+                    put("reason", "corrupt_json")
+                    put("sizeBytes", file.length())
+                }
+                return@forEach
+            }
+            exportable += file.name
+        }
+        return SessionValidationSummary(
+            finalSessions = finalSessions,
+            partialSessions = partialSessions,
+            emptyFiles = emptyFiles,
+            corruptFiles = corruptFiles,
+            exportableSessionNames = exportable,
+            invalidEntries = invalidEntries
+        )
+    }
+
+    private data class SessionValidationSummary(
+        val finalSessions: Int = 0,
+        val partialSessions: Int = 0,
+        val emptyFiles: Int = 0,
+        val corruptFiles: Int = 0,
+        val exportableSessionNames: Set<String> = emptySet(),
+        val invalidEntries: List<JSONObject> = emptyList()
+    ) {
+        fun toJson(): JSONObject {
+            return JSONObject().apply {
+                put("finalSessionCount", finalSessions)
+                put("partialSessionCount", partialSessions)
+                put("emptySessionFiles", emptyFiles)
+                put("corruptSessionFiles", corruptFiles)
+                put("exportedSessions", exportableSessionNames.sorted())
+                put("invalidSessions", invalidEntries)
+            }
+        }
     }
 }
