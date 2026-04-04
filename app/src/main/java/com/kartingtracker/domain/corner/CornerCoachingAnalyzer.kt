@@ -151,7 +151,11 @@ class CornerCoachingAnalyzer {
                 localTimeMs = median(trimmed.map { it.localTimeMs }),
                 mappingConfidence = median(trimmed.map { it.mappingConfidence }),
                 signalQuality = median(trimmed.map { it.signalQuality }),
-                lapConfidence = median(trimmed.map { it.lapConfidence })
+                lapConfidence = median(trimmed.map { it.lapConfidence }),
+                brakePointStdDev = standardDeviation(trimmed.map { it.brakeStartPercent }),
+                exitStdDev = standardDeviation(trimmed.map { it.exitAccelMean }),
+                localTimeStdDev = standardDeviation(trimmed.map { it.localTimeMs }),
+                consistencyScore = average(trimmed.map { it.consistencyScore })
             )
         }
     }
