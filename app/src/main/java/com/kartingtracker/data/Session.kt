@@ -19,9 +19,17 @@ data class Session(
     val cornerCoachingSummary: CornerCoachingSummary? = null,
     val quality: SessionQuality? = null,
     val processingVersion: Int = DEFAULT_PROCESSING_VERSION,
-    val isPartial: Boolean = false
+    val isPartial: Boolean = false,
+    val processingState: String = PROCESSING_STATE_FINAL,
+    val processingFailureReason: String? = null,
+    val isReprocessable: Boolean = true,
+    val analysisWarnings: List<String> = emptyList(),
+    val lapDetectionDebugInfo: LapDetectionDebugInfo? = null
 ) {
     companion object {
         const val DEFAULT_PROCESSING_VERSION = 1
+        const val PROCESSING_STATE_PENDING = "raw_saved_processing_pending"
+        const val PROCESSING_STATE_FAILED = "processing_failed_reprocessable"
+        const val PROCESSING_STATE_FINAL = "final_processed"
     }
 }

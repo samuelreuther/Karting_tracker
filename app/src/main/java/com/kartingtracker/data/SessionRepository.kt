@@ -23,6 +23,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
+enum class StopPipelineStage {
+    IDLE, STOPPING_RECORDING, SAVING_RAW_SESSION, PROCESSING_LAPS, FINALIZING_SESSION, COMPLETED, FAILED
+}
+
+data class StopPipelineStatus(
+    val stage: StopPipelineStage = StopPipelineStage.IDLE,
+    val message: String = "Ready",
+    val sessionId: Long? = null
+)
+
 class SessionRepository(
     private val lapDetector: LapDetector,
     private val peakDetector: PeakDetector,
@@ -44,6 +54,7 @@ class SessionRepository(
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var autosaveJob: Job? = null
     private var trackStateRefreshJob: Job? = null
+    private var finalizeJob: Job? = null
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
@@ -74,6 +85,8 @@ class SessionRepository(
 
     private val _currentTrackLayout = MutableStateFlow<TrackLayout?>(null)
     val currentTrackLayout: StateFlow<TrackLayout?> = _currentTrackLayout.asStateFlow()
+    private val _stopPipelineStatus = MutableStateFlow(StopPipelineStatus())
+    val stopPipelineStatus: StateFlow<StopPipelineStatus> = _stopPipelineStatus.asStateFlow()
 
     init {
         repositoryScope.launch {
@@ -117,18 +130,18 @@ class SessionRepository(
     }
 
     fun stopSession(endTimestampNs: Long): Session? {
-        val completedSession = synchronized(lock) {
+        val rawSnapshot = synchronized(lock) {
             if (!_isRecording.value) {
                 return _latestSession.value
             }
-
-            val flushSnapshot = buildPartialSessionSnapshot()
-            if (flushSnapshot != null) {
-                persistSessionWithVerification(flushSnapshot, "final-stop-flush")
-            }
+            _stopPipelineStatus.value = StopPipelineStatus(
+                stage = StopPipelineStage.STOPPING_RECORDING,
+                message = "Stopping recording…",
+                sessionId = currentSessionId
+            )
             _isRecording.value = false
             stopAutosaveLocked()
-            val finalizedSession = if (currentSamples.isEmpty()) {
+            val snapshot = if (currentSamples.isEmpty()) {
                 Session(
                     id = currentSessionId,
                     trackName = _currentTrackName.value,
@@ -146,27 +159,40 @@ class SessionRepository(
                     segmentMarkers = emptyList(),
                     cornerCoachingInsights = emptyList(),
                     cornerCoachingSummary = null,
-                    quality = null
+                    quality = null,
+                    processingState = Session.PROCESSING_STATE_PENDING
                 )
             } else {
-                buildProcessedSession(
-                    samples = currentSamples.toList(),
+                Session(
+                    id = currentSessionId,
+                    trackName = _currentTrackName.value,
+                    startTimeEpochMs = currentStartTimeEpochMs,
+                    endTimeEpochMs = System.currentTimeMillis(),
+                    startTimestampNs = currentStartTimestampNs,
                     endTimestampNs = endTimestampNs,
-                    endTimeEpochMs = System.currentTimeMillis()
+                    samples = currentSamples.toList(),
+                    laps = emptyList(),
+                    estimatedLapTimeMs = null,
+                    insights = emptyList(),
+                    coachingInsights = emptyList(),
+                    theoreticalBestLapTimeMs = null,
+                    topTimeLossSegments = emptyList(),
+                    segmentMarkers = emptyList(),
+                    cornerCoachingInsights = emptyList(),
+                    cornerCoachingSummary = null,
+                    quality = null,
+                    processingVersion = CURRENT_PROCESSING_VERSION,
+                    isPartial = false,
+                    processingState = Session.PROCESSING_STATE_PENDING
                 )
             }
-
-            _latestSession.value = finalizedSession
-            _currentSession.value = finalizedSession
-            finalizedSession?.let { session ->
-                persistSessionWithVerification(session, "final-save")
-            }
-            refreshStoredSessions()
-            finalizedSession
+            _latestSession.value = snapshot
+            _currentSession.value = snapshot
+            snapshot
         }
 
-        completedSession?.trackName?.takeIf { trackName -> trackName.isNotBlank() }?.let(::refreshTrackProfileState)
-        return completedSession
+        finalizeSessionAsync(rawSnapshot)
+        return rawSnapshot
     }
 
     fun createTrack(trackName: String): Track? {
@@ -732,8 +758,31 @@ class SessionRepository(
                 cornerCoachingInsights = emptyList(),
                 cornerCoachingSummary = null,
                 quality = null,
-                isPartial = false
+                isPartial = false,
+                processingState = Session.PROCESSING_STATE_FINAL,
+                processingFailureReason = null,
+                isReprocessable = true,
+                lapDetectionDebugInfo = detectionResult.debugInfo.copy(
+                    peakCountsPerLap = laps.map { lap ->
+                        LapPeakCount(
+                            lapId = lap.id,
+                            brakingPeaks = lap.brakingPeakIndices.size,
+                            corneringPeaks = lap.corneringPeakIndices.size
+                        )
+                    },
+                    sectorDetectionFallbackCount = laps.count { it.sectorBoundaries.isEmpty() }
+                )
             ).withQuality()
+            val fallbackSingleLap = processedSession.laps.size == 1 &&
+                (processedSession.laps.first().confidenceScore < 0.55f || detectionResult.debugInfo.fallbackToSingleLap)
+            val warnings = if (fallbackSingleLap) {
+                listOf(
+                    "Session could not be segmented reliably.",
+                    "Only fallback single-segment solution was stable."
+                )
+            } else {
+                emptyList()
+            }
 
             val telemetryAnalysis = measureOperation("DrivingCoachAnalyzer.analyzeSession") {
                 drivingCoachAnalyzer.analyzeSession(
@@ -747,7 +796,8 @@ class SessionRepository(
                 coachingInsights = telemetryAnalysis.coachingInsights,
                 theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
                 topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
-                segmentMarkers = telemetryAnalysis.segmentMarkers
+                segmentMarkers = telemetryAnalysis.segmentMarkers,
+                analysisWarnings = warnings
             )
             val cornerCoachingAnalysis = measureOperation("CornerCoachingAnalyzer.analyze") {
                 cornerCoachingAnalyzer.analyze(
@@ -772,8 +822,44 @@ class SessionRepository(
                 cornerCoachingInsights = emptyList(),
                 cornerCoachingSummary = null,
                 quality = null,
-                isPartial = false
+                isPartial = false,
+                processingState = Session.PROCESSING_STATE_FAILED,
+                processingFailureReason = exception.message ?: "processing_failed",
+                isReprocessable = true,
+                analysisWarnings = listOf("Session saved, but analysis failed. Reprocessing is available.")
             )
+        }
+    }
+
+    private fun finalizeSessionAsync(rawSession: Session) {
+        finalizeJob?.cancel()
+        finalizeJob = repositoryScope.launch {
+            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.SAVING_RAW_SESSION, "Saving raw session…", rawSession.id)
+            if (!sessionStorageManager.saveSession(rawSession)) {
+                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Failed to save raw session", rawSession.id)
+                return@launch
+            }
+            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.PROCESSING_LAPS, "Processing laps…", rawSession.id)
+            val processed = processSessionInternal(rawSession).copy(processingVersion = CURRENT_PROCESSING_VERSION)
+            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FINALIZING_SESSION, "Finalizing session…", rawSession.id)
+            if (sessionStorageManager.saveSession(processed)) {
+                sessionStorageManager.deletePartialSnapshot(rawSession.trackName, rawSession.startTimeEpochMs)
+                _latestSession.value = processed
+                _currentSession.value = processed
+                refreshStoredSessions()
+                processed.trackName.takeIf { it.isNotBlank() }?.let(::refreshTrackProfileState)
+                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.COMPLETED, "Session finalized", rawSession.id)
+            } else {
+                val failed = rawSession.copy(
+                    processingState = Session.PROCESSING_STATE_FAILED,
+                    processingFailureReason = "final_session_persist_failed",
+                    isReprocessable = true
+                )
+                sessionStorageManager.saveSession(failed)
+                _currentSession.value = failed
+                _latestSession.value = failed
+                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Finalization failed; raw session preserved", rawSession.id)
+            }
         }
     }
 
@@ -820,6 +906,9 @@ class SessionRepository(
         if (session.processingVersion < CURRENT_PROCESSING_VERSION) {
             return true
         }
+        if (session.processingState != Session.PROCESSING_STATE_FINAL) {
+            return true
+        }
         if (session.laps.isEmpty()) {
             return true
         }
@@ -833,7 +922,7 @@ class SessionRepository(
 
     companion object {
         private const val TAG = "SessionRepository"
-        private const val CURRENT_PROCESSING_VERSION = 8
+        private const val CURRENT_PROCESSING_VERSION = 9
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

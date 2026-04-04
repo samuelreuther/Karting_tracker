@@ -1,13 +1,15 @@
 package com.kartingtracker.domain
 
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.LapDetectionDebugInfo
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.TrackProfile
 
 data class LapDetectionResult(
     val laps: List<Lap>,
     val estimatedLapTimeMs: Long? = null,
-    val confidenceScores: List<Float> = emptyList()
+    val confidenceScores: List<Float> = emptyList(),
+    val debugInfo: LapDetectionDebugInfo = LapDetectionDebugInfo()
 )
 
 class LapDetector {
