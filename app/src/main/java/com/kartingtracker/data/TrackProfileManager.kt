@@ -205,7 +205,7 @@ class TrackProfileManager(
 
     private fun sanitizeTrackName(trackName: String): String {
         val trimmed = trackName.trim().ifBlank { "track" }
-        return trimmed.replace(Regex("[^A-Za-z0-9_-]+"), "_")
+        return FileNameNormalizer.normalize(trimmed)
     }
 
     private fun emptyProfile(trackName: String): TrackProfile {

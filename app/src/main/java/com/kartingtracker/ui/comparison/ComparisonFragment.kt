@@ -17,6 +17,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentComparisonBinding
 import com.kartingtracker.ui.AppViewModelFactory
+import com.kartingtracker.ui.AnalysisMode
 import com.kartingtracker.ui.SessionViewModel
 import com.kartingtracker.ui.common.ChartUtils
 import kotlinx.coroutines.Job
@@ -85,9 +86,9 @@ class ComparisonFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sessionViewModel.comparisonUiState.collect { state ->
                     binding.emptyComparisonLabel.visibility =
-                        if (state.lapLabels.isEmpty()) View.VISIBLE else View.GONE
+                        if (state.lapLabelsA.isEmpty() || state.lapLabelsB.isEmpty()) View.VISIBLE else View.GONE
                     binding.comparisonContent.visibility =
-                        if (state.lapLabels.isEmpty()) View.GONE else View.VISIBLE
+                        if (state.lapLabelsA.isEmpty() || state.lapLabelsB.isEmpty()) View.GONE else View.VISIBLE
                     binding.summaryLabel.text = state.summaryLabel
                     binding.lapATimeLabel.text = state.lapATimeLabel
                     binding.lapBTimeLabel.text = state.lapBTimeLabel
@@ -127,9 +128,9 @@ class ComparisonFragment : Fragment() {
                     }
                     renderTrackMap(state)
 
-                    if (state.lapLabels.isNotEmpty()) {
-                        updateSpinner(binding.lapASpinner, state.lapLabels, state.selectedLapAIndex)
-                        updateSpinner(binding.lapBSpinner, state.lapLabels, state.selectedLapBIndex)
+                    if (state.lapLabelsA.isNotEmpty() && state.lapLabelsB.isNotEmpty()) {
+                        updateSpinner(binding.lapASpinner, state.lapLabelsA, state.selectedLapAIndex)
+                        updateSpinner(binding.lapBSpinner, state.lapLabelsB, state.selectedLapBIndex)
                         binding.longitudinalChart.data = LineData(
                             ChartUtils.createDataSet(requireContext(), "Lap A", state.longitudinalLapA, R.color.karting_green),
                             ChartUtils.createDataSet(requireContext(), "Lap B", state.longitudinalLapB, R.color.karting_red),
@@ -149,6 +150,17 @@ class ComparisonFragment : Fragment() {
                         binding.longitudinalChart.invalidate()
                         binding.lateralChart.invalidate()
                         binding.deltaChart.invalidate()
+                    }
+                }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                sessionViewModel.selectedAnalysisMode.collect { mode ->
+                    requireActivity().title = when (mode) {
+                        AnalysisMode.COMPARISON -> getString(R.string.compare_laps)
+                        AnalysisMode.TIME_LOSS -> getString(R.string.open_time_loss_analysis)
+                        AnalysisMode.COACHING -> getString(R.string.open_coaching_insights)
                     }
                 }
             }

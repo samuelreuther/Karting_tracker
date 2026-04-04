@@ -6,6 +6,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -49,10 +51,19 @@ class MainFragment : Fragment() {
         binding.startButton.setOnClickListener { sessionViewModel.startRecording() }
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
         binding.addTrackButton.setOnClickListener { showAddTrackDialog() }
-        binding.detailsButton.setOnClickListener { openComparisonTools() }
-        binding.openComparisonButton.setOnClickListener { openComparisonTools() }
-        binding.openInsightsButton.setOnClickListener { openComparisonTools() }
-        binding.openLastSessionButton.setOnClickListener { sessionViewModel.loadLastSession() }
+        setupComparisonSelectors()
+        binding.detailsButton.setOnClickListener {
+            sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COMPARISON)
+            openComparisonTools()
+        }
+        binding.openInsightsButton.setOnClickListener {
+            sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COACHING)
+            openComparisonTools()
+        }
+        binding.openTimeLossButton.setOnClickListener {
+            sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.TIME_LOSS)
+            openComparisonTools()
+        }
         binding.openSessionsButton.setOnClickListener {
             findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
         }
@@ -76,14 +87,12 @@ class MainFragment : Fragment() {
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
                     binding.detailsButton.isEnabled = true
-                    binding.openComparisonButton.isEnabled = true
                     binding.openInsightsButton.isEnabled = true
-                    binding.openLastSessionButton.isEnabled = state.canLoadLastSession
+                    binding.openTimeLossButton.isEnabled = true
                     binding.openSessionsButton.isEnabled = true
                     binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
                         getString(R.string.no_track_selected)
                     }
-                    binding.heroRecommendation.text = state.lastSessionSummary.headline
                     binding.lastSessionHeadline.text = state.lastSessionSummary.headline
                     binding.lastSessionQuality.text = state.lastSessionSummary.quality
                     binding.lastSessionTimeLoss.text = state.lastSessionSummary.biggestLoss
@@ -101,6 +110,7 @@ class MainFragment : Fragment() {
                     } else {
                         getString(R.string.open_deep_analysis)
                     }
+                    updateComparisonSelection(state.compareSelection)
                     trackTileAdapter.submit(state.availableTracks, state.selectedTrackName)
                 }
             }
@@ -123,6 +133,56 @@ class MainFragment : Fragment() {
 
     private fun openComparisonTools() {
         findNavController().navigate(R.id.action_mainFragment_to_comparisonFragment)
+    }
+
+    private fun setupComparisonSelectors() {
+        binding.sessionASpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                (parent?.adapter?.getItem(position) as? SessionSpinnerItem)?.let { session ->
+                    sessionViewModel.selectCompareSessionA(session.id)
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        binding.sessionBSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                (parent?.adapter?.getItem(position) as? SessionSpinnerItem)?.let { session ->
+                    sessionViewModel.selectCompareSessionB(session.id)
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        binding.lapASpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sessionViewModel.selectLapA(position)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        binding.lapBSpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sessionViewModel.selectLapB(position)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
+    private fun updateComparisonSelection(selection: com.kartingtracker.ui.CompareSelectionUiState) {
+        val sessionItems = selection.sessionOptions.map { SessionSpinnerItem(it.id, it.label) }
+        binding.sessionASpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        binding.sessionBSpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val lapAdapterA = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, selection.lapOptionsA.map { it.label }).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val lapAdapterB = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, selection.lapOptionsB.map { it.label }).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        binding.lapASpinnerInline.adapter = lapAdapterA
+        binding.lapBSpinnerInline.adapter = lapAdapterB
+        binding.detailsButton.isEnabled = selection.canOpenComparison
     }
 
     private fun showAddTrackDialog() {
@@ -254,7 +314,11 @@ class MainFragment : Fragment() {
             .setTitle(R.string.tap_for_details)
             .setItems(actions.toTypedArray()) { _, which ->
                 when (actions[which]) {
-                    getString(R.string.open_last_session) -> sessionViewModel.loadLastSession()
+                    getString(R.string.open_last_session) -> {
+                        if (sessionViewModel.loadLastSession()) {
+                            findNavController().navigate(R.id.action_mainFragment_to_lapsFragment)
+                        }
+                    }
                     getString(R.string.open_session_list) -> findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
                     getString(R.string.compare_laps),
                     getString(R.string.open_lap_analysis),
@@ -266,4 +330,8 @@ class MainFragment : Fragment() {
             }
             .show()
     }
+}
+
+private data class SessionSpinnerItem(val id: Long, val label: String) {
+    override fun toString(): String = label
 }

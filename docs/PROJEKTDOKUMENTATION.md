@@ -1353,3 +1353,12 @@ Die Dokumentation wurde gegen den vorhandenen Quellcode abgeglichen. Build/Test-
 - `README.md` enthaelt den kompakten Schnellueberblick auf Englisch.
 - Diese Datei enthaelt die vertiefte technische Beschreibung auf Deutsch.
 - Bei Funktionsaenderungen sollten beide Dateien im gleichen Commit aktualisiert werden.
+
+## Update 2026-04-04 (Usability and Navigation)
+
+- Startseite komprimiert: klarere Recording-Buttons, weniger vertikale Fülltexte.
+- Analysebereich umgestellt auf explizite Vergleichsauswahl (Session A/B + Lap A/B) pro ausgewählter Strecke.
+- Analyse-Navigation entkoppelt in Modi `Vergleich`, `Time-loss`, `Coaching` mit konsistenten Titeln.
+- "Choose session" wurde in "Session library" umbenannt.
+- Dateinamen-Normalisierung zentralisiert (`FileNameNormalizer`), inkl. Umlaut-Transliteration (`ö -> oe`).
+- Backup-Export schließt Demo/Test-Daten (`Test Track`, `Demo Indoor Track`) aus regulären User-Backups aus.
