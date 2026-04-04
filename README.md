@@ -11,6 +11,7 @@ The app records accelerometer and gyroscope data, processes the signal on-device
 ## Reliability hardening (2026-04-04)
 
 - Stop now runs as an explicit asynchronous pipeline with progress states: `Stopping recording…`, `Saving raw session…`, `Processing laps…`, `Finalizing session…`.
+- A repeated `Stop` when no active recording is present is now treated as a safe no-op and does not restart finalization work.
 - Session finalization is now raw-first: a recoverable raw-final session is saved before heavy processing.
 - Partial files are never replaced by implausibly small/blank writes; writes are now temp-first with validation and backup restore on replacement failure.
 - Partial snapshots are removed only after a valid processed final session is persisted.

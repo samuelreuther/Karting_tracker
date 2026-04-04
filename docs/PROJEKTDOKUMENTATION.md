@@ -54,6 +54,7 @@ Wichtig fuer dieses Dokument:
 ### Zuverlaessigkeits-Update (2026-04-04)
 
 - Stop/Finalize wurde in eine explizite, asynchrone Pipeline getrennt.
+- Doppeltes Stoppen ohne aktive Aufnahme wird als No-Op behandelt (kein erneuter Finalize-Lauf).
 - Raw-first Persistenz: Session-Rohdaten werden garantiert vor Analyse gespeichert.
 - Analysefehler fuehren nicht mehr zu Datenverlust; Session bleibt als reprocess-faehiger Zustand erhalten.
 - Partial-Write-Haertung:

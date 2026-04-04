@@ -104,6 +104,7 @@ class SessionRepository(
     fun startSession(startTimestampNs: Long) {
         synchronized(lock) {
             stopAutosaveLocked()
+            _stopPipelineStatus.value = StopPipelineStatus()
             currentSessionId += 1L
             currentStartTimestampNs = startTimestampNs
             currentStartTimeEpochMs = System.currentTimeMillis()
@@ -130,9 +131,13 @@ class SessionRepository(
     }
 
     fun stopSession(endTimestampNs: Long): Session? {
-        val rawSnapshot = synchronized(lock) {
+        val rawSnapshot: Session = synchronized(lock) {
             if (!_isRecording.value) {
-                return _latestSession.value
+                val existingSession = _latestSession.value
+                if (existingSession != null) {
+                    return existingSession
+                }
+                return null
             }
             _stopPipelineStatus.value = StopPipelineStatus(
                 stage = StopPipelineStage.STOPPING_RECORDING,
