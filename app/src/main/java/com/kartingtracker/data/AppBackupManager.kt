@@ -41,6 +41,7 @@ class AppBackupManager(
                     addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles")
                     addDirectoryToZip(prefsDirectory, zipOutputStream, "$exportRootName/shared_prefs")
                 }
+                true
             } ?: false
         }.onFailure { exception ->
             Log.e(TAG, "Failed to export backup", exception)
