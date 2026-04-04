@@ -7,6 +7,12 @@ import com.kartingtracker.data.Session
 import com.kartingtracker.data.Track
 import com.kartingtracker.domain.DetectedCorner
 
+enum class AnalysisMode {
+    COMPARISON,
+    TIME_LOSS,
+    COACHING
+}
+
 data class SessionUiState(
     val isRecording: Boolean = false,
     val isPreparing: Boolean = false,
@@ -27,7 +33,30 @@ data class SessionUiState(
     val canLoadLastSession: Boolean = false,
     val recordingTimerLabel: String = "00:00",
     val statusLabel: String = "Idle",
-    val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState()
+    val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState(),
+    val compareSelection: CompareSelectionUiState = CompareSelectionUiState()
+)
+
+data class CompareSelectionUiState(
+    val sessionOptions: List<SessionOptionUiState> = emptyList(),
+    val selectedSessionAId: Long? = null,
+    val selectedSessionBId: Long? = null,
+    val lapOptionsA: List<LapOptionUiState> = emptyList(),
+    val lapOptionsB: List<LapOptionUiState> = emptyList(),
+    val selectedLapAIndex: Int = 0,
+    val selectedLapBIndex: Int = 0,
+    val emptyStateMessage: String = "",
+    val canOpenComparison: Boolean = false
+)
+
+data class SessionOptionUiState(
+    val id: Long,
+    val label: String
+)
+
+data class LapOptionUiState(
+    val index: Int,
+    val label: String
 )
 
 data class LastSessionSummaryUiState(
@@ -44,7 +73,8 @@ data class LastSessionSummaryUiState(
 )
 
 data class ComparisonUiState(
-    val lapLabels: List<String> = emptyList(),
+    val lapLabelsA: List<String> = emptyList(),
+    val lapLabelsB: List<String> = emptyList(),
     val selectedLapAIndex: Int = 0,
     val selectedLapBIndex: Int = 0,
     val lapATimeLabel: String = "",
@@ -99,7 +129,6 @@ data class ProjectedCurveUiState(
     val intensity: Float,
     val deltaSeconds: Float = 0f
 )
-
 
 data class TrackInsightMarker(
     val x: Float,

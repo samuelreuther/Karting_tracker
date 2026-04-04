@@ -183,9 +183,7 @@ class TrackMapManager(
     }
 
     private fun sanitizeTrackName(trackName: String): String {
-        return trackName.trim()
-            .ifBlank { "track" }
-            .replace(Regex("[^A-Za-z0-9_-]+"), "_")
+        return FileNameNormalizer.normalize(trackName)
     }
 
     private fun PersistedTrackPointAsset.toPointF(): PointF {

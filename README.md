@@ -611,3 +611,12 @@ Recommended doc-update checklist for each feature:
 ## Build Status In This Workspace
 
 Build and tests depend on network access for downloading the configured Gradle wrapper (`8.7`) and dependencies.
+
+## UX updates (2026-04-04)
+
+- Start page is now more compact: shorter recording labels (`Start recording`, `Stop recording`) and removed filler helper text.
+- Track editing was moved into the track selector row as a secondary management action.
+- Deep analysis entry now exposes track-aware selectors for `Session A / Lap A / Session B / Lap B` before navigation.
+- `Time-loss analysis` and `Coaching insights` now open the analysis screen in explicit modes with matching toolbar titles.
+- Session browser is renamed to **Session library** for clearer purpose and still hosts backup import/export.
+- Backup filename normalization now transliterates umlauts (`Lörrach` -> `Loerrach`) and excludes seeded demo tracks from normal exports.

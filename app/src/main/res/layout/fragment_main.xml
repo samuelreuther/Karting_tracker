@@ -65,18 +65,10 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/heroRecommendation"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:textColor="@color/karting_text_secondary" />
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <TextView
@@ -125,9 +117,9 @@
                     android:layout_height="46dp"
                     android:layout_weight="1"
                     android:minWidth="0dp"
-                    android:text="@string/start_session_recording"
+                    android:text="@string/start_recording_compact"
                     android:textAllCaps="false"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/stopButton"
@@ -137,18 +129,10 @@
                     android:layout_marginStart="8dp"
                     android:layout_weight="1"
                     android:minWidth="0dp"
-                    android:text="@string/stop_session_recording"
+                    android:text="@string/stop_recording_compact"
                     android:textAllCaps="false"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
             </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/recording_controls_hint"
-                android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
-                android:textColor="@color/karting_text_tertiary" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
@@ -196,6 +180,15 @@
                     android:minHeight="0dp"
                     android:text="@string/add_track"
                     android:textColor="@color/karting_accent_blue" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/editTrackButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minHeight="0dp"
+                    android:text="@string/edit_track"
+                    android:textColor="@color/karting_text_secondary" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
@@ -331,7 +324,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/tap_for_details"
+                android:text="@string/deep_analysis_title"
                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                 android:textColor="@color/karting_text_tertiary" />
 
@@ -341,22 +334,38 @@
                 android:layout_marginTop="8dp"
                 android:orientation="horizontal">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/openLastSessionButton"
-                    style="@style/KartingButton.Quick"
+                <Spinner
+                    android:id="@+id/sessionASpinner"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_weight="1"
-                    android:text="@string/open_last_session" />
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/openSessionsButton"
-                    style="@style/KartingButton.Quick"
+                <Spinner
+                    android:id="@+id/lapASpinnerInline"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="@string/open_session_list" />
+                    android:layout_weight="1" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Spinner
+                    android:id="@+id/sessionBSpinner"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <Spinner
+                    android:id="@+id/lapBSpinnerInline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1" />
             </LinearLayout>
 
             <LinearLayout
@@ -366,7 +375,7 @@
                 android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/openComparisonButton"
+                    android:id="@+id/detailsButton"
                     style="@style/KartingButton.Quick"
                     android:layout_width="0dp"
                     android:layout_height="40dp"
@@ -390,7 +399,7 @@
                 android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/detailsButton"
+                    android:id="@+id/openTimeLossButton"
                     style="@style/KartingButton.Quick"
                     android:layout_width="0dp"
                     android:layout_height="40dp"
@@ -398,13 +407,13 @@
                     android:text="@string/open_time_loss_analysis" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/editTrackButton"
+                    android:id="@+id/openSessionsButton"
                     style="@style/KartingButton.Quick"
                     android:layout_width="0dp"
                     android:layout_height="40dp"
                     android:layout_marginStart="8dp"
                     android:layout_weight="1"
-                    android:text="@string/edit_track" />
+                    android:text="@string/open_session_library" />
             </LinearLayout>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>

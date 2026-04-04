@@ -181,6 +181,7 @@ class SessionViewModel(
             trackProfileSummary = formatTrackProfileSummary(trackProfile),
             canLoadLastSession = storedSessions.isNotEmpty(),
             lastSessionSummary = buildLastSessionSummary(currentTrackName, storedSessions),
+            compareSelection = buildCompareSelectionUiState(currentTrackName, storedSessions),
             recordingTimerLabel = formatDurationLabel(elapsedMs),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
@@ -228,130 +229,120 @@ class SessionViewModel(
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
 
-    private data class ComparisonInputs(
-        val laps: List<Lap>,
-        val idealLap: IdealLap?,
-        val currentSession: Session?,
-        val selectedA: Int,
-        val selectedB: Int,
-        val tracks: List<Track>,
-        val currentTrackName: String,
-        val currentTrackLayout: TrackLayout?
-    )
+    private val selectedCompareSessionAId = MutableStateFlow<Long?>(null)
+    private val selectedCompareSessionBId = MutableStateFlow<Long?>(null)
+    private val analysisMode = MutableStateFlow(AnalysisMode.COMPARISON)
 
-    val comparisonUiState: StateFlow<ComparisonUiState> = combine(
-        combine(
-            laps,
-            idealLap,
-            sessionRepository.currentSession,
-            selectedLapAIndex
-        ) { laps, idealLap, currentSession, selectedA ->
-            ComparisonInputs(
-                laps = laps,
-                idealLap = idealLap,
-                currentSession = currentSession,
-                selectedA = selectedA,
-                selectedB = 0,
-                tracks = emptyList(),
-                currentTrackName = "",
-                currentTrackLayout = null
-            )
-        },
-        combine(
-            selectedLapBIndex,
-            sessionRepository.availableTracks,
-            sessionRepository.currentTrackName,
-            sessionRepository.currentTrackLayout
-        ) { selectedB, tracks, currentTrackName, currentTrackLayout ->
-            ComparisonInputs(
-                laps = emptyList(),
-                idealLap = null,
-                currentSession = null,
-                selectedA = 0,
-                selectedB = selectedB,
-                tracks = tracks,
-                currentTrackName = currentTrackName,
-                currentTrackLayout = currentTrackLayout
+    val selectedAnalysisMode: StateFlow<AnalysisMode> = analysisMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalysisMode.COMPARISON)
+
+    val compareSelectionUiState: StateFlow<CompareSelectionUiState> = combine(
+        sessionRepository.storedSessions,
+        sessionRepository.currentTrackName,
+        selectedCompareSessionAId,
+        selectedCompareSessionBId,
+        selectedLapAIndex,
+        selectedLapBIndex
+    ) { storedSessions, trackName, sessionAId, sessionBId, lapAIndex, lapBIndex ->
+        val trackSessions = storedSessions
+            .filter { it.trackName.equals(trackName, ignoreCase = true) }
+            .sortedByDescending { it.endTimeEpochMs }
+
+        if (trackName.isBlank()) {
+            return@combine CompareSelectionUiState(emptyStateMessage = "Select a track to prepare lap comparison.")
+        }
+        if (trackSessions.isEmpty()) {
+            return@combine CompareSelectionUiState(emptyStateMessage = "No saved sessions yet for $trackName. Record and stop one session first.")
+        }
+
+        val sessionOptions = trackSessions.mapIndexed { index, session ->
+            SessionOptionUiState(
+                id = session.id,
+                label = "Session ${index + 1} · ${formatLapTime(session.laps.minOfOrNull { it.lapTimeMs } ?: 0L)} best"
             )
         }
-    ) { primary, secondary ->
-        val laps = primary.laps
-        val idealLap = primary.idealLap
-        val currentSession = primary.currentSession
-        val selectedA = primary.selectedA
-        val selectedB = secondary.selectedB
-        val tracks = secondary.tracks
-        val currentTrackName = secondary.currentTrackName
-        val currentTrackLayout = secondary.currentTrackLayout
+        val resolvedSessionA = trackSessions.firstOrNull { it.id == sessionAId } ?: trackSessions.first()
+        val resolvedSessionB = trackSessions.firstOrNull { it.id == sessionBId } ?: trackSessions.first()
+
+        val validLapsA = resolvedSessionA.laps.mapIndexed { index, lap -> LapOptionUiState(index, formatLapLabel(index, lap)) }
+        val validLapsB = resolvedSessionB.laps.mapIndexed { index, lap -> LapOptionUiState(index, formatLapLabel(index, lap)) }
+        val safeLapA = lapAIndex.coerceIn(0, (validLapsA.lastIndex).coerceAtLeast(0))
+        val safeLapB = lapBIndex.coerceIn(0, (validLapsB.lastIndex).coerceAtLeast(0))
+
+        val message = when {
+            validLapsA.isEmpty() && validLapsB.isEmpty() -> "Sessions exist for $trackName but none contain processed laps yet. Reprocess or record a complete run."
+            validLapsA.isEmpty() -> "Session A has no comparable laps yet. Choose another session."
+            validLapsB.isEmpty() -> "Session B has no comparable laps yet. Choose another session."
+            else -> ""
+        }
+
+        CompareSelectionUiState(
+            sessionOptions = sessionOptions,
+            selectedSessionAId = resolvedSessionA.id,
+            selectedSessionBId = resolvedSessionB.id,
+            lapOptionsA = validLapsA,
+            lapOptionsB = validLapsB,
+            selectedLapAIndex = safeLapA,
+            selectedLapBIndex = safeLapB,
+            emptyStateMessage = message,
+            canOpenComparison = message.isBlank() && validLapsA.isNotEmpty() && validLapsB.isNotEmpty()
+        )
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CompareSelectionUiState())
+
+    val comparisonUiState: StateFlow<ComparisonUiState> = combine(
+        compareSelectionUiState,
+        sessionRepository.storedSessions,
+        idealLap,
+        sessionRepository.availableTracks,
+        sessionRepository.currentTrackName,
+        sessionRepository.currentTrackLayout
+    ) { selection, storedSessions, idealLap, tracks, currentTrackName, currentTrackLayout ->
+        val trackSessions = storedSessions.filter { it.trackName.equals(currentTrackName, ignoreCase = true) }
+        val sessionA = trackSessions.firstOrNull { it.id == selection.selectedSessionAId }
+        val sessionB = trackSessions.firstOrNull { it.id == selection.selectedSessionBId }
+        val lapA = sessionA?.laps?.getOrNull(selection.selectedLapAIndex)
+        val lapB = sessionB?.laps?.getOrNull(selection.selectedLapBIndex)
+        val contextSession = sessionA ?: sessionB
         val currentTrack = tracks.firstOrNull { track -> track.name.equals(currentTrackName, ignoreCase = true) }
-        val mapImagePath = currentTrack?.mapImagePath ?: currentTrackLayout?.imagePath?.takeIf { path -> path.isNotBlank() }
-        val savedCurves = currentTrackName
-            .takeIf { trackName -> trackName.isNotBlank() }
-            ?.let(sessionRepository::loadTrackMapMetadata)
-            ?.curves
-            .orEmpty()
-        if (laps.isEmpty()) {
+        val mapImagePath = currentTrack?.mapImagePath ?: currentTrackLayout?.imagePath?.takeIf { it.isNotBlank() }
+        val savedCurves = currentTrackName.takeIf { it.isNotBlank() }?.let(sessionRepository::loadTrackMapMetadata)?.curves.orEmpty()
+
+        if (lapA == null || lapB == null) {
             return@combine ComparisonUiState(
-                insights = currentSession?.insights.orEmpty(),
-                theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
-                topTimeLossLines = createTopTimeLossLines(currentSession),
-                cornerCoachingLines = createCornerCoachingLines(currentSession),
+                lapLabelsA = selection.lapOptionsA.map { it.label },
+                lapLabelsB = selection.lapOptionsB.map { it.label },
+                selectedLapAIndex = selection.selectedLapAIndex,
+                selectedLapBIndex = selection.selectedLapBIndex,
+                summaryLabel = selection.emptyStateMessage.ifBlank { "Pick sessions and laps on the start page to compare." },
+                insights = contextSession?.insights.orEmpty(),
+                theoreticalBestLabel = createTheoreticalBestLabel(contextSession),
+                topTimeLossLines = createTopTimeLossLines(contextSession),
+                cornerCoachingLines = createCornerCoachingLines(contextSession),
                 mapImagePath = mapImagePath,
                 fallbackCurveLines = buildFallbackCurveLines(savedCurves, includePosition = true)
             )
         }
 
-        val safeA = selectedA.coerceIn(0, laps.lastIndex)
-        val safeB = selectedB.coerceIn(0, laps.lastIndex)
-        val lapA = laps[safeA]
-        val lapB = laps[safeB]
-        val referenceLap = minOf(lapA, lapB, compareBy<Lap> { it.lapTimeMs })
         val normalizedA = LapNormalizer.normalize(lapA)
         val normalizedB = LapNormalizer.normalize(lapB)
         val timeLossEntries = createTimeLossEntries(lapA, lapB)
+        val referenceLap = minOf(lapA, lapB, compareBy<Lap> { it.lapTimeMs })
         val detectedCurves = curveDetector.detectCurves(referenceLap).ifEmpty { savedCurves }
-        val autoDetectedStart = autoStartDetector.detectStart(currentSession?.laps.orEmpty())
-        val projectedCurves = if (mapImagePath.isNullOrBlank()) {
-            emptyList()
-        } else {
-            mapOverlayProjector.projectCurves(
-                track = currentTrack,
-                trackLayout = currentTrackLayout,
-                referenceLap = referenceLap,
-                curves = detectedCurves,
-                autoDetectedStart = autoDetectedStart
-            ).map { projectedCurve ->
-                ProjectedCurveUiState(
-                    label = projectedCurve.label,
-                    x = projectedCurve.position.x,
-                    y = projectedCurve.position.y,
-                    intensity = projectedCurve.intensity,
-                    deltaSeconds = sampleTimeLossAtPercent(timeLossEntries, projectedCurve.peakPercent)
-                )
-            }
+        val autoDetectedStart = autoStartDetector.detectStart(contextSession?.laps.orEmpty())
+        val projectedCurves = if (mapImagePath.isNullOrBlank()) emptyList() else {
+            mapOverlayProjector.projectCurves(currentTrack, currentTrackLayout, referenceLap, detectedCurves, autoDetectedStart)
+                .map { projectedCurve ->
+                    ProjectedCurveUiState(
+                        label = projectedCurve.label,
+                        x = projectedCurve.position.x,
+                        y = projectedCurve.position.y,
+                        intensity = projectedCurve.intensity,
+                        deltaSeconds = sampleTimeLossAtPercent(timeLossEntries, projectedCurve.peakPercent)
+                    )
+                }
         }
-        val projectedInsights = if (mapImagePath.isNullOrBlank()) {
-            emptyList()
-        } else {
-            val detectedCorners = referenceLap.let(autoCornerDetector::detectCorners)
-            val projected = mapOverlayProjector.projectInsights(
-                trackLayout = currentTrackLayout,
-                detectedCorners = detectedCorners,
-                segmentMarkers = currentSession?.segmentMarkers.orEmpty()
-            )
-            projected.mapNotNull { marker ->
-                val insight = currentSession?.coachingInsights?.firstOrNull { it.segmentIndex == marker.segmentIndex }
-                    ?: currentSession?.coachingInsights?.firstOrNull()
-                    ?: return@mapNotNull null
-                TrackInsightMarker(
-                    x = marker.x,
-                    y = marker.y,
-                    severity = insight.severity,
-                    label = insight.cornerName ?: "S${insight.segmentIndex}",
-                    insight = insight
-                )
-            }
-        }
+
         val deltaMs = lapA.lapTimeMs - lapB.lapTimeMs
         val fasterLabel = when {
             deltaMs == 0L -> "Both laps have the same lap time."
@@ -360,25 +351,10 @@ class SessionViewModel(
         }
 
         ComparisonUiState(
-            lapLabels = laps.mapIndexed { index, lap ->
-                buildString {
-                    append("Lap ${index + 1} - ${formatLapTime(lap.lapTimeMs)}")
-                    if (lap.isOutlap) {
-                        append(" (Outlap)")
-                    }
-                    if (lap.isInlap) {
-                        append(" (Inlap)")
-                    }
-                    if (lap.isInterrupted) {
-                        append(" (Interrupted)")
-                    }
-                    if (lap.isDisturbed) {
-                        append(" (Disturbed)")
-                    }
-                }
-            },
-            selectedLapAIndex = safeA,
-            selectedLapBIndex = safeB,
+            lapLabelsA = selection.lapOptionsA.map { it.label },
+            lapLabelsB = selection.lapOptionsB.map { it.label },
+            selectedLapAIndex = selection.selectedLapAIndex,
+            selectedLapBIndex = selection.selectedLapBIndex,
             lapATimeLabel = "Lap A: ${formatLapTime(lapA.lapTimeMs)}",
             lapBTimeLabel = "Lap B: ${formatLapTime(lapB.lapTimeMs)}",
             longitudinalLapA = normalizedA.longitudinalEntries,
@@ -390,58 +366,18 @@ class SessionViewModel(
             lateralCornerMarkersA = normalizedA.corneringMarkerEntries,
             lateralCornerMarkersB = normalizedB.corneringMarkerEntries,
             timeLossEntries = timeLossEntries,
-            segmentMarkerEntries = createSegmentMarkerEntries(currentSession),
+            segmentMarkerEntries = createSegmentMarkerEntries(contextSession),
             sectorComparisonLines = createSectorComparisonLines(lapA, lapB),
-            idealLapLabel = idealLap?.let { ideal -> "Ideal Lap: ${formatLapTime(ideal.totalTimeMs)}" }.orEmpty(),
-            theoreticalBestLabel = createTheoreticalBestLabel(currentSession),
+            idealLapLabel = idealLap?.let { "Ideal Lap: ${formatLapTime(it.totalTimeMs)}" }.orEmpty(),
+            theoreticalBestLabel = createTheoreticalBestLabel(contextSession),
             idealLapSectorLines = createIdealLapSectorLines(idealLap),
-            insights = currentSession?.insights.orEmpty(),
-            topTimeLossLines = createTopTimeLossLines(currentSession),
-            cornerCoachingLines = createCornerCoachingLines(currentSession),
+            insights = contextSession?.insights.orEmpty(),
+            topTimeLossLines = createTopTimeLossLines(contextSession),
+            cornerCoachingLines = createCornerCoachingLines(contextSession),
             mapImagePath = mapImagePath,
             projectedCurves = projectedCurves,
-            trackInsightMarkers = projectedInsights,
-            fallbackCurveLines = buildFallbackCurveLines(
-                curves = detectedCurves,
-                includePosition = mapImagePath.isNullOrBlank()
-            ),
-            summaryLabel = buildString {
-                if (lapA.isOutlap || lapB.isOutlap) {
-                    append("Outlap selected. Comparison may be less stable. ")
-                }
-                if (lapA.isInlap || lapB.isInlap) {
-                    append("Inlap selected. Comparison may be less stable. ")
-                }
-                if (lapA.isInterrupted || lapB.isInterrupted) {
-                    append("Interrupted segment selected. Comparison is likely not meaningful. ")
-                }
-                if (lapA.isDisturbed || lapB.isDisturbed) {
-                    append("Disturbed lap selected. Time loss and insights may be less reliable. ")
-                }
-                append(fasterLabel)
-                append(" ")
-                append("Braking peaks: ${lapA.brakingPeakIndices.size} vs ${lapB.brakingPeakIndices.size}. ")
-                append("Cornering peaks: ${lapA.corneringPeakIndices.size} vs ${lapB.corneringPeakIndices.size}. ")
-                idealLap?.let { ideal ->
-                    append("Ideal lap reference: ${formatLapTime(ideal.totalTimeMs)}. ")
-                }
-                currentSession?.theoreticalBestLapTimeMs?.let { theoreticalBestLapTimeMs ->
-                    val bestLapTimeMs = currentSession.laps.minOfOrNull { lap -> lap.lapTimeMs } ?: return@let
-                    val gapMs = bestLapTimeMs - theoreticalBestLapTimeMs
-                    if (gapMs > 0L) {
-                        append("Theoretical best is ${formatLapTime(gapMs)} quicker than the current best lap. ")
-                    }
-                }
-                timeLossEntries.lastOrNull()?.let { finalDelta ->
-                    val absoluteDelta = abs(finalDelta.y)
-                    val deltaLeader = when {
-                        absoluteDelta < 0.01f -> "Estimated time loss is effectively even."
-                        finalDelta.y > 0f -> "Estimated final time loss: Lap A +${"%.2f".format(absoluteDelta)} s."
-                        else -> "Estimated final time loss: Lap A ${"%.2f".format(finalDelta.y)} s."
-                    }
-                    append(deltaLeader)
-                }
-            }
+            fallbackCurveLines = buildFallbackCurveLines(detectedCurves, includePosition = mapImagePath.isNullOrBlank()),
+            summaryLabel = fasterLabel
         )
     }
         .flowOn(Dispatchers.Default)
@@ -505,6 +441,24 @@ class SessionViewModel(
         resetLapSelection(session)
         selectedSessionFilter.value = session.trackName
         return true
+    }
+
+    fun setAnalysisMode(mode: AnalysisMode) {
+        analysisMode.value = mode
+    }
+
+    fun selectCompareSessionA(sessionId: Long) {
+        selectedCompareSessionAId.value = sessionId
+        selectedLapAIndex.value = 0
+    }
+
+    fun selectCompareSessionB(sessionId: Long) {
+        selectedCompareSessionBId.value = sessionId
+        selectedLapBIndex.value = 0
+    }
+
+    fun openSelectedComparisonContext(): Boolean {
+        return compareSelectionUiState.value.canOpenComparison
     }
 
     fun loadSession(session: Session) {
@@ -721,6 +675,37 @@ class SessionViewModel(
                 selectedLapBIndex.value = if (session.laps.size > 1) 1 else 0
             }
         }
+    }
+
+
+    private fun formatLapLabel(index: Int, lap: Lap): String {
+        return buildString {
+            append("Lap ${index + 1} · ${formatLapTime(lap.lapTimeMs)}")
+            if (lap.isInterrupted) append(" (Interrupted)")
+            if (lap.isDisturbed) append(" (Disturbed)")
+        }
+    }
+
+    private fun buildCompareSelectionUiState(trackName: String, storedSessions: List<Session>): CompareSelectionUiState {
+        val trackSessions = storedSessions.filter { it.trackName.equals(trackName, ignoreCase = true) }
+        if (trackName.isBlank()) return CompareSelectionUiState(emptyStateMessage = "Select a track to prepare lap comparison.")
+        if (trackSessions.isEmpty()) return CompareSelectionUiState(emptyStateMessage = "No saved sessions yet for $trackName.")
+        val sessionA = trackSessions.firstOrNull { it.id == selectedCompareSessionAId.value } ?: trackSessions.first()
+        val sessionB = trackSessions.firstOrNull { it.id == selectedCompareSessionBId.value } ?: trackSessions.first()
+        val lapsA = sessionA.laps.mapIndexed { idx, lap -> LapOptionUiState(idx, formatLapLabel(idx, lap)) }
+        val lapsB = sessionB.laps.mapIndexed { idx, lap -> LapOptionUiState(idx, formatLapLabel(idx, lap)) }
+        val message = if (lapsA.isEmpty() || lapsB.isEmpty()) "Saved sessions exist, but no valid processed laps are available yet." else ""
+        return CompareSelectionUiState(
+            sessionOptions = trackSessions.mapIndexed { index, session -> SessionOptionUiState(session.id, "Session ${index + 1}") },
+            selectedSessionAId = sessionA.id,
+            selectedSessionBId = sessionB.id,
+            lapOptionsA = lapsA,
+            lapOptionsB = lapsB,
+            selectedLapAIndex = selectedLapAIndex.value.coerceIn(0, (lapsA.lastIndex).coerceAtLeast(0)),
+            selectedLapBIndex = selectedLapBIndex.value.coerceIn(0, (lapsB.lastIndex).coerceAtLeast(0)),
+            emptyStateMessage = message,
+            canOpenComparison = message.isBlank()
+        )
     }
 
     private fun formatTrackProfileSummary(trackProfile: TrackProfile?): String {

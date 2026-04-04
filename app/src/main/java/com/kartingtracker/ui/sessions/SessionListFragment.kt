@@ -107,6 +107,11 @@ class SessionListFragment : Fragment() {
                     adapter.submitList(state.sessions)
                     binding.emptyStateLabel.visibility = if (state.sessions.isEmpty()) View.VISIBLE else View.GONE
                     binding.sessionRecyclerView.visibility = if (state.sessions.isEmpty()) View.GONE else View.VISIBLE
+                    binding.emptyStateLabel.text = if (state.selectedFilter == SessionViewModel.ALL_TRACKS_FILTER) {
+                        getString(R.string.no_saved_sessions)
+                    } else {
+                        getString(R.string.no_saved_sessions_for_track, state.selectedFilter)
+                    }
                 }
             }
         }

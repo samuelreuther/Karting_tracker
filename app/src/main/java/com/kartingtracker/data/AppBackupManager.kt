@@ -51,10 +51,16 @@ class AppBackupManager(
                         sessionsDir,
                         zipOutputStream,
                         "$exportRootName/files/sessions"
-                    ) { file -> sessionValidation.exportableSessionNames.contains(file.name) }
-                    addDirectoryToZip(File(appContext.filesDir, "track_layouts"), zipOutputStream, "$exportRootName/files/track_layouts")
-                    addDirectoryToZip(File(appContext.filesDir, "track_maps"), zipOutputStream, "$exportRootName/files/track_maps")
-                    addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles")
+                    ) { file -> sessionValidation.exportableSessionNames.contains(file.name) && isExportableUserData(file.name) }
+                    addDirectoryToZip(File(appContext.filesDir, "track_layouts"), zipOutputStream, "$exportRootName/files/track_layouts") { file ->
+                        isExportableUserData(file.name)
+                    }
+                    addDirectoryToZip(File(appContext.filesDir, "track_maps"), zipOutputStream, "$exportRootName/files/track_maps") { file ->
+                        isExportableUserData(file.path)
+                    }
+                    addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles") { file ->
+                        isExportableUserData(file.name)
+                    }
                     addDirectoryToZip(prefsDirectory, zipOutputStream, "$exportRootName/shared_prefs")
                 }
                 true
@@ -154,6 +160,16 @@ class AppBackupManager(
     companion object {
         private const val TAG = "AppBackupManager"
         private const val BACKUP_FORMAT_VERSION = 1
+        private val excludedTrackTokens = listOf(
+            FileNameNormalizer.normalize("Test Track"),
+            FileNameNormalizer.normalize("Demo Indoor Track"),
+            "Test_Track",
+            "Demo_Indoor_Track"
+        )
+    }
+
+    private fun isExportableUserData(fileName: String): Boolean {
+        return excludedTrackTokens.none { token -> fileName.contains(token, ignoreCase = true) }
     }
 
     private fun countFiles(directory: File): Int {
