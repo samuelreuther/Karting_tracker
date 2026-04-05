@@ -237,14 +237,34 @@ class SessionViewModel(
     val selectedAnalysisMode: StateFlow<AnalysisMode> = analysisMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalysisMode.COMPARISON)
 
+    private data class CompareSelectionInputs(
+        val sessionAId: Long?,
+        val sessionBId: Long?,
+        val lapAIndex: Int,
+        val lapBIndex: Int
+    )
+
     val compareSelectionUiState: StateFlow<CompareSelectionUiState> = combine(
         sessionRepository.storedSessions,
         sessionRepository.currentTrackName,
-        selectedCompareSessionAId,
-        selectedCompareSessionBId,
-        selectedLapAIndex,
-        selectedLapBIndex
-    ) { storedSessions, trackName, sessionAId, sessionBId, lapAIndex, lapBIndex ->
+        combine(
+            selectedCompareSessionAId,
+            selectedCompareSessionBId,
+            selectedLapAIndex,
+            selectedLapBIndex
+        ) { sessionAId, sessionBId, lapAIndex, lapBIndex ->
+            CompareSelectionInputs(
+                sessionAId = sessionAId,
+                sessionBId = sessionBId,
+                lapAIndex = lapAIndex,
+                lapBIndex = lapBIndex
+            )
+        }
+    ) { storedSessions, trackName, inputs ->
+        val sessionAId = inputs.sessionAId
+        val sessionBId = inputs.sessionBId
+        val lapAIndex = inputs.lapAIndex
+        val lapBIndex = inputs.lapBIndex
         val trackSessions = storedSessions
             .filter { it.trackName.equals(trackName, ignoreCase = true) }
             .sortedByDescending { it.endTimeEpochMs }
@@ -291,14 +311,31 @@ class SessionViewModel(
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CompareSelectionUiState())
 
+    private data class ComparisonTrackContext(
+        val tracks: List<Track>,
+        val currentTrackName: String,
+        val currentTrackLayout: TrackLayout?
+    )
+
     val comparisonUiState: StateFlow<ComparisonUiState> = combine(
         compareSelectionUiState,
         sessionRepository.storedSessions,
         idealLap,
-        sessionRepository.availableTracks,
-        sessionRepository.currentTrackName,
-        sessionRepository.currentTrackLayout
-    ) { selection, storedSessions, idealLap, tracks, currentTrackName, currentTrackLayout ->
+        combine(
+            sessionRepository.availableTracks,
+            sessionRepository.currentTrackName,
+            sessionRepository.currentTrackLayout
+        ) { tracks, currentTrackName, currentTrackLayout ->
+            ComparisonTrackContext(
+                tracks = tracks,
+                currentTrackName = currentTrackName,
+                currentTrackLayout = currentTrackLayout
+            )
+        }
+    ) { selection, storedSessions, idealLap, trackContext ->
+        val tracks = trackContext.tracks
+        val currentTrackName = trackContext.currentTrackName
+        val currentTrackLayout = trackContext.currentTrackLayout
         val trackSessions = storedSessions.filter { it.trackName.equals(currentTrackName, ignoreCase = true) }
         val sessionA = trackSessions.firstOrNull { it.id == selection.selectedSessionAId }
         val sessionB = trackSessions.firstOrNull { it.id == selection.selectedSessionBId }
