@@ -8,6 +8,7 @@ import com.kartingtracker.domain.LapDetector
 import com.kartingtracker.domain.PeakDetector
 import com.kartingtracker.domain.SectorDetector
 import com.kartingtracker.domain.SessionQualityEvaluator
+import com.kartingtracker.domain.SessionValidityEvaluator
 import com.kartingtracker.domain.TrackLayoutMapper
 import com.kartingtracker.domain.corner.CornerCoachingAnalyzer
 import kotlinx.coroutines.CoroutineScope
@@ -817,22 +818,41 @@ class SessionRepository(
                     sectorDetectionFallbackCount = laps.count { it.sectorBoundaries.isEmpty() }
                 )
             ).withQuality()
-            val fallbackSingleLap = processedSession.laps.size == 1 &&
-                (processedSession.laps.first().confidenceScore < 0.55f || detectionResult.debugInfo.fallbackToSingleLap)
-            val warnings = if (fallbackSingleLap) {
-                listOf(
-                    "Session could not be segmented reliably.",
-                    "Only fallback single-segment solution was stable."
+            val validity = SessionValidityEvaluator.evaluate(
+                session = processedSession,
+                laps = laps,
+                debugInfo = processedSession.lapDetectionDebugInfo ?: detectionResult.debugInfo
+            )
+            val warnings = buildList {
+                if (validity.validity == AnalysisValidity.INVALID_NON_DRIVING) {
+                    add(validity.reason ?: "This recording does not look like a valid karting session.")
+                }
+                addAll(validity.diagnostics)
+            }
+
+            val validityDecoratedSession = processedSession.copy(
+                analysisWarnings = warnings,
+                analysisValidity = validity.validity,
+                invalidReason = validity.reason,
+                invalidDiagnostics = validity.diagnostics
+            )
+            if (validity.validity == AnalysisValidity.INVALID_NON_DRIVING) {
+                return validityDecoratedSession.copy(
+                    insights = listOf("Recording retained, but analysis is blocked because the session looks non-driving."),
+                    coachingInsights = emptyList(),
+                    theoreticalBestLapTimeMs = null,
+                    topTimeLossSegments = emptyList(),
+                    segmentMarkers = emptyList(),
+                    cornerCoachingInsights = emptyList(),
+                    cornerCoachingSummary = null
                 )
-            } else {
-                emptyList()
             }
 
             val telemetryAnalysis = measureOperation("DrivingCoachAnalyzer.analyzeSession") {
                 drivingCoachAnalyzer.analyzeSession(
-                    session = processedSession,
+                    session = validityDecoratedSession,
                     _trackProfile = trackProfile,
-                    trackLayout = loadTrackLayout(processedSession.trackName)
+                    trackLayout = loadTrackLayout(validityDecoratedSession.trackName)
                 )
             }
             val analyzedSession = processedSession.copy(
@@ -841,7 +861,10 @@ class SessionRepository(
                 theoreticalBestLapTimeMs = telemetryAnalysis.theoreticalBestLapTimeMs,
                 topTimeLossSegments = telemetryAnalysis.topTimeLossSegments,
                 segmentMarkers = telemetryAnalysis.segmentMarkers,
-                analysisWarnings = warnings
+                analysisWarnings = warnings,
+                analysisValidity = validity.validity,
+                invalidReason = validity.reason,
+                invalidDiagnostics = validity.diagnostics
             )
             val cornerCoachingAnalysis = measureOperation("CornerCoachingAnalyzer.analyze") {
                 cornerCoachingAnalyzer.analyze(

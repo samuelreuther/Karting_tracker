@@ -49,7 +49,7 @@
                 android:paddingTop="3dp"
                 android:paddingEnd="8dp"
                 android:paddingBottom="3dp"
-                android:text="LIVE"
+                android:text="✓ Selected"
                 android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                 android:textColor="@android:color/white"
                 android:textStyle="bold"

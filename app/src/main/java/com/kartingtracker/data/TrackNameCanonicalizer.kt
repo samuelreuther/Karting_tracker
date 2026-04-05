@@ -16,6 +16,7 @@ object TrackNameCanonicalizer {
                 "Loerrach VM Kart Racing",
                 "Lorrach VM Kart Racing",
                 "L_rrach VM Kart Racing",
+                "L_rrach_VM_Kart_Racing",
                 "Lörrach",
                 "Loerrach",
                 "Lorrach",
@@ -27,7 +28,8 @@ object TrackNameCanonicalizer {
             aliases = setOf(
                 "Rheinfelden Kartbahn",
                 "Rheinfelden Kart Bahn",
-                "Rheinfelden"
+                "Rheinfelden",
+                "Rheinfelden_Kartbahn"
             )
         )
     )

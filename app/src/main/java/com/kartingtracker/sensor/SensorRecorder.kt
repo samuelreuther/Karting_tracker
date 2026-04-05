@@ -238,6 +238,6 @@ class SensorRecorder(
     companion object {
         private const val TAG = "SensorRecorder"
         private const val LOG_TAG = "KartingTracker"
-        private const val PRE_START_COUNTDOWN_SECONDS = 5
+        private const val PRE_START_COUNTDOWN_SECONDS = 10
     }
 }

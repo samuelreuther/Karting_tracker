@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.kartingtracker.R
+import com.kartingtracker.data.TrackNameCanonicalizer
 import com.kartingtracker.data.Track
 import com.kartingtracker.databinding.ItemTrackTileBinding
 import java.io.File
@@ -40,7 +41,7 @@ class TrackTileAdapter(
 
         fun bind(track: Track, isSelected: Boolean) {
             binding.trackTileName.text = track.name
-            val imagePath = track.mapImagePath
+            val imagePath = resolveMapImagePath(track)
             val hasImage = !imagePath.isNullOrBlank() && File(imagePath).exists()
             if (hasImage) {
                 val bitmap = BitmapFactory.decodeFile(imagePath)
@@ -65,6 +66,22 @@ class TrackTileAdapter(
             binding.root.setOnClickListener {
                 onTrackSelected(track.name)
             }
+        }
+
+        private fun resolveMapImagePath(track: Track): String? {
+            val direct = track.mapImagePath
+            if (!direct.isNullOrBlank() && File(direct).exists()) {
+                return direct
+            }
+            val imageDirectory = File(binding.root.context.filesDir, "track_layouts/images")
+            if (!imageDirectory.exists()) {
+                return direct
+            }
+            return TrackNameCanonicalizer.possibleStorageKeys(track.name)
+                .flatMap { key -> listOf("png", "jpg", "jpeg", "webp").map { ext -> File(imageDirectory, "layout_${key}.$ext") } }
+                .firstOrNull(File::exists)
+                ?.absolutePath
+                ?: direct
         }
 
         private fun showFallback(trackName: String) {

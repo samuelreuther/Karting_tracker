@@ -24,7 +24,10 @@ data class Session(
     val processingFailureReason: String? = null,
     val isReprocessable: Boolean = true,
     val analysisWarnings: List<String> = emptyList(),
-    val lapDetectionDebugInfo: LapDetectionDebugInfo? = null
+    val lapDetectionDebugInfo: LapDetectionDebugInfo? = null,
+    val analysisValidity: AnalysisValidity = AnalysisValidity.VALID,
+    val invalidReason: String? = null,
+    val invalidDiagnostics: List<String> = emptyList()
 ) {
     companion object {
         const val DEFAULT_PROCESSING_VERSION = 1

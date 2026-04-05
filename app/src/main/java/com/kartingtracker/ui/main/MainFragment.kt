@@ -89,6 +89,10 @@ class MainFragment : Fragment() {
                     binding.recordingIndicator.isSelected = state.isRecording || state.isCalibrating || state.isPreparing || state.isStopping
                     binding.recordingIndicator.text = state.statusLabel
                     binding.recordingTimerLabel.text = state.recordingTimerLabel
+                    binding.stateHeadline.text = state.stateHeadline
+                    binding.stateDetail.text = state.stateDetail
+                    binding.preStartCountdownValue.visibility = if (state.showCountdown) View.VISIBLE else View.GONE
+                    binding.preStartCountdownValue.text = state.preStartCountdownLabel
                     binding.startButton.isEnabled = !state.isRecording &&
                         !state.isPreparing &&
                         !state.isCalibrating &&
@@ -99,8 +103,8 @@ class MainFragment : Fragment() {
                     val stopPrimary = state.isRecording || state.isPreparing || state.isCalibrating || state.isStopping
                     binding.startButton.alpha = if (stopPrimary) 0.55f else 1f
                     binding.stopButton.alpha = if (stopPrimary) 1f else 0.7f
-                    binding.startButton.text = getString(R.string.start_recording_compact)
-                    binding.stopButton.text = getString(R.string.stop_recording_compact)
+                    binding.startButton.text = if (state.isPreparing) getString(R.string.start_pending) else getString(R.string.start_recording_compact)
+                    binding.stopButton.text = if (stopPrimary) getString(R.string.stop_recording_now) else getString(R.string.stop_recording_compact)
                     binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && !state.isPreparing && !state.isStopping && state.hasValidSelectedTrack
                     binding.generateSeededButton.isEnabled =
                         BuildConfig.DEBUG &&
@@ -111,9 +115,9 @@ class MainFragment : Fragment() {
                             state.hasValidSelectedTrack
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
-                    binding.detailsButton.isEnabled = true
-                    binding.openInsightsButton.isEnabled = true
-                    binding.openTimeLossButton.isEnabled = true
+                    binding.detailsButton.isEnabled = state.canOpenAnalysis
+                    binding.openInsightsButton.isEnabled = state.canOpenAnalysis
+                    binding.openTimeLossButton.isEnabled = state.canOpenAnalysis
                     binding.openSessionsButton.isEnabled = true
                     binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
                         getString(R.string.no_track_selected)
@@ -135,6 +139,8 @@ class MainFragment : Fragment() {
                     } else {
                         getString(R.string.open_deep_analysis)
                     }
+                    binding.invalidSessionBanner.visibility = if (state.invalidSessionMessage.isBlank()) View.GONE else View.VISIBLE
+                    binding.invalidSessionBanner.text = state.invalidSessionMessage
                     updateComparisonSelection(state.compareSelection)
                     trackTileAdapter.submit(state.availableTracks, state.selectedTrackName)
                 }
