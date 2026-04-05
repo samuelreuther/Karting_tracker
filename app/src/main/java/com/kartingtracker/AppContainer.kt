@@ -4,7 +4,6 @@ import android.content.Context
 import com.kartingtracker.data.SessionCsvExporter
 import com.kartingtracker.data.SessionRepository
 import com.kartingtracker.data.SessionStorageManager
-import com.kartingtracker.data.SimulatedSessionGenerator
 import com.kartingtracker.data.AppBackupManager
 import com.kartingtracker.data.TrackLayoutManager
 import com.kartingtracker.data.TrackMapManager
@@ -37,14 +36,7 @@ class AppContainer(context: Context) {
     init {
         trackMapManager.seedBundledMaps(trackManager)
         trackLayoutManager.seedBundledTracks(trackManager)
-        if (BuildConfig.DEBUG) {
-            SimulatedSessionGenerator.seedDebugSessionIfNeeded(
-                context = context.applicationContext,
-                sessionStorageManager = sessionStorageManager,
-                trackManager = trackManager,
-                trackProfileManager = trackProfileManager
-            )
-        }
+        listOf("Test Track", "Demo Indoor Track", "sr test").forEach(trackManager::deleteTrack)
     }
 
     val sessionRepository = SessionRepository(

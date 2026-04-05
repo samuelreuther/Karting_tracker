@@ -35,6 +35,7 @@ class ComparisonFragment : Fragment() {
     private var mapBitmapJob: Job? = null
     private var currentMapPath: String? = null
     private var currentMapBitmap: Bitmap? = null
+    private var currentAnalysisMode: AnalysisMode = AnalysisMode.COMPARISON
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -90,6 +91,12 @@ class ComparisonFragment : Fragment() {
                     binding.comparisonContent.visibility =
                         if (state.lapLabelsA.isEmpty() || state.lapLabelsB.isEmpty()) View.GONE else View.VISIBLE
                     binding.summaryLabel.text = state.summaryLabel
+                    binding.emptyComparisonLabel.text = when {
+                        !state.isReliableForAnalysis -> listOf(state.reliabilityMessage, state.recommendedNextStep)
+                            .filter { it.isNotBlank() }
+                            .joinToString(separator = "\n\n")
+                        else -> getString(R.string.no_comparison_data)
+                    }
                     binding.lapATimeLabel.text = state.lapATimeLabel
                     binding.lapBTimeLabel.text = state.lapBTimeLabel
                     binding.idealLapLabel.text = state.idealLapLabel
@@ -109,6 +116,7 @@ class ComparisonFragment : Fragment() {
                     binding.cornerCoachingLabel.text = state.cornerCoachingLines.joinToString(separator = "\n")
                     binding.cornerCoachingTitle.visibility = if (state.cornerCoachingLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.cornerCoachingLabel.visibility = if (state.cornerCoachingLines.isEmpty()) View.GONE else View.VISIBLE
+                    applyAnalysisModeUi(currentAnalysisMode, state)
                     binding.trackMapTitle.visibility =
                         if (state.mapImagePath.isNullOrBlank() && state.fallbackCurveLines.isEmpty()) View.GONE else View.VISIBLE
                     binding.trackMapTitle.text = if (state.mapImagePath.isNullOrBlank()) {
@@ -157,11 +165,13 @@ class ComparisonFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sessionViewModel.selectedAnalysisMode.collect { mode ->
+                    currentAnalysisMode = mode
                     requireActivity().title = when (mode) {
                         AnalysisMode.COMPARISON -> getString(R.string.compare_laps)
                         AnalysisMode.TIME_LOSS -> getString(R.string.open_time_loss_analysis)
                         AnalysisMode.COACHING -> getString(R.string.open_coaching_insights)
                     }
+                    _binding?.let { applyAnalysisModeUi(mode, sessionViewModel.comparisonUiState.value) }
                 }
             }
         }
@@ -209,6 +219,29 @@ class ComparisonFragment : Fragment() {
             }
             currentMapBitmap = bitmap
             binding.trackMapOverlayView.render(bitmap = bitmap, curves = projectedCurves, insights = state.trackInsightMarkers)
+        }
+    }
+
+    private fun applyAnalysisModeUi(mode: AnalysisMode, state: com.kartingtracker.ui.ComparisonUiState) {
+        val showComparison = mode == AnalysisMode.COMPARISON
+        val showCoaching = mode == AnalysisMode.COACHING
+        val showTimeLoss = mode == AnalysisMode.TIME_LOSS
+        binding.longitudinalChart.visibility = if (showComparison || showCoaching) View.VISIBLE else View.GONE
+        binding.lateralChart.visibility = if (showComparison || showCoaching) View.VISIBLE else View.GONE
+        binding.deltaChart.visibility = if (showComparison || showTimeLoss) View.VISIBLE else View.GONE
+        binding.sectorComparisonLabel.visibility = if (showComparison && state.sectorComparisonLines.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.insightsTitle.text = when (mode) {
+            AnalysisMode.COMPARISON -> getString(R.string.insights_title)
+            AnalysisMode.COACHING -> getString(R.string.open_coaching_insights)
+            AnalysisMode.TIME_LOSS -> getString(R.string.open_time_loss_analysis)
+        }
+        binding.sessionInsightsTitle.visibility = if (showTimeLoss && state.topTimeLossLines.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.sessionInsightsLabel.visibility = if (showTimeLoss && state.topTimeLossLines.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.cornerCoachingTitle.visibility = if (showCoaching && state.cornerCoachingLines.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.cornerCoachingLabel.visibility = if (showCoaching && state.cornerCoachingLines.isNotEmpty()) View.VISIBLE else View.GONE
+        if (!state.isReliableForAnalysis) {
+            binding.comparisonContent.visibility = View.GONE
+            binding.emptyComparisonLabel.visibility = View.VISIBLE
         }
     }
 }

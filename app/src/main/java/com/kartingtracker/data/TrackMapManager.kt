@@ -40,10 +40,9 @@ class TrackMapManager(
     }
 
     fun getMapFile(trackName: String): File? {
-        val trackDirectory = resolveTrackDirectory(trackName, createIfMissing = false) ?: return null
-        return trackDirectory
-            .listFiles()
-            .orEmpty()
+        return resolveTrackDirectories(trackName)
+            .asSequence()
+            .flatMap { directory -> directory.listFiles().orEmpty().asSequence() }
             .firstOrNull { file ->
                 file.name.equals(DEFAULT_MAP_FILE_NAME, ignoreCase = true) ||
                     file.nameWithoutExtension.equals("map", ignoreCase = true)
@@ -70,15 +69,13 @@ class TrackMapManager(
     }
 
     fun loadMetadata(trackName: String): TrackMapMetadata? {
-        val metadataFile = File(resolveTrackDirectory(trackName, createIfMissing = false) ?: return null, METADATA_FILE_NAME)
-        if (!metadataFile.exists()) {
-            return null
-        }
-        return runCatching {
-            gson.fromJson(metadataFile.readText(), TrackMapMetadata::class.java)
-        }.onFailure { exception ->
-            Log.w(TAG, "Failed to load metadata for $trackName", exception)
-        }.getOrNull()
+        val metadataFile = resolveTrackDirectories(trackName)
+            .map { directory -> File(directory, METADATA_FILE_NAME) }
+            .firstOrNull(File::exists)
+            ?: return null
+        return runCatching { gson.fromJson(metadataFile.readText(), TrackMapMetadata::class.java) }
+            .onFailure { exception -> Log.w(TAG, "Failed to load metadata for $trackName", exception) }
+            .getOrNull()
     }
 
     fun deleteTrackMap(trackName: String): Boolean {
@@ -180,6 +177,12 @@ class TrackMapManager(
         } else {
             directory.apply { mkdirs() }
         }
+    }
+
+    private fun resolveTrackDirectories(trackName: String): List<File> {
+        return TrackNameCanonicalizer.possibleStorageKeys(trackName)
+            .map { key -> File(rootDirectory, key) }
+            .filter { it.exists() && it.isDirectory }
     }
 
     private fun sanitizeTrackName(trackName: String): String {

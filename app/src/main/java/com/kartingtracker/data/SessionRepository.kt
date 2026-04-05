@@ -311,6 +311,10 @@ class SessionRepository(
         return sessionStorageManager.getSessionFileSize(sessionId)
     }
 
+    fun getSessionFileSize(session: Session): Long {
+        return sessionStorageManager.getSessionFileSize(session)
+    }
+
     fun deleteSession(sessionId: Long): Boolean {
         val removedSession = _storedSessions.value.firstOrNull { session -> session.id == sessionId }
             ?: _currentSession.value?.takeIf { session -> session.id == sessionId }
@@ -400,7 +404,17 @@ class SessionRepository(
             seeds = seeds
         )
         sessions.forEach { session ->
-            sessionStorageManager.saveSession(session)
+            val processed = processSessionInternal(
+                session.copy(
+                    processingState = Session.PROCESSING_STATE_PENDING,
+                    processingVersion = CURRENT_PROCESSING_VERSION
+                )
+            ).copy(
+                processingState = Session.PROCESSING_STATE_FINAL,
+                processingFailureReason = null,
+                isPartial = false
+            )
+            sessionStorageManager.saveSession(processed)
         }
         trackProfileManager.updateProfile(normalizedName, sessionStorageManager.loadSessionsForTrack(normalizedName))
         refreshTracks()

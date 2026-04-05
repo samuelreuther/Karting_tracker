@@ -100,7 +100,10 @@ data class ComparisonUiState(
     val projectedCurves: List<ProjectedCurveUiState> = emptyList(),
     val trackInsightMarkers: List<TrackInsightMarker> = emptyList(),
     val fallbackCurveLines: List<String> = emptyList(),
-    val summaryLabel: String = "Record a session to compare laps."
+    val summaryLabel: String = "Record a session to compare laps.",
+    val isReliableForAnalysis: Boolean = true,
+    val reliabilityMessage: String = "",
+    val recommendedNextStep: String = ""
 )
 
 data class SessionListUiState(

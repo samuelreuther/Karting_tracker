@@ -20,14 +20,15 @@ class TrackLayoutManager(
     private val cornerTypeDetector = TrackCornerTypeDetector()
 
     fun loadLayout(trackName: String): TrackLayout? {
-        val file = File(layoutDirectory, buildLayoutFileName(trackName))
+        val file = resolveLayoutFile(trackName)
         if (!file.exists()) {
             return null
         }
 
         return try {
             val persisted = gson.fromJson(file.readText(), PersistedTrackLayout::class.java)
-            persisted.toTrackLayout(trackName)
+            persisted.toTrackLayout(TrackNameCanonicalizer.canonicalizeDisplayName(trackName))
+                .withResolvedImagePath(trackName)
         } catch (exception: Exception) {
             Log.w(TAG, "Failed to parse track layout for $trackName", exception)
             null
@@ -169,6 +170,29 @@ class TrackLayoutManager(
 
     private fun isManagedImagePath(path: String): Boolean {
         return path.startsWith(imageDirectory.absolutePath)
+    }
+
+    private fun resolveLayoutFile(trackName: String): File {
+        val candidateNames = TrackNameCanonicalizer.possibleStorageKeys(trackName)
+            .map { key -> "layout_${key}.json" }
+        return candidateNames
+            .map { candidate -> File(layoutDirectory, candidate) }
+            .firstOrNull(File::exists)
+            ?: File(layoutDirectory, buildLayoutFileName(trackName))
+    }
+
+    private fun TrackLayout.withResolvedImagePath(trackName: String): TrackLayout {
+        if (imagePath.isNotBlank() && File(imagePath).exists()) {
+            return this
+        }
+        val resolvedImage = TrackNameCanonicalizer.possibleStorageKeys(trackName)
+            .flatMap { key ->
+                listOf("png", "jpg", "jpeg", "webp").map { ext -> File(imageDirectory, "layout_${key}.$ext") }
+            }
+            .firstOrNull(File::exists)
+            ?.absolutePath
+            .orEmpty()
+        return if (resolvedImage.isBlank()) this else copy(imagePath = resolvedImage)
     }
 
     private fun loadBundledTrackAssets(): List<BundledTrackAsset> {

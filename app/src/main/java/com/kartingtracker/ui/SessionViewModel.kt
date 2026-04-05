@@ -222,7 +222,7 @@ class SessionViewModel(
                 SessionListItemUiState(
                     session = session,
                     sampleCount = session.samples.size,
-                    fileSizeBytes = sessionRepository.getSessionFileSize(session.id)
+                    fileSizeBytes = sessionRepository.getSessionFileSize(session)
                 )
             }
         )
@@ -347,6 +347,7 @@ class SessionViewModel(
         val savedCurves = currentTrackName.takeIf { it.isNotBlank() }?.let(sessionRepository::loadTrackMapMetadata)?.curves.orEmpty()
 
         if (lapA == null || lapB == null) {
+            val reliability = buildReliabilityState(contextSession)
             return@combine ComparisonUiState(
                 lapLabelsA = selection.lapOptionsA.map { it.label },
                 lapLabelsB = selection.lapOptionsB.map { it.label },
@@ -358,7 +359,10 @@ class SessionViewModel(
                 topTimeLossLines = createTopTimeLossLines(contextSession),
                 cornerCoachingLines = createCornerCoachingLines(contextSession),
                 mapImagePath = mapImagePath,
-                fallbackCurveLines = buildFallbackCurveLines(savedCurves, includePosition = true)
+                fallbackCurveLines = buildFallbackCurveLines(savedCurves, includePosition = true),
+                isReliableForAnalysis = reliability.isReliable,
+                reliabilityMessage = reliability.message,
+                recommendedNextStep = reliability.nextStep
             )
         }
 
@@ -388,6 +392,7 @@ class SessionViewModel(
             else -> "Lap A is ${formatLapTime(abs(deltaMs))} quicker."
         }
 
+        val reliability = buildReliabilityState(contextSession)
         ComparisonUiState(
             lapLabelsA = selection.lapOptionsA.map { it.label },
             lapLabelsB = selection.lapOptionsB.map { it.label },
@@ -415,7 +420,10 @@ class SessionViewModel(
             mapImagePath = mapImagePath,
             projectedCurves = projectedCurves,
             fallbackCurveLines = buildFallbackCurveLines(detectedCurves, includePosition = mapImagePath.isNullOrBlank()),
-            summaryLabel = fasterLabel
+            summaryLabel = fasterLabel,
+            isReliableForAnalysis = reliability.isReliable,
+            reliabilityMessage = reliability.message,
+            recommendedNextStep = reliability.nextStep
         )
     }
         .flowOn(Dispatchers.Default)
@@ -803,7 +811,9 @@ class SessionViewModel(
             )
 
         val qualityScore = ((lastTrackSession.quality?.overallScore ?: 0f) * 100f).toInt().coerceIn(0, 100)
+        val reliability = buildReliabilityState(lastTrackSession)
         val qualityLabel = when {
+            !reliability.isReliable -> "Session quality: unusable for lap analysis"
             qualityScore >= 80 -> "Session quality: strong ($qualityScore/100)"
             qualityScore >= 60 -> "Session quality: fair ($qualityScore/100)"
             else -> "Session quality: low confidence ($qualityScore/100)"
@@ -836,8 +846,38 @@ class SessionViewModel(
             topCornerActions = topCornerActions,
             strongestCorner = strongestCorner,
             biggestCornerOpportunity = biggestCornerOpportunity,
-            canOpenComparison = lastTrackSession.laps.size >= 2
+            canOpenComparison = lastTrackSession.laps.size >= 2 && reliability.isReliable
         )
+    }
+
+    private data class ReliabilityState(
+        val isReliable: Boolean,
+        val message: String,
+        val nextStep: String
+    )
+
+    private fun buildReliabilityState(session: Session?): ReliabilityState {
+        if (session == null) {
+            return ReliabilityState(true, "", "")
+        }
+        val lowConfidenceFallback = session.lapDetectionDebugInfo?.let { debug ->
+            debug.fallbackToSingleLap &&
+                debug.boundaryCandidateCount == 0 &&
+                debug.candidateSegmentCount == 0 &&
+                debug.peakCountsPerLap.sumOf { it.brakingPeaks } == 0
+        } == true
+        val explicitUnreliable = session.analysisWarnings.any { warning ->
+            warning.contains("could not be segmented reliably", ignoreCase = true) ||
+                warning.contains("fallback single-segment", ignoreCase = true)
+        }
+        if (lowConfidenceFallback || explicitUnreliable) {
+            return ReliabilityState(
+                isReliable = false,
+                message = "This recording looks unreliable for kart-lap analysis (fallback segmentation detected).",
+                nextStep = "Record on-track driving with multiple complete laps before using compare/coaching/time-loss."
+            )
+        }
+        return ReliabilityState(true, "", "")
     }
 
     companion object {

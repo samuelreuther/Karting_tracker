@@ -23,6 +23,7 @@ import com.kartingtracker.R
 import com.kartingtracker.data.Session
 import com.kartingtracker.databinding.FragmentSessionListBinding
 import com.kartingtracker.ui.AppViewModelFactory
+import com.kartingtracker.ui.AnalysisMode
 import com.kartingtracker.ui.SessionListItemUiState
 import com.kartingtracker.ui.SessionViewModel
 import kotlinx.coroutines.launch
@@ -37,6 +38,7 @@ class SessionListFragment : Fragment() {
 
     private val adapter = SessionListAdapter(::showOpenOptions, ::showDeleteOptions)
     private var suppressFilterCallbacks = false
+    private var currentFilterOptions: List<String> = emptyList()
 
     private val exportBackupDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri == null) {
@@ -124,12 +126,17 @@ class SessionListFragment : Fragment() {
 
     private fun updateFilterSpinner(options: List<String>, selectedFilter: String) {
         suppressFilterCallbacks = true
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        if (options != currentFilterOptions) {
+            val spinnerAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            binding.trackFilterSpinner.adapter = spinnerAdapter
+            currentFilterOptions = options
         }
-        binding.trackFilterSpinner.adapter = adapter
         val selectedIndex = options.indexOf(selectedFilter).coerceAtLeast(0)
-        binding.trackFilterSpinner.setSelection(selectedIndex, false)
+        if (binding.trackFilterSpinner.selectedItemPosition != selectedIndex) {
+            binding.trackFilterSpinner.setSelection(selectedIndex, false)
+        }
         suppressFilterCallbacks = false
     }
 
@@ -153,6 +160,7 @@ class SessionListFragment : Fragment() {
 
                     1 -> {
                         sessionViewModel.loadSession(session)
+                        sessionViewModel.setAnalysisMode(AnalysisMode.COMPARISON)
                         findNavController().navigate(R.id.action_sessionListFragment_to_comparisonFragment)
                     }
 

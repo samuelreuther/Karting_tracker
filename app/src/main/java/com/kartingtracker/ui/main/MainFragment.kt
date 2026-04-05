@@ -96,6 +96,11 @@ class MainFragment : Fragment() {
                         state.hasRequiredSensors &&
                         state.hasValidSelectedTrack
                     binding.stopButton.isEnabled = state.isRecording || state.isCalibrating || state.isPreparing || state.isStopping
+                    val stopPrimary = state.isRecording || state.isPreparing || state.isCalibrating || state.isStopping
+                    binding.startButton.alpha = if (stopPrimary) 0.55f else 1f
+                    binding.stopButton.alpha = if (stopPrimary) 1f else 0.7f
+                    binding.startButton.text = getString(R.string.start_recording_compact)
+                    binding.stopButton.text = getString(R.string.stop_recording_compact)
                     binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && !state.isPreparing && !state.isStopping && state.hasValidSelectedTrack
                     binding.generateSeededButton.isEnabled =
                         BuildConfig.DEBUG &&
@@ -342,9 +347,18 @@ class MainFragment : Fragment() {
                     getString(R.string.open_session_list) -> findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
                     getString(R.string.compare_laps),
                     getString(R.string.open_lap_analysis),
-                    getString(R.string.open_coaching_insights),
-                    getString(R.string.open_time_loss_analysis),
-                    getString(R.string.open_sector_analysis) -> openComparisonTools()
+                    getString(R.string.open_sector_analysis) -> {
+                        sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COMPARISON)
+                        openComparisonTools()
+                    }
+                    getString(R.string.open_coaching_insights) -> {
+                        sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COACHING)
+                        openComparisonTools()
+                    }
+                    getString(R.string.open_time_loss_analysis) -> {
+                        sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.TIME_LOSS)
+                        openComparisonTools()
+                    }
                     getString(R.string.open_track_learnings) -> findNavController().navigate(R.id.action_mainFragment_to_trackLayoutFragment)
                 }
             }

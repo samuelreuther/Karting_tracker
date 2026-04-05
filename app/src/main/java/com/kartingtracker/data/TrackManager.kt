@@ -14,9 +14,10 @@ class TrackManager(
     private val gson: Gson = GsonBuilder().create()
 
     fun normalizeTrackName(name: String): String {
-        return name
+        val normalized = name
             .trim()
             .replace(WHITESPACE_REGEX, " ")
+        return TrackNameCanonicalizer.canonicalizeDisplayName(normalized)
     }
 
     fun addTrackSafe(name: String): Boolean {
@@ -44,6 +45,7 @@ class TrackManager(
         return readTrackNames()
             .map(::normalizeTrackName)
             .filter { name -> name.isNotBlank() }
+            .filterNot(::isSuppressedDebugTrack)
             .distinctBy { name -> name.lowercase() }
             .map { trackName ->
                 getTrack(trackName) ?: Track(name = trackName)
@@ -223,6 +225,12 @@ class TrackManager(
         return preferences.getStringSet(KEY_TRACKS, emptySet())
             .orEmpty()
             .toList()
+    }
+
+    private fun isSuppressedDebugTrack(trackName: String): Boolean {
+        return trackName.equals("Test Track", ignoreCase = true) ||
+            trackName.equals("Demo Indoor Track", ignoreCase = true) ||
+            trackName.equals("sr test", ignoreCase = true)
     }
 
     private fun persistTrackNames(trackNames: List<String>) {

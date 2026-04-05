@@ -7,6 +7,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.util.AttributeSet
 import android.util.TypedValue
@@ -108,7 +109,16 @@ class TrackLayoutEditorView @JvmOverloads constructor(
         if (imagePath.isBlank()) {
             setImageDrawable(null)
         } else {
-            setImageURI(Uri.fromFile(java.io.File(imagePath)))
+            val file = java.io.File(imagePath)
+            if (!file.exists()) {
+                setImageDrawable(null)
+            } else {
+                runCatching { setImageURI(Uri.fromFile(file)) }
+                    .onFailure {
+                        val bitmap = runCatching { android.graphics.BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+                        setImageDrawable(bitmap?.let { decoded -> BitmapDrawable(resources, decoded) })
+                    }
+            }
         }
         invalidate()
     }
