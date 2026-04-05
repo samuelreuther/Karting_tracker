@@ -29,4 +29,5 @@
     <color name="karting_error">#E11D48</color>
     <color name="karting_accent_blue">#78A7FF</color>
     <color name="karting_accent_teal">#33D5C8</color>
+    <color name="karting_accent_orange">#FF9E44</color>
 </resources>
