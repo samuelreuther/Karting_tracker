@@ -142,7 +142,8 @@ Es gibt jetzt einen zusaetzlichen Utility-Pfad fuer Entwicklung und Demo:
 - `SimulatedSessionGenerator.generateSession(trackName)`
 - `SimulatedSessionGenerator.generateSeededSession(trackName, seed, durationMinutes = 10)`
 - erzeugt eine vollstaendige `Session` mit kompatiblen `SensorSample`-, `Lap`- und `Session`-Strukturen
-- schreibt im Debug-Build einmalig drei Sessions fuer `Test Track` in den bestehenden JSON-Speicherpfad
+- erzeugte Sessions werden beim Speichern direkt durch die normale Processing-Pipeline (`LapDetector`, Coaching, Time-loss) finalisiert
+- es gibt **keine** automatische Test-Seed-Injektion beim App-Start mehr (keine `Test Track`/`Demo Indoor Track`/`sr test`-Leckage in User-Flows)
 
 Ziel:
 

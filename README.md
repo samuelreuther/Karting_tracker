@@ -620,3 +620,9 @@ Build and tests depend on network access for downloading the configured Gradle w
 - `Time-loss analysis` and `Coaching insights` now open the analysis screen in explicit modes with matching toolbar titles.
 - Session browser is renamed to **Session library** for clearer purpose and still hosts backup import/export.
 - Backup filename normalization now transliterates umlauts (`Lörrach` -> `Loerrach`) and excludes seeded demo tracks from normal exports.
+- Track-name canonicalization now merges legacy variants (`L_rrach`, `Loerrach`, `Lörrach`) and keeps the UI display human-readable.
+- Edit Track now resolves legacy layout/map storage keys so Lörrach and Rheinfelden maps load even if backup data used older naming.
+- Seeded simulation generation now runs through the full processing pipeline before save, so generated sessions appear immediately with laps/coaching/time-loss outputs.
+- Automatic debug seeding (`Test Track`, `Demo Indoor Track`, `sr test`) was removed from startup to prevent test artifacts leaking into normal phone usage.
+- Comparison/Coaching/Time-loss modes now hide unrelated sections and block unreliable fallback sessions with explicit guidance instead of pseudo-analysis.
+- Session library filter updates avoid rebuilding spinner adapters for every list emission, and session file-size lookups use direct-path fast resolution.
