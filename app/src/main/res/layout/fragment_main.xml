@@ -66,47 +66,55 @@
                 android:orientation="vertical"
                 android:padding="10dp">
 
-                <LinearLayout
+                <TextView
+                    style="@style/KartingSectionTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:text="@string/track_selection_label" />
 
-                    <TextView
-                        style="@style/KartingSectionTitle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/track_selection_label" />
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fadeScrollbars="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/addTrackButton"
-                        style="@style/Widget.Material3.Button.TextButton"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:minHeight="0dp"
-                        android:text="@string/add_track"
-                        android:textColor="@color/karting_accent_blue" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/editTrackButton"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:minHeight="0dp"
-                        android:text="@string/edit_track"
-                        android:textColor="@color/karting_text_secondary" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/addTrackButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="0dp"
+                            android:text="@string/add_track"
+                            android:textColor="@color/karting_accent_blue" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/generateSeededButton"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:minHeight="0dp"
-                        android:text="@string/generate_seeded_sessions"
-                        android:textColor="@color/karting_accent_teal"
-                        android:visibility="gone" />
-                </LinearLayout>
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/editTrackButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="0dp"
+                            android:text="@string/edit_track"
+                            android:textColor="@color/karting_text_secondary" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/generateSeededButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="0dp"
+                            android:text="@string/generate_seeded_sessions"
+                            android:textColor="@color/karting_accent_teal"
+                            android:visibility="gone" />
+                    </LinearLayout>
+                </HorizontalScrollView>
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/trackRecycler"
