@@ -384,6 +384,31 @@ class SessionRepository(
         return sessionCsvExporter.export(session)
     }
 
+    fun generateSeededSessionsForTrack(
+        trackName: String,
+        seeds: List<Int> = listOf(42, 1337, 9001),
+        durationMinutes: Int = 10
+    ): Int {
+        val normalizedName = trackManager.normalizeTrackName(trackName)
+        if (normalizedName.isBlank()) {
+            return 0
+        }
+        trackManager.saveTrack(normalizedName)
+        val sessions = SimulatedSessionGenerator.generateSeededSessions(
+            trackName = normalizedName,
+            durationMinutes = durationMinutes,
+            seeds = seeds
+        )
+        sessions.forEach { session ->
+            sessionStorageManager.saveSession(session)
+        }
+        trackProfileManager.updateProfile(normalizedName, sessionStorageManager.loadSessionsForTrack(normalizedName))
+        refreshTracks()
+        refreshStoredSessions()
+        refreshCurrentTrackStateAsync(normalizedName)
+        return sessions.size
+    }
+
     suspend fun exportBackup(targetUri: Uri): Boolean = withContext(Dispatchers.IO) {
         appBackupManager.exportBackup(targetUri)
     }

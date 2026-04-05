@@ -189,6 +189,16 @@
                     android:minHeight="0dp"
                     android:text="@string/edit_track"
                     android:textColor="@color/karting_text_secondary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/generateSeededButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minHeight="0dp"
+                    android:text="@string/generate_seeded_sessions"
+                    android:textColor="@color/karting_accent_teal"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView

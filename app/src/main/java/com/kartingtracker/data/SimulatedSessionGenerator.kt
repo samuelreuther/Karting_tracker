@@ -18,7 +18,7 @@ object SimulatedSessionGenerator {
     private const val baseSeed = 20_260_328L
     private const val debugPrefsName = "simulated_session_generator"
     private const val debugSeedVersionKey = "debug_seed_version"
-    private const val debugSeedVersion = 3
+    private const val debugSeedVersion = 4
     private const val defaultDebugTrackName = "Rheinfelden Kartbahn"
     private const val debugBaseStartTimeEpochMs = 1_775_000_000_000L
     private val debugSeeds = listOf(42, 1337, 9001)
@@ -35,6 +35,14 @@ object SimulatedSessionGenerator {
 
     fun generateSession(trackName: String): Session {
         return generateSeededSession(trackName, baseSeed.toInt(), defaultDurationMinutes)
+    }
+
+    fun generateSeededSessions(
+        trackName: String,
+        durationMinutes: Int = defaultDurationMinutes,
+        seeds: List<Int> = debugSeeds
+    ): List<Session> {
+        return seeds.map { seed -> generateSeededSession(trackName = trackName, seed = seed, durationMinutes = durationMinutes) }
     }
 
     fun generateSeededSession(trackName: String, seed: Int, durationMinutes: Int = defaultDurationMinutes): Session {
@@ -163,8 +171,8 @@ object SimulatedSessionGenerator {
         trackProfileManager.deleteProfile(trackName)
         trackManager.deleteTrack(trackName)
         trackManager.saveTrack(trackName)
-        debugSeeds.forEach { seed ->
-            sessionStorageManager.saveSession(generateSeededSession(trackName, seed))
+        generateSeededSessions(trackName = trackName, seeds = debugSeeds).forEach { session ->
+            sessionStorageManager.saveSession(session)
         }
         trackProfileManager.updateProfile(trackName, sessionStorageManager.loadSessionsForTrack(trackName))
         preferences.edit().putInt(debugSeedVersionKey, debugSeedVersion).apply()
@@ -281,10 +289,18 @@ object SimulatedSessionGenerator {
                 (0.80f + (sharpness * 0.42f) + (random.nextFloat() * 0.14f) - imperfectionPenalty).coerceIn(0.65f, 1.24f)
             },
             corneringScale = trackPattern.cornerSharpness.map { sharpness ->
-                (paceFactor + 0.06f + (sharpness * 0.35f) + (random.nextFloat() * 0.11f) - imperfectionPenalty).coerceIn(0.76f, 1.26f)
+                (paceFactor + 0.06f + (sharpness * 0.35f) + (random.nextFloat() * 0.11f) - imperfectionPenalty).coerceIn(0.76f, 1.28f)
             },
             exitAccelerationScale = trackPattern.cornerSharpness.map { sharpness ->
                 (paceFactor + 0.08f - (sharpness * 0.22f) + (random.nextFloat() * 0.14f) - imperfectionPenalty).coerceIn(0.72f, 1.18f)
+            },
+            cornerStabilityScale = trackPattern.cornerSharpness.map { sharpness ->
+                (1.16f - (sharpness * 0.30f) + (random.nextFloat() * 0.10f)).coerceIn(0.78f, 1.22f)
+            },
+            oversteerCornerIndex = if (imperfectLap && random.nextFloat() < 0.58f) {
+                random.nextInt(trackPattern.cornerPhases.size)
+            } else {
+                -1
             },
             imperfectLap = imperfectLap,
             disturbanceCenter = disturbanceCenter,
@@ -353,11 +369,20 @@ object SimulatedSessionGenerator {
                 lapProfile.cornerCenters[index] - lapProfile.cornerWidth[index],
                 lapProfile.cornerCenters[index] + lapProfile.cornerWidth[index]
             ).toDouble() * lapProfile.corneringScale[index].toDouble() * lapProfile.cornerDirection[index].toDouble() *
+                lapProfile.cornerStabilityScale[index].toDouble() *
                 (2.15 + (lapProfile.brakeIntensityScale[index] * 0.62)).toDouble()
         }.toFloat()
+        val oversteerSpike = if (lapProfile.oversteerCornerIndex >= 0) {
+            val targetCenter = lapProfile.cornerCenters[lapProfile.oversteerCornerIndex]
+            (sharpPulse(phase, targetCenter + 0.01f, lapProfile.cornerWidth[lapProfile.oversteerCornerIndex] * 0.26f) *
+                lapProfile.cornerDirection[lapProfile.oversteerCornerIndex] * 1.35f)
+        } else {
+            0f
+        }
         return (cornerYaw * lapVariation) +
             (0.14f * sine((phase * fourPi) + lapProfile.waveOffset)) +
-            (noise * 0.2f)
+            (noise * 0.2f) +
+            oversteerSpike
     }
 
     private fun imperfectDisturbance(phase: Float, disturbanceCenter: Float): Float {
@@ -408,6 +433,8 @@ object SimulatedSessionGenerator {
         val brakeIntensityScale: List<Float>,
         val corneringScale: List<Float>,
         val exitAccelerationScale: List<Float>,
+        val cornerStabilityScale: List<Float>,
+        val oversteerCornerIndex: Int,
         val imperfectLap: Boolean,
         val disturbanceCenter: Float,
         val noiseAmplitude: Float,
@@ -421,17 +448,40 @@ object SimulatedSessionGenerator {
         val cornerWidth: List<Float>
     )
 
+    private data class BundledLayoutSpec(
+        val startPoint: TrackPoint,
+        val direction: TrackDirection,
+        val corners: List<TrackPoint>
+    )
+
     private fun resolveTrackPattern(trackName: String): TrackPattern {
         val normalized = trackName.trim().lowercase()
-        val layoutCorners = if (normalized == "loerrach vm kart racing") {
-            loerrachLayoutCorners
-        } else {
-            defaultLayoutCorners
+        val bundledLayout = bundledLayouts[normalized]
+        val mapCurves = bundledCurveMetadata[normalized]
+        val layout = bundledLayout?.let { spec ->
+            buildTrackPattern(
+                corners = spec.corners,
+                startPoint = spec.startPoint,
+                direction = spec.direction
+            )
         }
-        return buildTrackPattern(layoutCorners)
+
+        return when {
+            layout != null && mapCurves != null -> blendTrackPattern(layout, mapCurves)
+            layout != null -> layout
+            else -> buildTrackPattern(
+                corners = defaultLayoutCorners,
+                startPoint = TrackLayout.DEFAULT_START_POINT,
+                direction = TrackDirection.CLOCKWISE
+            )
+        }
     }
 
-    private fun buildTrackPattern(corners: List<TrackPoint>): TrackPattern {
+    private fun buildTrackPattern(
+        corners: List<TrackPoint>,
+        startPoint: TrackPoint,
+        direction: TrackDirection
+    ): TrackPattern {
         if (corners.size < 3) {
             return TrackPattern(
                 cornerPhases = listOf(0.22f, 0.54f, 0.84f),
@@ -441,7 +491,7 @@ object SimulatedSessionGenerator {
             )
         }
 
-        val phases = buildCornerPhases(corners)
+        val phases = buildCornerPhases(corners, startPoint)
         val sharpness = corners.indices.map { index ->
             val prev = corners[(index - 1 + corners.size) % corners.size]
             val current = corners[index]
@@ -460,7 +510,7 @@ object SimulatedSessionGenerator {
                 (0.55f + ((angle / PI.toFloat()).pow(0.85f) * 0.75f)).coerceIn(0.55f, 1.30f)
             }
         }
-        val directions = corners.indices.map { index ->
+        val geometricDirections = corners.indices.map { index ->
             val prev = corners[(index - 1 + corners.size) % corners.size]
             val current = corners[index]
             val next = corners[(index + 1) % corners.size]
@@ -470,6 +520,11 @@ object SimulatedSessionGenerator {
             val exitY = next.y - current.y
             val cross = (entryX * exitY) - (entryY * exitX)
             if (cross >= 0f) 1f else -1f
+        }
+        val directions = if (direction == TrackDirection.COUNTER_CLOCKWISE) {
+            geometricDirections
+        } else {
+            geometricDirections.map { value -> -value }
         }
         val widths = sharpness.map { cornerSharpness ->
             (0.095f - ((cornerSharpness - 0.55f) * 0.030f)).coerceIn(0.048f, 0.092f)
@@ -482,8 +537,7 @@ object SimulatedSessionGenerator {
         )
     }
 
-    private fun buildCornerPhases(corners: List<TrackPoint>): List<Float> {
-        val start = loerrachStartPoint
+    private fun buildCornerPhases(corners: List<TrackPoint>, start: TrackPoint): List<Float> {
         val trackPoints = listOf(start) + corners + listOf(start)
         val lengths = trackPoints.zipWithNext { a, b ->
             distance(a, b)
@@ -503,15 +557,49 @@ object SimulatedSessionGenerator {
         return sqrt((dx * dx) + (dy * dy))
     }
 
-    private val loerrachStartPoint = TrackPoint(0.74f, 0.74f)
-    private val loerrachLayoutCorners = listOf(
-        TrackPoint(0.10f, 0.83f),
-        TrackPoint(0.16f, 0.15f),
-        TrackPoint(0.60f, 0.09f),
-        TrackPoint(0.76f, 0.36f),
-        TrackPoint(0.63f, 0.56f),
-        TrackPoint(0.17f, 0.64f)
+    private fun blendTrackPattern(layoutPattern: TrackPattern, curveMetadata: List<CurveDefinition>): TrackPattern {
+        if (curveMetadata.isEmpty() || layoutPattern.cornerPhases.isEmpty()) {
+            return layoutPattern
+        }
+        val blendedSharpness = layoutPattern.cornerSharpness.mapIndexed { index, sharpness ->
+            val curve = curveMetadata[index % curveMetadata.size]
+            val mapSharpness = (0.64f + (curve.intensity.coerceIn(0f, 1f) * 0.62f)).coerceIn(0.55f, 1.30f)
+            ((sharpness * 0.72f) + (mapSharpness * 0.28f)).coerceIn(0.55f, 1.30f)
+        }
+        val blendedWidths = blendedSharpness.map { value ->
+            (0.098f - ((value - 0.55f) * 0.032f)).coerceIn(0.048f, 0.092f)
+        }
+        return layoutPattern.copy(cornerSharpness = blendedSharpness, cornerWidth = blendedWidths)
+    }
+
+    private val loerrachLayoutSpec = BundledLayoutSpec(
+        startPoint = TrackPoint(0.74f, 0.74f),
+        direction = TrackDirection.COUNTER_CLOCKWISE,
+        corners = listOf(
+            TrackPoint(0.10f, 0.83f),
+            TrackPoint(0.16f, 0.15f),
+            TrackPoint(0.60f, 0.09f),
+            TrackPoint(0.76f, 0.36f),
+            TrackPoint(0.63f, 0.56f),
+            TrackPoint(0.17f, 0.64f)
+        )
     )
+
+    private val bundledLayouts = mapOf(
+        "loerrach vm kart racing" to loerrachLayoutSpec
+    )
+
+    private val bundledCurveMetadata = mapOf(
+        "loerrach vm kart racing" to listOf(
+            CurveDefinition(index = 1, startPercent = 6f, endPercent = 20f, peakPercent = 13f, intensity = 0.82f),
+            CurveDefinition(index = 2, startPercent = 21f, endPercent = 38f, peakPercent = 30f, intensity = 0.95f),
+            CurveDefinition(index = 3, startPercent = 39f, endPercent = 50f, peakPercent = 45f, intensity = 0.58f),
+            CurveDefinition(index = 4, startPercent = 51f, endPercent = 65f, peakPercent = 58f, intensity = 0.72f),
+            CurveDefinition(index = 5, startPercent = 66f, endPercent = 80f, peakPercent = 73f, intensity = 0.76f),
+            CurveDefinition(index = 6, startPercent = 81f, endPercent = 96f, peakPercent = 89f, intensity = 0.90f)
+        )
+    )
+
     private val defaultLayoutCorners = listOf(
         TrackPoint(0.12f, 0.78f),
         TrackPoint(0.18f, 0.22f),
