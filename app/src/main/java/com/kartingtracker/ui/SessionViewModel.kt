@@ -186,14 +186,14 @@ class SessionViewModel(
             compareSelection = buildCompareSelectionUiState(currentTrackName, storedSessions),
             recordingTimerLabel = formatDurationLabel(elapsedMs),
             statusLabel = when {
-                !sensorRecorder.hasRequiredSensors -> "Missing accelerometer or gyroscope"
-                recorderPhase == RecorderPhase.PREPARING -> "Session starts in $preStartSecondsRemaining… Please stow the phone now"
-                recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating - keep the kart still"
-                recorderPhase == RecorderPhase.STOPPING || stopStatus.stage == StopPipelineStage.STOPPING_RECORDING -> "Stopping recording…"
-                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving raw session…"
+                !sensorRecorder.hasRequiredSensors -> "Sensors missing"
+                recorderPhase == RecorderPhase.PREPARING -> "Starting in ${preStartSecondsRemaining}s"
+                recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating"
+                recorderPhase == RecorderPhase.STOPPING || stopStatus.stage == StopPipelineStage.STOPPING_RECORDING -> "Stopping…"
+                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving…"
                 stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Processing laps…"
-                stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing session…"
-                stopStatus.stage == StopPipelineStage.FAILED -> "Finalization failed; raw session preserved"
+                stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing…"
+                stopStatus.stage == StopPipelineStage.FAILED -> "Save failed"
                 recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording"
                 currentTrackName.isBlank() -> "Select a track to start recording"
                 session == null -> "Ready"
