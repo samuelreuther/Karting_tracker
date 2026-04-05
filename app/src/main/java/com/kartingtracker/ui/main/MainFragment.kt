@@ -16,8 +16,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.kartingtracker.BuildConfig
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentMainBinding
 import com.kartingtracker.ui.AppViewModelFactory
@@ -51,6 +53,17 @@ class MainFragment : Fragment() {
         binding.startButton.setOnClickListener { sessionViewModel.startRecording() }
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
         binding.addTrackButton.setOnClickListener { showAddTrackDialog() }
+        binding.generateSeededButton.setOnClickListener {
+            sessionViewModel.generateSeededSessionsForSelectedTrack { generatedCount, trackName ->
+                val message = if (generatedCount > 0 && trackName.isNotBlank()) {
+                    getString(R.string.seeded_sessions_generated, generatedCount, trackName)
+                } else {
+                    getString(R.string.seeded_sessions_generation_failed)
+                }
+                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+            }
+        }
+        binding.generateSeededButton.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
         setupComparisonSelectors()
         binding.detailsButton.setOnClickListener {
             sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COMPARISON)
@@ -84,6 +97,13 @@ class MainFragment : Fragment() {
                         state.hasValidSelectedTrack
                     binding.stopButton.isEnabled = state.isRecording || state.isCalibrating || state.isPreparing || state.isStopping
                     binding.editTrackButton.isEnabled = !state.isRecording && !state.isCalibrating && !state.isPreparing && !state.isStopping && state.hasValidSelectedTrack
+                    binding.generateSeededButton.isEnabled =
+                        BuildConfig.DEBUG &&
+                            !state.isRecording &&
+                            !state.isCalibrating &&
+                            !state.isPreparing &&
+                            !state.isStopping &&
+                            state.hasValidSelectedTrack
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
                     binding.detailsButton.isEnabled = true

@@ -129,6 +129,9 @@
     <string name="backup_import_failed">Backup import failed. Please verify file compatibility.</string>
     <string name="backup_import_warning">Import replaces current local telemetry data with backup contents. Continue?</string>
     <string name="edit_track">Edit Track</string>
+    <string name="generate_seeded_sessions">Seeded</string>
+    <string name="seeded_sessions_generated">Generated %1$d seeded sessions for %2$s</string>
+    <string name="seeded_sessions_generation_failed">Could not generate seeded sessions. Select a track first.</string>
     <string name="track_name_label">Track name</string>
     <string name="track_location_label">Location</string>
     <string name="track_length_label">Length (m)</string>

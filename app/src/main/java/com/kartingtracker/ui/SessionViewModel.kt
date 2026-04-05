@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import java.io.File
@@ -498,6 +499,29 @@ class SessionViewModel(
 
     fun exportSessionCsv(session: Session): File {
         return sessionRepository.exportSessionCsv(session)
+    }
+
+    fun generateSeededSessionsForSelectedTrack(
+        seeds: List<Int> = listOf(42, 1337, 9001),
+        durationMinutes: Int = 10,
+        onComplete: (generatedCount: Int, trackName: String) -> Unit = { _, _ -> }
+    ) {
+        val selectedTrack = uiState.value.selectedTrackName
+        if (selectedTrack.isBlank()) {
+            onComplete(0, "")
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val generatedCount = sessionRepository.generateSeededSessionsForTrack(
+                trackName = selectedTrack,
+                seeds = seeds,
+                durationMinutes = durationMinutes
+            )
+            withContext(Dispatchers.Main) {
+                onComplete(generatedCount, selectedTrack)
+            }
+        }
     }
 
     suspend fun exportBackup(targetUri: Uri): Boolean {
