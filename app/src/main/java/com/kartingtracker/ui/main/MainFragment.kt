@@ -22,6 +22,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.kartingtracker.BuildConfig
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentMainBinding
+import com.kartingtracker.databinding.FragmentMainBottomBinding
 import com.kartingtracker.ui.AppViewModelFactory
 import com.kartingtracker.ui.SessionViewModel
 import kotlinx.coroutines.launch
@@ -29,6 +30,8 @@ import kotlinx.coroutines.launch
 class MainFragment : Fragment() {
     private var _binding: FragmentMainBinding? = null
     private val binding get() = _binding!!
+    private var _bottomBinding: FragmentMainBottomBinding? = null
+    private val bottomBinding get() = _bottomBinding!!
 
     private val sessionViewModel: SessionViewModel by activityViewModels {
         AppViewModelFactory(requireActivity().application)
@@ -42,6 +45,7 @@ class MainFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentMainBinding.inflate(inflater, container, false)
+        _bottomBinding = FragmentMainBottomBinding.bind(binding.root)
         return binding.root
     }
 
@@ -65,23 +69,23 @@ class MainFragment : Fragment() {
         }
         binding.generateSeededButton.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
         setupComparisonSelectors()
-        binding.detailsButton.setOnClickListener {
+        bottomBinding.detailsButton.setOnClickListener {
             sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COMPARISON)
             openComparisonTools()
         }
-        binding.openInsightsButton.setOnClickListener {
+        bottomBinding.openInsightsButton.setOnClickListener {
             sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.COACHING)
             openComparisonTools()
         }
-        binding.openTimeLossButton.setOnClickListener {
+        bottomBinding.openTimeLossButton.setOnClickListener {
             sessionViewModel.setAnalysisMode(com.kartingtracker.ui.AnalysisMode.TIME_LOSS)
             openComparisonTools()
         }
-        binding.openSessionsButton.setOnClickListener {
+        bottomBinding.openSessionsButton.setOnClickListener {
             findNavController().navigate(R.id.action_mainFragment_to_sessionListFragment)
         }
         binding.editTrackButton.setOnClickListener { showTrackManagementDialog() }
-        binding.lastSessionCard.setOnClickListener { showDetailsNavigationDialog() }
+        bottomBinding.lastSessionCard.setOnClickListener { showDetailsNavigationDialog() }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -115,26 +119,26 @@ class MainFragment : Fragment() {
                             state.hasValidSelectedTrack
                     binding.sensorAvailabilityLabel.visibility = if (state.hasRequiredSensors) View.GONE else View.VISIBLE
                     binding.trackProfileLabel.text = state.trackProfileSummary
-                    binding.detailsButton.isEnabled = state.canOpenAnalysis
-                    binding.openInsightsButton.isEnabled = state.canOpenAnalysis
-                    binding.openTimeLossButton.isEnabled = state.canOpenAnalysis
-                    binding.openSessionsButton.isEnabled = true
+                    bottomBinding.detailsButton.isEnabled = state.canOpenAnalysis
+                    bottomBinding.openInsightsButton.isEnabled = state.canOpenAnalysis
+                    bottomBinding.openTimeLossButton.isEnabled = state.canOpenAnalysis
+                    bottomBinding.openSessionsButton.isEnabled = true
                     binding.heroTrackValue.text = state.selectedTrackName.ifBlank {
                         getString(R.string.no_track_selected)
                     }
-                    binding.lastSessionHeadline.text = state.lastSessionSummary.headline
-                    binding.lastSessionQuality.text = state.lastSessionSummary.quality
-                    binding.lastSessionTimeLoss.text = state.lastSessionSummary.biggestLoss
-                    binding.lastSessionHint.text = state.lastSessionSummary.coachingHint
-                    binding.lastSessionCornerActions.text = if (state.lastSessionSummary.topCornerActions.isEmpty()) {
+                    bottomBinding.lastSessionHeadline.text = state.lastSessionSummary.headline
+                    bottomBinding.lastSessionQuality.text = state.lastSessionSummary.quality
+                    bottomBinding.lastSessionTimeLoss.text = state.lastSessionSummary.biggestLoss
+                    bottomBinding.lastSessionHint.text = state.lastSessionSummary.coachingHint
+                    bottomBinding.lastSessionCornerActions.text = if (state.lastSessionSummary.topCornerActions.isEmpty()) {
                         "Corner coaching actions: unavailable"
                     } else {
                         state.lastSessionSummary.topCornerActions.joinToString(separator = "\n")
                     }
-                    binding.lastSessionStrongestCorner.text = "Strongest corner: ${state.lastSessionSummary.strongestCorner}"
-                    binding.lastSessionCornerOpportunity.text =
+                    bottomBinding.lastSessionStrongestCorner.text = "Strongest corner: ${state.lastSessionSummary.strongestCorner}"
+                    bottomBinding.lastSessionCornerOpportunity.text =
                         "Biggest corner opportunity: ${state.lastSessionSummary.biggestCornerOpportunity}"
-                    binding.lastSessionActionLabel.text = if (state.lastSessionSummary.canOpenComparison) {
+                    bottomBinding.lastSessionActionLabel.text = if (state.lastSessionSummary.canOpenComparison) {
                         getString(R.string.open_compare_analysis)
                     } else {
                         getString(R.string.open_deep_analysis)
@@ -150,6 +154,7 @@ class MainFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        _bottomBinding = null
         _binding = null
     }
 
@@ -167,7 +172,7 @@ class MainFragment : Fragment() {
     }
 
     private fun setupComparisonSelectors() {
-        binding.sessionASpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        bottomBinding.sessionASpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 (parent?.adapter?.getItem(position) as? SessionSpinnerItem)?.let { session ->
                     sessionViewModel.selectCompareSessionA(session.id)
@@ -175,7 +180,7 @@ class MainFragment : Fragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        binding.sessionBSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        bottomBinding.sessionBSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 (parent?.adapter?.getItem(position) as? SessionSpinnerItem)?.let { session ->
                     sessionViewModel.selectCompareSessionB(session.id)
@@ -183,13 +188,13 @@ class MainFragment : Fragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        binding.lapASpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        bottomBinding.lapASpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 sessionViewModel.selectLapA(position)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        binding.lapBSpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        bottomBinding.lapBSpinnerInline.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 sessionViewModel.selectLapB(position)
             }
@@ -199,10 +204,10 @@ class MainFragment : Fragment() {
 
     private fun updateComparisonSelection(selection: com.kartingtracker.ui.CompareSelectionUiState) {
         val sessionItems = selection.sessionOptions.map { SessionSpinnerItem(it.id, it.label) }
-        binding.sessionASpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
+        bottomBinding.sessionASpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
-        binding.sessionBSpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
+        bottomBinding.sessionBSpinner.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, sessionItems).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
         val lapAdapterA = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, selection.lapOptionsA.map { it.label }).apply {
@@ -211,9 +216,9 @@ class MainFragment : Fragment() {
         val lapAdapterB = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, selection.lapOptionsB.map { it.label }).apply {
             setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
-        binding.lapASpinnerInline.adapter = lapAdapterA
-        binding.lapBSpinnerInline.adapter = lapAdapterB
-        binding.detailsButton.isEnabled = selection.canOpenComparison
+        bottomBinding.lapASpinnerInline.adapter = lapAdapterA
+        bottomBinding.lapBSpinnerInline.adapter = lapAdapterB
+        bottomBinding.detailsButton.isEnabled = selection.canOpenComparison
     }
 
     private fun showAddTrackDialog() {
