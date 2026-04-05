@@ -9,6 +9,9 @@ class TrackNameCanonicalizerTest {
     fun canonicalizesLoerrachVariantsToHumanReadableName() {
         assertEquals("Lörrach VM Kart Racing", TrackNameCanonicalizer.canonicalizeDisplayName("L_rrach VM Kart Racing"))
         assertEquals("Lörrach VM Kart Racing", TrackNameCanonicalizer.canonicalizeDisplayName("Loerrach VM Kart Racing"))
+        assertEquals("Lörrach VM Kart Racing", TrackNameCanonicalizer.canonicalizeDisplayName("Lörrach"))
+        assertEquals("Lörrach VM Kart Racing", TrackNameCanonicalizer.canonicalizeDisplayName("Loerrach"))
+        assertEquals("Lörrach VM Kart Racing", TrackNameCanonicalizer.canonicalizeDisplayName("L_rrach"))
     }
 
     @Test
@@ -16,5 +19,6 @@ class TrackNameCanonicalizerTest {
         val keys = TrackNameCanonicalizer.possibleStorageKeys("Lörrach VM Kart Racing")
         assertTrue(keys.contains("Loerrach_VM_Kart_Racing"))
         assertTrue(keys.contains("L_rrach_VM_Kart_Racing"))
+        assertTrue(TrackNameCanonicalizer.possibleStorageKeys("Rheinfelden Kartbahn").contains("Rheinfelden_Kartbahn"))
     }
 }

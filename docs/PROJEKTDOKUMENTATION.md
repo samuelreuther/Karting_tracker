@@ -9,7 +9,7 @@
 1. Projekt in Android Studio oeffnen.
 2. Gradle-Sync abschliessen.
 3. App auf physischem Android-Geraet starten (empfohlen fuer echte Sensorwerte).
-4. Track auswaehlen/anlegen und Recording mit 2-Sekunden-Kalibrierung starten.
+4. Track auswaehlen/anlegen und Recording mit 10-Sekunden-Pre-Start-Countdown starten, danach 2-Sekunden-Kalibrierung.
 5. Session stoppen und Analyse in Laps/Comparison pruefen.
 
 ## Dokumentationsstatus und Pflege
@@ -75,7 +75,7 @@ Wichtig fuer dieses Dokument:
 
 - Start- und Stop-Aufnahme
 - Foreground Service fuer Recording mit permanenter Notification
-- 2-Sekunden-Kalibrierung vor Recording
+- 10-Sekunden-Pre-Start-Countdown mit klarer Pocket-Mount-Aufforderung vor der 2-Sekunden-Kalibrierung
 - Aufnahme von Accelerometer und Gyroscope mit `SENSOR_DELAY_FASTEST`
 - Low-Pass-Filter fuer beide Sensorstroeme
 - Gravitationsermittlung und Gravitationentfernung
@@ -144,6 +144,7 @@ Es gibt jetzt einen zusaetzlichen Utility-Pfad fuer Entwicklung und Demo:
 - erzeugt eine vollstaendige `Session` mit kompatiblen `SensorSample`-, `Lap`- und `Session`-Strukturen
 - erzeugte Sessions werden beim Speichern direkt durch die normale Processing-Pipeline (`LapDetector`, Coaching, Time-loss) finalisiert
 - es gibt **keine** automatische Test-Seed-Injektion beim App-Start mehr (keine `Test Track`/`Demo Indoor Track`/`sr test`-Leckage in User-Flows)
+- nicht-fahrende/ungueltige Sessions werden heuristisch markiert und fuer Compare/Coaching/Time-Loss gesperrt (Raw-Daten + Debug bleiben erhalten)
 
 Ziel:
 

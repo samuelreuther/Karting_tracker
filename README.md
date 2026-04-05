@@ -2,7 +2,7 @@
 
 Android app for indoor karting telemetry with smartphone sensors only. No GPS is required.
 
-> Last updated: 2026-04-04
+> Last updated: 2026-04-05
 >
 > This README and `docs/PROJEKTDOKUMENTATION.md` were reviewed together and aligned in this update.
 
@@ -47,9 +47,10 @@ The app records accelerometer and gyroscope data, processes the signal on-device
 
 1. Start the app on a device.
 2. Select or create a track.
-3. Press `Start` and keep the phone stable during the 2-second calibration phase.
-4. Drive a session.
-5. Press `Stop` in the app or via the foreground notification action.
+3. Press `Start` and use the explicit 10-second pre-start countdown to stow the phone securely.
+4. Keep the kart still during the following 2-second calibration phase.
+5. Drive a session.
+6. Press `Stop` in the app or via the foreground notification action.
 
 ## Current Scope
 
@@ -86,6 +87,7 @@ Implemented today:
 - session browser with filter, reload, and delete actions for sessions or full tracks
 - load-last-session shortcut
 - debug seeding of three deterministic 10-minute simulated test sessions
+- explicit invalid/non-driving session gating (keeps raw recording, blocks misleading compare/coaching/time-loss output)
 
 Not implemented yet:
 
@@ -112,6 +114,13 @@ These are illustrative example images generated from the app's simulated telemet
 ### Recording
 
 When you press `Start`, recording does not begin immediately.
+
+The app now enters a **10-second pre-start countdown** first:
+
+- large “put phone in pocket now” prompt
+- clear countdown indicator
+- explicit messaging that recording has not started yet
+- calibration starts only after countdown completes
 
 The app first starts a foreground service:
 

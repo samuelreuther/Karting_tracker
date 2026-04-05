@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/lastSessionCard"
+        style="@style/KartingPanelCard.Emphasis"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:id="@+id/lastSessionTitle"
+                style="@style/KartingSectionTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/last_session_title" />
+
+            <TextView
+                android:id="@+id/lastSessionHeadline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textColor="@color/karting_text_primary"
+                android:textStyle="bold" />
+
+            <TextView android:id="@+id/lastSessionQuality" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textAppearance="@style/TextAppearance.Material3.BodyMedium" android:textColor="@color/karting_text_secondary" />
+            <TextView android:id="@+id/lastSessionTimeLoss" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textAppearance="@style/TextAppearance.Material3.BodyMedium" android:textColor="@color/karting_text_secondary" />
+            <TextView android:id="@+id/lastSessionHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textAppearance="@style/TextAppearance.Material3.BodyMedium" android:textColor="@color/karting_text_secondary" />
+            <TextView android:id="@+id/lastSessionCornerActions" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="@style/TextAppearance.Material3.BodyMedium" android:textColor="@color/karting_text_primary" android:textStyle="bold" />
+            <TextView android:id="@+id/lastSessionStrongestCorner" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textAppearance="@style/TextAppearance.Material3.BodySmall" android:textColor="@color/karting_text_secondary" />
+            <TextView android:id="@+id/lastSessionCornerOpportunity" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textAppearance="@style/TextAppearance.Material3.BodySmall" android:textColor="@color/karting_text_secondary" />
+
+            <TextView
+                android:id="@+id/lastSessionActionLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_recording_indicator"
+                android:paddingStart="10dp"
+                android:paddingTop="5dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="5dp"
+                android:text="@string/open_deep_analysis"
+                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        style="@style/KartingPanelCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/deep_analysis_title" android:textAppearance="@style/TextAppearance.Material3.LabelLarge" android:textColor="@color/karting_text_tertiary" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
+                <Spinner android:id="@+id/sessionASpinner" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <Spinner android:id="@+id/lapASpinnerInline" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
+                <Spinner android:id="@+id/sessionBSpinner" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <Spinner android:id="@+id/lapBSpinnerInline" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/detailsButton" style="@style/KartingButton.Quick" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:text="@string/compare_laps" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/openInsightsButton" style="@style/KartingButton.Quick" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/open_coaching_insights" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/openTimeLossButton" style="@style/KartingButton.Quick" android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1" android:text="@string/open_time_loss_analysis" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/openSessionsButton" style="@style/KartingButton.Quick" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/open_session_library" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+</merge>

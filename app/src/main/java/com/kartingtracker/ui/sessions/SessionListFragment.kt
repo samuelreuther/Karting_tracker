@@ -160,8 +160,20 @@ class SessionListFragment : Fragment() {
 
                     1 -> {
                         sessionViewModel.loadSession(session)
-                        sessionViewModel.setAnalysisMode(AnalysisMode.COMPARISON)
-                        findNavController().navigate(R.id.action_sessionListFragment_to_comparisonFragment)
+                        if (sessionViewModel.isSessionAnalyzable(session)) {
+                            sessionViewModel.setAnalysisMode(AnalysisMode.COMPARISON)
+                            findNavController().navigate(R.id.action_sessionListFragment_to_comparisonFragment)
+                        } else {
+                            MaterialAlertDialogBuilder(requireContext())
+                                .setTitle("Analysis blocked")
+                                .setMessage(
+                                    listOfNotNull(session.invalidReason, session.invalidDiagnostics.firstOrNull())
+                                        .joinToString(separator = "\n\n")
+                                        .ifBlank { "This recording is not analyzable enough for lap comparison." }
+                                )
+                                .setPositiveButton(android.R.string.ok, null)
+                                .show()
+                        }
                     }
 
                     2 -> {

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.mikephil.charting.data.Entry
 import com.kartingtracker.data.CurveDefinition
+import com.kartingtracker.data.AnalysisValidity
 import com.kartingtracker.data.Lap
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.Session
@@ -199,6 +200,36 @@ class SessionViewModel(
                 session.analysisWarnings.isNotEmpty() -> "Stopped with warnings"
                 session.laps.isEmpty() -> "Stopped"
                 else -> "Stopped - ${session.laps.size} laps detected"
+            },
+            stateHeadline = when {
+                !sensorRecorder.hasRequiredSensors -> "Sensors unavailable"
+                recorderPhase == RecorderPhase.PREPARING -> "Put phone in pocket now"
+                recorderPhase == RecorderPhase.CALIBRATING -> "Calibration in progress"
+                recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording active"
+                recorderPhase == RecorderPhase.STOPPING -> "Stopping"
+                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving raw recording"
+                stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Running lap detection"
+                stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing analysis"
+                session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING -> "Invalid / non-driving recording"
+                currentTrackName.isBlank() -> "Select track"
+                else -> "Ready"
+            },
+            stateDetail = when {
+                recorderPhase == RecorderPhase.PREPARING -> "Recording has NOT started yet. Calibration runs after countdown."
+                recorderPhase == RecorderPhase.CALIBRATING -> "Keep kart and phone still."
+                recorderPhase == RecorderPhase.RECORDING || isRecording -> "Stop when your run is complete."
+                stopStatus.stage == StopPipelineStage.FAILED -> "Finalization failed, raw session preserved."
+                session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING ->
+                    (session.invalidReason ?: "Analysis blocked due to invalid recording.")
+                else -> ""
+            },
+            preStartCountdownLabel = if (recorderPhase == RecorderPhase.PREPARING) preStartSecondsRemaining.toString() else "",
+            showCountdown = recorderPhase == RecorderPhase.PREPARING,
+            canOpenAnalysis = buildReliabilityState(session).isReliable,
+            invalidSessionMessage = if (session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING) {
+                listOfNotNull(session.invalidReason, session.invalidDiagnostics.firstOrNull()).joinToString("\n")
+            } else {
+                ""
             }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
@@ -291,6 +322,8 @@ class SessionViewModel(
         val safeLapB = lapBIndex.coerceIn(0, (validLapsB.lastIndex).coerceAtLeast(0))
 
         val message = when {
+            !buildReliabilityState(resolvedSessionA).isReliable -> buildReliabilityState(resolvedSessionA).message
+            !buildReliabilityState(resolvedSessionB).isReliable -> buildReliabilityState(resolvedSessionB).message
             validLapsA.isEmpty() && validLapsB.isEmpty() -> "Sessions exist for $trackName but none contain processed laps yet. Reprocess or record a complete run."
             validLapsA.isEmpty() -> "Session A has no comparable laps yet. Choose another session."
             validLapsB.isEmpty() -> "Session B has no comparable laps yet. Choose another session."
@@ -546,6 +579,10 @@ class SessionViewModel(
         return sessionRepository.exportSessionCsv(session)
     }
 
+    fun isSessionAnalyzable(session: Session): Boolean {
+        return buildReliabilityState(session).isReliable
+    }
+
     fun generateSeededSessionsForSelectedTrack(
         seeds: List<Int> = listOf(42, 1337, 9001),
         durationMinutes: Int = 10,
@@ -763,7 +800,14 @@ class SessionViewModel(
         val sessionB = trackSessions.firstOrNull { it.id == selectedCompareSessionBId.value } ?: trackSessions.first()
         val lapsA = sessionA.laps.mapIndexed { idx, lap -> LapOptionUiState(idx, formatLapLabel(idx, lap)) }
         val lapsB = sessionB.laps.mapIndexed { idx, lap -> LapOptionUiState(idx, formatLapLabel(idx, lap)) }
-        val message = if (lapsA.isEmpty() || lapsB.isEmpty()) "Saved sessions exist, but no valid processed laps are available yet." else ""
+        val reliabilityA = buildReliabilityState(sessionA)
+        val reliabilityB = buildReliabilityState(sessionB)
+        val message = when {
+            !reliabilityA.isReliable -> reliabilityA.message
+            !reliabilityB.isReliable -> reliabilityB.message
+            lapsA.isEmpty() || lapsB.isEmpty() -> "Saved sessions exist, but no valid processed laps are available yet."
+            else -> ""
+        }
         return CompareSelectionUiState(
             sessionOptions = trackSessions.mapIndexed { index, session -> SessionOptionUiState(session.id, "Session ${index + 1}") },
             selectedSessionAId = sessionA.id,
@@ -839,7 +883,9 @@ class SessionViewModel(
             biggestLoss = topLoss?.let { segment ->
                 "Biggest time loss: ${segment.segmentLabel.ifBlank { "segment ${segment.segmentIndex}" }} (+${"%.2f".format(segment.timeLoss)}s)"
             } ?: "No clear time-loss hotspot in latest run",
-            coachingHint = topInsight?.let { insight ->
+            coachingHint = if (!reliability.isReliable) {
+                reliability.message
+            } else topInsight?.let { insight ->
                 "Top coaching hint: ${insight.suggestion}"
             } ?: lastTrackSession.insights.firstOrNull()?.let { insight -> "Top coaching hint: $insight" }
             ?: "Top coaching hint unavailable for this run",
@@ -859,6 +905,17 @@ class SessionViewModel(
     private fun buildReliabilityState(session: Session?): ReliabilityState {
         if (session == null) {
             return ReliabilityState(true, "", "")
+        }
+        if (session.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING) {
+            return ReliabilityState(
+                isReliable = false,
+                message = session.invalidReason ?: "This recording does not look like a valid karting session.",
+                nextStep = buildString {
+                    append("Why: ")
+                    append(session.invalidDiagnostics.take(2).joinToString(separator = " · ").ifBlank { "insufficient repeat structure." })
+                    append("\nTry recording full on-track laps with stable phone mounting.")
+                }
+            )
         }
         val lowConfidenceFallback = session.lapDetectionDebugInfo?.let { debug ->
             debug.fallbackToSingleLap &&

@@ -33,6 +33,12 @@ data class SessionUiState(
     val canLoadLastSession: Boolean = false,
     val recordingTimerLabel: String = "00:00",
     val statusLabel: String = "Idle",
+    val stateHeadline: String = "Ready to record",
+    val stateDetail: String = "",
+    val preStartCountdownLabel: String = "",
+    val showCountdown: Boolean = false,
+    val canOpenAnalysis: Boolean = false,
+    val invalidSessionMessage: String = "",
     val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState(),
     val compareSelection: CompareSelectionUiState = CompareSelectionUiState()
 )
