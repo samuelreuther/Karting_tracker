@@ -37,6 +37,15 @@ The app records accelerometer and gyroscope data, processes the signal on-device
 - Android SDK + platform tools installed through Android Studio
 - A physical Android device for realistic sensor testing (emulator works for UI, not for realistic IMU telemetry)
 
+
+### Gradle/JDK compatibility (important)
+
+If Gradle sync fails early with an error that only shows a Java version such as `25.0.1`, your Gradle runtime JDK is too new for the wrapper/tooling combination.
+
+- This project now uses **Gradle 8.14.3** (wrapper) to improve compatibility with newer JDKs.
+- In Android Studio, set **Settings > Build, Execution, Deployment > Build Tools > Gradle > Gradle JDK** to **JDK 21** (recommended stable option for Android builds).
+- If you are using command line builds, run with `JAVA_HOME` pointing to JDK 21.
+
 ### Build
 
 1. Open this folder in Android Studio.
