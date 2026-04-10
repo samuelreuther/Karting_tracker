@@ -3,6 +3,7 @@ package com.kartingtracker.ui.sessions
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -40,12 +41,18 @@ class SessionListFragment : Fragment() {
     private var suppressFilterCallbacks = false
     private var currentFilterOptions: List<String> = emptyList()
 
-    private val exportBackupDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri == null) {
+    private val exportBackupDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+        if (treeUri == null) {
+            return@registerForActivityResult
+        }
+        val backupName = "karting_tracker_backup_${System.currentTimeMillis()}.zip"
+        val targetDocumentUri = createBackupDocumentInTree(treeUri, backupName)
+        if (targetDocumentUri == null) {
+            Toast.makeText(requireContext(), getString(R.string.backup_export_failed), Toast.LENGTH_LONG).show()
             return@registerForActivityResult
         }
         viewLifecycleOwner.lifecycleScope.launch {
-            val success = sessionViewModel.exportBackup(uri)
+            val success = sessionViewModel.exportBackup(targetDocumentUri)
             val message = if (success) getString(R.string.backup_export_success) else getString(R.string.backup_export_failed)
             Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
         }
@@ -88,8 +95,7 @@ class SessionListFragment : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         binding.exportBackupButton.setOnClickListener {
-            val backupName = "karting_tracker_backup_${System.currentTimeMillis()}.zip"
-            exportBackupDocumentLauncher.launch(backupName)
+            exportBackupDocumentLauncher.launch(null)
         }
         binding.importBackupButton.setOnClickListener {
             MaterialAlertDialogBuilder(requireContext())
@@ -138,6 +144,21 @@ class SessionListFragment : Fragment() {
             binding.trackFilterSpinner.setSelection(selectedIndex, false)
         }
         suppressFilterCallbacks = false
+    }
+
+    private fun createBackupDocumentInTree(treeUri: Uri, backupName: String): Uri? {
+        return runCatching {
+            val documentUri = DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                DocumentsContract.getTreeDocumentId(treeUri)
+            )
+            DocumentsContract.createDocument(
+                requireContext().contentResolver,
+                documentUri,
+                "application/zip",
+                backupName
+            )
+        }.getOrNull()
     }
 
     private fun showOpenOptions(item: SessionListItemUiState) {
