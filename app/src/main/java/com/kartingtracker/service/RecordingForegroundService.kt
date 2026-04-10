@@ -127,16 +127,11 @@ class RecordingForegroundService : Service() {
         return try {
             val notification = buildNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
-                } else {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST
-                }
                 ServiceCompat.startForeground(
                     this,
                     RecordingNotificationHelper.NOTIFICATION_ID,
                     notification,
-                    serviceType
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST
                 )
             } else {
                 startForeground(RecordingNotificationHelper.NOTIFICATION_ID, notification)
