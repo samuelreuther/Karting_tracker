@@ -2,12 +2,14 @@ package com.kartingtracker.ui
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.mikephil.charting.data.Entry
 import com.kartingtracker.data.CurveDefinition
 import com.kartingtracker.data.AnalysisValidity
 import com.kartingtracker.data.Lap
+import com.kartingtracker.data.RecordingState
 import com.kartingtracker.data.SensorSample
 import com.kartingtracker.data.Session
 import com.kartingtracker.data.SessionRepository
@@ -25,7 +27,6 @@ import com.kartingtracker.domain.MapOverlayProjector
 import com.kartingtracker.domain.TimeLossCalculator
 import com.kartingtracker.service.startRecordingService
 import com.kartingtracker.service.stopRecordingService
-import com.kartingtracker.sensor.RecorderPhase
 import com.kartingtracker.sensor.SensorRecorder
 import com.kartingtracker.ui.common.formatLapTime
 import kotlinx.coroutines.Dispatchers
@@ -128,7 +129,6 @@ class SessionViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TrackMapUiState())
 
     val uiState: StateFlow<SessionUiState> = combine(
-        sensorRecorder.recorderPhase,
         sensorRecorder.preStartSecondsRemaining,
         sensorRecorder.recordingStartedAtEpochMs,
         sessionRepository.isRecording,
@@ -140,6 +140,8 @@ class SessionViewModel(
         sessionRepository.storedSessions,
         sessionRepository.currentTrackProfile,
         sessionRepository.stopPipelineStatus,
+        sessionRepository.recordingState,
+        sessionRepository.recordingHealth,
         flow {
             while (true) {
                 emit(System.currentTimeMillis())
@@ -147,28 +149,31 @@ class SessionViewModel(
             }
         }
     ) { args: Array<Any?> ->
-        val recorderPhase = args[0] as RecorderPhase
-        val preStartSecondsRemaining = args[1] as Int
-        val recordingStartedAtEpochMs = args[2] as Long?
-        val isRecording = args[3] as Boolean
-        val sampleCount = args[4] as Int
-        val lastSample = args[5] as SensorSample?
-        val session = args[6] as Session?
+        val preStartSecondsRemaining = args[0] as Int
+        val recordingStartedAtEpochMs = args[1] as Long?
+        val isRecording = args[2] as Boolean
+        val sampleCount = args[3] as Int
+        val lastSample = args[4] as SensorSample?
+        val session = args[5] as Session?
         @Suppress("UNCHECKED_CAST")
-        val tracks = args[7] as List<Track>
-        val currentTrackName = args[8] as String
+        val tracks = args[6] as List<Track>
+        val currentTrackName = args[7] as String
         @Suppress("UNCHECKED_CAST")
-        val storedSessions = args[9] as List<Session>
-        val trackProfile = args[10] as TrackProfile?
-        val stopStatus = args[11] as com.kartingtracker.data.StopPipelineStatus
-        val nowEpochMs = args[12] as Long
+        val storedSessions = args[8] as List<Session>
+        val trackProfile = args[9] as TrackProfile?
+        val stopStatus = args[10] as com.kartingtracker.data.StopPipelineStatus
+        val recordingState = args[11] as RecordingState
+        val recordingHealth = args[12] as com.kartingtracker.data.RecordingHealth
+        val nowEpochMs = args[13] as Long
         val elapsedMs = recordingStartedAtEpochMs?.let { nowEpochMs - it }?.coerceAtLeast(0L) ?: 0L
+        val lastSampleAgeMs = if (recordingHealth.lastSensorSampleAtEpochMs == 0L) -1L else (nowEpochMs - recordingHealth.lastSensorSampleAtEpochMs).coerceAtLeast(0L)
+        val lastAutosaveAgeMs = if (recordingHealth.lastAutosaveAtEpochMs == 0L) -1L else (nowEpochMs - recordingHealth.lastAutosaveAtEpochMs).coerceAtLeast(0L)
 
         SessionUiState(
-            isRecording = recorderPhase == RecorderPhase.RECORDING || isRecording,
-            isPreparing = recorderPhase == RecorderPhase.PREPARING,
-            isCalibrating = recorderPhase == RecorderPhase.CALIBRATING,
-            isStopping = recorderPhase == RecorderPhase.STOPPING,
+            isRecording = recordingState == RecordingState.RECORDING || isRecording,
+            isPreparing = recordingState == RecordingState.PRESTART_COUNTDOWN,
+            isCalibrating = recordingState == RecordingState.CALIBRATING,
+            isStopping = recordingState == RecordingState.STOPPING,
             hasRequiredSensors = sensorRecorder.hasRequiredSensors,
             sampleCount = sampleCount,
             liveLongitudinalAccel = lastSample?.longitudinalAccel ?: 0f,
@@ -187,14 +192,15 @@ class SessionViewModel(
             recordingTimerLabel = formatDurationLabel(elapsedMs),
             statusLabel = when {
                 !sensorRecorder.hasRequiredSensors -> "Sensors missing"
-                recorderPhase == RecorderPhase.PREPARING -> "Starting in ${preStartSecondsRemaining}s"
-                recorderPhase == RecorderPhase.CALIBRATING -> "Calibrating"
-                recorderPhase == RecorderPhase.STOPPING || stopStatus.stage == StopPipelineStage.STOPPING_RECORDING -> "Stopping…"
-                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving…"
-                stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Processing laps…"
+                recordingState == RecordingState.PRESTART_COUNTDOWN -> "Starting in ${preStartSecondsRemaining}s"
+                recordingState == RecordingState.CALIBRATING -> "Calibrating"
+                recordingState == RecordingState.STOPPING || stopStatus.stage == StopPipelineStage.STOPPING_RECORDING -> "Stopping…"
+                recordingState == RecordingState.SAVING_RAW || stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving…"
+                recordingState == RecordingState.PROCESSING || stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Processing laps…"
                 stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing…"
-                stopStatus.stage == StopPipelineStage.FAILED -> "Save failed"
-                recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording"
+                recordingState == RecordingState.FAILED -> "Recording failed"
+                recordingState == RecordingState.ABORTED -> "Recording aborted"
+                recordingState == RecordingState.RECORDING || isRecording -> "Recording"
                 currentTrackName.isBlank() -> "Select a track to start recording"
                 session == null -> "Ready"
                 session.analysisWarnings.isNotEmpty() -> "Stopped with warnings"
@@ -203,34 +209,42 @@ class SessionViewModel(
             },
             stateHeadline = when {
                 !sensorRecorder.hasRequiredSensors -> "Sensors unavailable"
-                recorderPhase == RecorderPhase.PREPARING -> "Put phone in pocket now"
-                recorderPhase == RecorderPhase.CALIBRATING -> "Calibration in progress"
-                recorderPhase == RecorderPhase.RECORDING || isRecording -> "Recording active"
-                recorderPhase == RecorderPhase.STOPPING -> "Stopping"
-                stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving raw recording"
-                stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Running lap detection"
+                recordingState == RecordingState.PRESTART_COUNTDOWN -> "Put phone in pocket now"
+                recordingState == RecordingState.CALIBRATING -> "Calibration in progress"
+                recordingState == RecordingState.RECORDING || isRecording -> "Recording active"
+                recordingState == RecordingState.STOPPING -> "Stopping"
+                recordingState == RecordingState.SAVING_RAW || stopStatus.stage == StopPipelineStage.SAVING_RAW_SESSION -> "Saving raw recording"
+                recordingState == RecordingState.PROCESSING || stopStatus.stage == StopPipelineStage.PROCESSING_LAPS -> "Running lap detection"
                 stopStatus.stage == StopPipelineStage.FINALIZING_SESSION -> "Finalizing analysis"
+                recordingState == RecordingState.FAILED -> "Recording interrupted"
+                recordingState == RecordingState.ABORTED -> "Recording aborted"
                 session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING -> "Invalid / non-driving recording"
                 currentTrackName.isBlank() -> "Select track"
                 else -> "Ready"
             },
             stateDetail = when {
-                recorderPhase == RecorderPhase.PREPARING -> "Recording has NOT started yet. Calibration runs after countdown."
-                recorderPhase == RecorderPhase.CALIBRATING -> "Keep kart and phone still."
-                recorderPhase == RecorderPhase.RECORDING || isRecording -> "Stop when your run is complete."
+                recordingState == RecordingState.PRESTART_COUNTDOWN -> "Recording has NOT started yet. Calibration runs after countdown."
+                recordingState == RecordingState.CALIBRATING -> "Keep kart and phone still."
+                recordingState == RecordingState.RECORDING || isRecording -> "Stop when your run is complete."
                 stopStatus.stage == StopPipelineStage.FAILED -> "Finalization failed, raw session preserved."
+                recordingState == RecordingState.FAILED -> "Failure: ${recordingHealth.lastFailureReason.ifBlank { "unknown" }}"
                 session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING ->
                     (session.invalidReason ?: "Analysis blocked due to invalid recording.")
                 else -> ""
             },
-            preStartCountdownLabel = if (recorderPhase == RecorderPhase.PREPARING) preStartSecondsRemaining.toString() else "",
-            showCountdown = recorderPhase == RecorderPhase.PREPARING,
+            preStartCountdownLabel = if (recordingState == RecordingState.PRESTART_COUNTDOWN) preStartSecondsRemaining.toString() else "",
+            showCountdown = recordingState == RecordingState.PRESTART_COUNTDOWN,
             canOpenAnalysis = buildReliabilityState(session).isReliable,
             invalidSessionMessage = if (session?.analysisValidity == AnalysisValidity.INVALID_NON_DRIVING) {
                 listOfNotNull(session.invalidReason, session.invalidDiagnostics.firstOrNull()).joinToString("\n")
             } else {
                 ""
-            }
+            },
+            diagnosticPanel = "state=${recordingState.name} | elapsed=${formatDurationLabel(elapsedMs)} | samples=${recordingHealth.samplesReceived}\n" +
+                "track=$currentTrackName | wakeLockHeld=${recordingHealth.wakeLockHeld} | watchdogActive=${recordingHealth.watchdogActive}\n" +
+                "lastSampleAgeMs=${if (lastSampleAgeMs >= 0L) lastSampleAgeMs else "n/a"} | lastAutosaveAgeMs=${if (lastAutosaveAgeMs >= 0L) lastAutosaveAgeMs else "n/a"} | autosaveStatus=${recordingHealth.autosaveStatus.ifBlank { "pending" }}\n" +
+                "rawStatus=${recordingHealth.rawPersistenceStatus.ifBlank { "pending" }} | rawPath=${recordingHealth.rawFilePath.ifBlank { "n/a" }}\n" +
+                "serviceHeartbeat=${recordingHealth.serviceAliveAtEpochMs} | lastFailure=${recordingHealth.lastFailureReason.ifBlank { "none" }} | transitionReason=${recordingHealth.lastTransitionReason.ifBlank { "none" }}"
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionUiState())
 
@@ -466,10 +480,12 @@ class SessionViewModel(
         if (sessionRepository.currentTrackName.value.isBlank()) {
             return
         }
+        Log.i("SessionViewModel", "KartingTracker: explicit user start request accepted")
         getApplication<Application>().startRecordingService(sessionRepository.currentTrackName.value)
     }
 
     fun stopRecording() {
+        Log.i("SessionViewModel", "KartingTracker: explicit user stop request accepted")
         getApplication<Application>().stopRecordingService()
     }
 
@@ -602,6 +618,24 @@ class SessionViewModel(
             )
             withContext(Dispatchers.Main) {
                 onComplete(generatedCount, selectedTrack)
+            }
+        }
+    }
+
+    fun runReliabilitySimulator(durationMinutes: Int, onComplete: (Boolean) -> Unit) {
+        val selectedTrack = uiState.value.selectedTrackName
+        if (selectedTrack.isBlank()) {
+            onComplete(false)
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            runCatching {
+                sensorRecorder.simulateRecording(selectedTrack, durationMinutes)
+            }.onFailure {
+                sessionRepository.markRecordingFailed("Simulator failed: ${it.message}", aborted = true)
+            }
+            withContext(Dispatchers.Main) {
+                onComplete(sessionRepository.latestSession.value != null)
             }
         }
     }

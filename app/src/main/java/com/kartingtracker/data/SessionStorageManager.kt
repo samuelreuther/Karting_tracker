@@ -88,6 +88,10 @@ class SessionStorageManager(
         return findSessionFile(session.id)?.length() ?: 0L
     }
 
+    fun resolveSessionFile(session: Session): File {
+        return File(sessionDirectory, buildSessionFileName(session))
+    }
+
     fun deleteSession(sessionId: Long): Boolean {
         val targetFile = findSessionFile(sessionId) ?: return false
         return targetFile.delete()

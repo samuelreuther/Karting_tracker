@@ -39,6 +39,7 @@ data class SessionUiState(
     val showCountdown: Boolean = false,
     val canOpenAnalysis: Boolean = false,
     val invalidSessionMessage: String = "",
+    val diagnosticPanel: String = "",
     val lastSessionSummary: LastSessionSummaryUiState = LastSessionSummaryUiState(),
     val compareSelection: CompareSelectionUiState = CompareSelectionUiState()
 )

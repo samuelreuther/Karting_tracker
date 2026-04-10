@@ -13,6 +13,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.kartingtracker.KartingApplication
 import com.kartingtracker.R
+import com.kartingtracker.data.RecordingState
 import com.kartingtracker.sensor.RecorderPhase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,9 @@ class RecordingForegroundService : Service() {
     private val wakeLock by lazy { createWakeLock() }
 
     private var notificationJob: Job? = null
+    private var healthJob: Job? = null
     private var serviceStartedAtMs: Long = 0L
+    private var lastHeartbeatLogEpochMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -47,7 +50,10 @@ class RecordingForegroundService : Service() {
         try {
             Log.i(TAG, "$LOG_TAG: service onStartCommand action=${intent?.action ?: "null"}")
             when (intent?.action) {
-                ACTION_STOP -> stopRecordingAndService()
+                ACTION_STOP -> {
+                    Log.i(TAG, "$LOG_TAG: stop requested from notification/service action")
+                    stopRecordingAndService()
+                }
                 ACTION_START -> handleStart(intent)
                 null -> handleRestart()
             }
@@ -62,8 +68,12 @@ class RecordingForegroundService : Service() {
 
     override fun onDestroy() {
         notificationJob?.cancel()
+        healthJob?.cancel()
         notificationJob = null
+        healthJob = null
         if (sensorRecorder.recorderPhase.value != RecorderPhase.IDLE) {
+            Log.e(TAG, "$LOG_TAG: service destroyed while recording")
+            sessionRepository.markRecordingFailed("Service destroyed while recorder was active")
             safeStopRecording("Service destroyed while recorder was active")
         }
         releaseWakeLock()
@@ -77,11 +87,13 @@ class RecordingForegroundService : Service() {
 
     private fun handleStart(intent: Intent?) {
         val requestedTrackName = intent?.getStringExtra(EXTRA_TRACK_NAME)?.trim().orEmpty()
+        Log.i(TAG, "$LOG_TAG: user start request accepted track=$requestedTrackName")
         if (!promoteToForeground()) {
             stopServiceInternal("Unable to promote recording service to foreground")
             return
         }
         startNotificationUpdates()
+        startHealthWatchdog()
 
         if (!sensorRecorder.hasRequiredSensors) {
             stopRecordingAndService()
@@ -114,6 +126,7 @@ class RecordingForegroundService : Service() {
                 return
             }
             startNotificationUpdates()
+            startHealthWatchdog()
             if (serviceStartedAtMs == 0L) {
                 serviceStartedAtMs = System.currentTimeMillis()
             }
@@ -152,12 +165,46 @@ class RecordingForegroundService : Service() {
             while (isActive) {
                 try {
                     notificationHelper.notify(buildNotification())
+                    sessionRepository.updateNotificationHeartbeat()
                 } catch (exception: Exception) {
                     Log.e(TAG, "Failed to update recording notification", exception)
                     stopServiceInternal("Notification updates failed")
                     return@launch
                 }
                 delay(NOTIFICATION_UPDATE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun startHealthWatchdog() {
+        if (healthJob != null) return
+        sessionRepository.updateWatchdogActive(true)
+        healthJob = serviceScope.launch {
+            while (isActive) {
+                sessionRepository.updateServiceHeartbeat(wakeLock.isHeld)
+                val health = sessionRepository.recordingHealth.value
+                val now = System.currentTimeMillis()
+                if (now - lastHeartbeatLogEpochMs >= HEARTBEAT_LOG_INTERVAL_MS) {
+                    val lastSampleAgeMs = if (health.lastSensorSampleAtEpochMs == 0L) -1L else now - health.lastSensorSampleAtEpochMs
+                    Log.i(
+                        TAG,
+                        "$LOG_TAG: recorder heartbeat samples=${health.samplesReceived} lastSampleAgeMs=$lastSampleAgeMs wakeLock=${health.wakeLockHeld}"
+                    )
+                    lastHeartbeatLogEpochMs = now
+                }
+                val watchdogReason = RecorderWatchdogEvaluator.evaluate(
+                    isRecorderActive = sensorRecorder.isActive,
+                    health = health,
+                    nowEpochMs = now,
+                    stallTimeoutMs = SENSOR_STALL_TIMEOUT_MS
+                )
+                if (watchdogReason != null) {
+                    Log.e(TAG, "$LOG_TAG: $watchdogReason")
+                    sessionRepository.markRecordingFailed(watchdogReason)
+                    stopServiceInternal("Recorder health watchdog stop")
+                    return@launch
+                }
+                delay(HEALTH_CHECK_INTERVAL_MS)
             }
         }
     }
@@ -169,7 +216,10 @@ class RecordingForegroundService : Service() {
     private fun stopServiceInternal(reason: String) {
         Log.i(TAG, "$LOG_TAG: stopServiceInternal reason=$reason")
         notificationJob?.cancel()
+        healthJob?.cancel()
+        sessionRepository.updateWatchdogActive(false)
         notificationJob = null
+        healthJob = null
         safeStopRecording(reason)
         releaseWakeLock()
         serviceStartedAtMs = 0L
@@ -186,6 +236,7 @@ class RecordingForegroundService : Service() {
             Log.i(TAG, "$LOG_TAG: recording stopped reason=$reason")
         } catch (exception: Exception) {
             Log.e(TAG, "$reason: recorder shutdown failed", exception)
+            sessionRepository.markRecordingFailed("Recorder shutdown failed: ${exception.message}")
         }
     }
 
@@ -204,7 +255,10 @@ class RecordingForegroundService : Service() {
             RecorderPhase.CALIBRATING -> getString(R.string.recording_phase_calibrating)
             RecorderPhase.RECORDING -> getString(R.string.recording_phase_recording)
             RecorderPhase.STOPPING -> getString(R.string.recording_phase_stopping)
-            RecorderPhase.IDLE -> getString(R.string.recording_phase_starting)
+            RecorderPhase.IDLE -> when (sessionRepository.recordingState.value) {
+                RecordingState.FAILED, RecordingState.ABORTED -> "Interrupted"
+                else -> getString(R.string.recording_phase_starting)
+            }
         },
         elapsedMs = getElapsedTimeMs(),
         sampleCount = sessionRepository.sampleCount.value,
@@ -245,6 +299,9 @@ class RecordingForegroundService : Service() {
         const val EXTRA_TRACK_NAME = "extra_track_name"
 
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
+        private const val HEALTH_CHECK_INTERVAL_MS = 2_000L
+        private const val HEARTBEAT_LOG_INTERVAL_MS = 5_000L
+        private const val SENSOR_STALL_TIMEOUT_MS = 15_000L
         private const val WAKELOCK_TIMEOUT_MS = 20 * 60 * 1000L
     }
 }
