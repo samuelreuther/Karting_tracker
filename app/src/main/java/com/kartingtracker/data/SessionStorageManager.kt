@@ -15,6 +15,8 @@ class SessionStorageManager(
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private val sessionDirectory = File(context.filesDir, "sessions").apply { mkdirs() }
     private val corruptDirectory = File(context.filesDir, "corrupt_sessions").apply { mkdirs() }
+    @Volatile
+    private var sessionFileSizeById: Map<Long, Long> = emptyMap()
 
     fun saveSession(session: Session): Boolean {
         return try {
@@ -46,8 +48,15 @@ class SessionStorageManager(
                 ).exists()
             }
 
-        return files
-            .mapNotNull { file -> parseSession(file) }
+        val fileSizesById = mutableMapOf<Long, Long>()
+        val sessions = files.mapNotNull { file ->
+            parseSession(file)?.also { session ->
+                fileSizesById[session.id] = file.length()
+            }
+        }
+        sessionFileSizeById = fileSizesById
+
+        return sessions
             .sortedByDescending { session -> session.startTimeEpochMs }
     }
 
@@ -62,10 +71,16 @@ class SessionStorageManager(
     }
 
     fun getSessionFileSize(sessionId: Long): Long {
+        sessionFileSizeById[sessionId]?.let { size ->
+            return size
+        }
         return findSessionFile(sessionId)?.length() ?: 0L
     }
 
     fun getSessionFileSize(session: Session): Long {
+        sessionFileSizeById[session.id]?.let { size ->
+            return size
+        }
         val directFile = File(sessionDirectory, buildSessionFileName(session))
         if (directFile.exists()) {
             return directFile.length()

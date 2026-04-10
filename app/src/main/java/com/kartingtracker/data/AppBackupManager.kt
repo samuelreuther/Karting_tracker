@@ -33,7 +33,7 @@ class AppBackupManager(
                 tempZip.delete()
                 return@runCatching false
             }
-            val writeSuccess = appContext.contentResolver.openOutputStream(targetUri, "wt")?.use { outputStream ->
+            val writeSuccess = appContext.contentResolver.openOutputStream(targetUri, "w")?.use { outputStream ->
                 FileInputStream(tempZip).use { inputStream ->
                     inputStream.copyTo(outputStream)
                 }
