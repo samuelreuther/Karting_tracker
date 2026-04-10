@@ -36,7 +36,7 @@
             android:name=".service.RecordingForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="health"
+            android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
 
         <provider

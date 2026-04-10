@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.gson.JsonParser
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -20,54 +21,73 @@ class AppBackupManager(
 
     fun exportBackup(targetUri: Uri): Boolean {
         return runCatching {
-            appContext.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                ZipOutputStream(outputStream.buffered()).use { zipOutputStream ->
-                    val sessionsDir = File(appContext.filesDir, "sessions")
-                    val sessionValidation = validateSessionFiles(sessionsDir)
-                    val manifest = JSONObject().apply {
-                        put("formatVersion", BACKUP_FORMAT_VERSION)
-                        put("createdAtEpochMs", System.currentTimeMillis())
-                        put("appPackage", appContext.packageName)
-                        put("summary", JSONObject().apply {
-                            put("finalSessionCount", sessionValidation.finalSessions)
-                            put("partialSessionCount", sessionValidation.partialSessions)
-                            put("emptySessionFiles", sessionValidation.emptyFiles)
-                            put("corruptSessionFiles", sessionValidation.corruptFiles)
-                            put("trackProfileCount", countFiles(File(appContext.filesDir, "track_profiles")))
-                            put("trackLayoutCount", countFiles(File(appContext.filesDir, "track_layouts")))
-                        })
-                        put("sessionValidation", sessionValidation.toJson())
-                        put(
-                            "includedRoots",
-                            listOf("files/sessions", "files/track_layouts", "files/track_maps", "files/track_profiles", "shared_prefs")
-                        )
-                    }
-                    addStringEntry(
-                        zipOutputStream,
-                        "$exportRootName/manifest.json",
-                        manifest.toString(2)
-                    )
-                    addDirectoryToZip(
-                        sessionsDir,
-                        zipOutputStream,
-                        "$exportRootName/files/sessions"
-                    ) { file -> sessionValidation.exportableSessionNames.contains(file.name) && isExportableUserData(file.name) }
-                    addDirectoryToZip(File(appContext.filesDir, "track_layouts"), zipOutputStream, "$exportRootName/files/track_layouts") { file ->
-                        isExportableUserData(file.name)
-                    }
-                    addDirectoryToZip(File(appContext.filesDir, "track_maps"), zipOutputStream, "$exportRootName/files/track_maps") { file ->
-                        isExportableUserData(file.path)
-                    }
-                    addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles") { file ->
-                        isExportableUserData(file.name)
-                    }
-                    addDirectoryToZip(prefsDirectory, zipOutputStream, "$exportRootName/shared_prefs")
+            val tempZip = File(appContext.cacheDir, "backup_export_${System.currentTimeMillis()}.zip")
+            FileOutputStream(tempZip).use { tempFileOutput ->
+                ZipOutputStream(tempFileOutput.buffered()).use { zipOutputStream ->
+                    writeBackupArchive(zipOutputStream)
                 }
+                tempFileOutput.flush()
+            }
+            if (!tempZip.exists() || tempZip.length() <= 0L) {
+                Log.e(TAG, "Backup export produced an empty archive")
+                tempZip.delete()
+                return@runCatching false
+            }
+            val writeSuccess = appContext.contentResolver.openOutputStream(targetUri, "wt")?.use { outputStream ->
+                FileInputStream(tempZip).use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+                outputStream.flush()
                 true
             } ?: false
+            tempZip.delete()
+            writeSuccess
         }.onFailure { exception ->
             Log.e(TAG, "Failed to export backup", exception)
         }.getOrDefault(false)
+    }
+
+    private fun writeBackupArchive(zipOutputStream: ZipOutputStream) {
+        val sessionsDir = File(appContext.filesDir, "sessions")
+        val sessionValidation = validateSessionFiles(sessionsDir)
+        val manifest = JSONObject().apply {
+            put("formatVersion", BACKUP_FORMAT_VERSION)
+            put("createdAtEpochMs", System.currentTimeMillis())
+            put("appPackage", appContext.packageName)
+            put("summary", JSONObject().apply {
+                put("finalSessionCount", sessionValidation.finalSessions)
+                put("partialSessionCount", sessionValidation.partialSessions)
+                put("emptySessionFiles", sessionValidation.emptyFiles)
+                put("corruptSessionFiles", sessionValidation.corruptFiles)
+                put("trackProfileCount", countFiles(File(appContext.filesDir, "track_profiles")))
+                put("trackLayoutCount", countFiles(File(appContext.filesDir, "track_layouts")))
+            })
+            put("sessionValidation", sessionValidation.toJson())
+            put(
+                "includedRoots",
+                listOf("files/sessions", "files/track_layouts", "files/track_maps", "files/track_profiles", "shared_prefs")
+            )
+        }
+        addStringEntry(
+            zipOutputStream,
+            "$exportRootName/manifest.json",
+            manifest.toString(2)
+        )
+        addDirectoryToZip(
+            sessionsDir,
+            zipOutputStream,
+            "$exportRootName/files/sessions"
+        ) { file -> sessionValidation.exportableSessionNames.contains(file.name) && isExportableUserData(file.name) }
+        addDirectoryToZip(File(appContext.filesDir, "track_layouts"), zipOutputStream, "$exportRootName/files/track_layouts") { file ->
+            isExportableUserData(file.name)
+        }
+        addDirectoryToZip(File(appContext.filesDir, "track_maps"), zipOutputStream, "$exportRootName/files/track_maps") { file ->
+            isExportableUserData(file.path)
+        }
+        addDirectoryToZip(File(appContext.filesDir, "track_profiles"), zipOutputStream, "$exportRootName/files/track_profiles") { file ->
+            isExportableUserData(file.name)
+        }
+        addDirectoryToZip(prefsDirectory, zipOutputStream, "$exportRootName/shared_prefs")
     }
 
     fun importBackup(sourceUri: Uri): Boolean {
