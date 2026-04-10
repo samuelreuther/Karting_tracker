@@ -256,6 +256,16 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/debugRecorderPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_metric_chip"
+            android:padding="10dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="@color/karting_text_secondary" />
+
         <!-- Keep existing analysis + session cards below unchanged to avoid ID breakage -->
         <include layout="@layout/fragment_main_bottom" />
 

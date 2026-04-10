@@ -58,14 +58,21 @@ class MainFragment : Fragment() {
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
         binding.addTrackButton.setOnClickListener { showAddTrackDialog() }
         binding.generateSeededButton.setOnClickListener {
-            sessionViewModel.generateSeededSessionsForSelectedTrack { generatedCount, trackName ->
-                val message = if (generatedCount > 0 && trackName.isNotBlank()) {
-                    getString(R.string.seeded_sessions_generated, generatedCount, trackName)
-                } else {
-                    getString(R.string.seeded_sessions_generation_failed)
+            val options = arrayOf("3 min simulator", "10 min simulator")
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Run reliability simulator")
+                .setItems(options) { _, index ->
+                    val durationMinutes = if (index == 0) 3 else 10
+                    sessionViewModel.runReliabilitySimulator(durationMinutes) { success ->
+                        val message = if (success) {
+                            "Simulator saved a $durationMinutes minute session."
+                        } else {
+                            "Simulator failed."
+                        }
+                        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                    }
                 }
-                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
-            }
+                .show()
         }
         binding.generateSeededButton.visibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
         setupComparisonSelectors()
@@ -95,6 +102,7 @@ class MainFragment : Fragment() {
                     binding.recordingTimerLabel.text = state.recordingTimerLabel
                     binding.stateHeadline.text = state.stateHeadline
                     binding.stateDetail.text = state.stateDetail
+                    binding.debugRecorderPanel.text = state.diagnosticPanel
                     binding.preStartCountdownValue.visibility = if (state.showCountdown) View.VISIBLE else View.GONE
                     binding.preStartCountdownValue.text = state.preStartCountdownLabel
                     binding.startButton.isEnabled = !state.isRecording &&

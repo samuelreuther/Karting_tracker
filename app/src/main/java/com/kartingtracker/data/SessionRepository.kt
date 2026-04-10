@@ -47,6 +47,7 @@ class SessionRepository(
     private val sessionCsvExporter: SessionCsvExporter,
     private val appBackupManager: AppBackupManager
 ) {
+    private val stateMachine = RecordingStateMachine()
     private val lock = Any()
     private var currentSessionId: Long = System.currentTimeMillis()
     private var currentStartTimestampNs: Long = 0L
@@ -88,6 +89,10 @@ class SessionRepository(
     val currentTrackLayout: StateFlow<TrackLayout?> = _currentTrackLayout.asStateFlow()
     private val _stopPipelineStatus = MutableStateFlow(StopPipelineStatus())
     val stopPipelineStatus: StateFlow<StopPipelineStatus> = _stopPipelineStatus.asStateFlow()
+    private val _recordingState = MutableStateFlow(RecordingState.IDLE)
+    val recordingState: StateFlow<RecordingState> = _recordingState.asStateFlow()
+    private val _recordingHealth = MutableStateFlow(RecordingHealth())
+    val recordingHealth: StateFlow<RecordingHealth> = _recordingHealth.asStateFlow()
 
     init {
         repositoryScope.launch {
@@ -106,6 +111,18 @@ class SessionRepository(
         synchronized(lock) {
             stopAutosaveLocked()
             _stopPipelineStatus.value = StopPipelineStatus()
+            transitionRecordingState(RecordingState.RECORDING, "Session start accepted")
+            _recordingHealth.value = _recordingHealth.value.copy(
+                recordingEnteredAtEpochMs = System.currentTimeMillis(),
+                lastSensorSampleAtEpochMs = 0L,
+                lastAutosaveAtEpochMs = 0L,
+                rawPersistenceStatus = "",
+                rawFilePath = "",
+                autosaveStatus = "",
+                lastFailureReason = "",
+                watchdogStopReason = "",
+                lastTransitionReason = "Session start accepted"
+            )
             currentSessionId += 1L
             currentStartTimestampNs = startTimestampNs
             currentStartTimeEpochMs = System.currentTimeMillis()
@@ -128,6 +145,14 @@ class SessionRepository(
             currentSamples += sample
             _sampleCount.value = currentSamples.size
             _lastSample.value = sample
+            val existingHealth = _recordingHealth.value
+            if (existingHealth.samplesReceived == 0) {
+                Log.i(TAG, "$LOG_TAG: first sample after RECORDING session=$currentSessionId timestampNs=${sample.timestampNs}")
+            }
+            _recordingHealth.value = existingHealth.copy(
+                lastSensorSampleAtEpochMs = System.currentTimeMillis(),
+                samplesReceived = currentSamples.size
+            )
         }
     }
 
@@ -145,6 +170,7 @@ class SessionRepository(
                 message = "Stopping recording…",
                 sessionId = currentSessionId
             )
+            transitionRecordingState(RecordingState.STOPPING, "Stop session invoked")
             _isRecording.value = false
             stopAutosaveLocked()
             val snapshot = if (currentSamples.isEmpty()) {
@@ -626,6 +652,7 @@ class SessionRepository(
                 delay(AUTOSAVE_INTERVAL_MS)
                 val partialSession = buildPartialSessionSnapshot() ?: continue
                 persistSessionWithVerification(partialSession, "autosave")
+                _recordingHealth.value = _recordingHealth.value.copy(lastAutosaveAtEpochMs = System.currentTimeMillis())
             }
         }
     }
@@ -641,6 +668,9 @@ class SessionRepository(
                 return null
             }
             val snapshotSamples = currentSamples.toList()
+            if (!RawPersistenceGuard.shouldPersistAutosave(snapshotSamples.size)) {
+                return null
+            }
             val lastTimestampNs = snapshotSamples.lastOrNull()?.timestampNs ?: currentStartTimestampNs
             val partialSession = Session(
                 id = currentSessionId,
@@ -902,12 +932,29 @@ class SessionRepository(
         finalizeJob?.cancel()
         finalizeJob = repositoryScope.launch {
             _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.SAVING_RAW_SESSION, "Saving raw session…", rawSession.id)
+            Log.i(TAG, "$LOG_TAG: entered SAVING_RAW session=${rawSession.id}")
+            transitionRecordingState(RecordingState.SAVING_RAW, "Stop pipeline entered raw save")
             if (!sessionStorageManager.saveSession(rawSession)) {
+                Log.e(TAG, "$LOG_TAG: raw final save failure session=${rawSession.id}")
                 _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Failed to save raw session", rawSession.id)
+                transitionRecordingState(RecordingState.FAILED, "Raw final save failure")
+                _recordingHealth.value = _recordingHealth.value.copy(
+                    rawPersistenceStatus = "raw_save_failed",
+                    lastFailureReason = "Failed to save raw session ${rawSession.id}"
+                )
                 return@launch
             }
+            val rawFile = sessionStorageManager.resolveSessionFile(rawSession)
+            _recordingHealth.value = _recordingHealth.value.copy(
+                rawPersistenceStatus = "raw_saved",
+                rawFilePath = rawFile.absolutePath
+            )
+            Log.i(TAG, "$LOG_TAG: raw final save success file=${rawFile.absolutePath} bytes=${rawFile.length()} samples=${rawSession.samples.size}")
             _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.PROCESSING_LAPS, "Processing laps…", rawSession.id)
+            transitionRecordingState(RecordingState.PROCESSING, "Raw persisted; processing start")
+            Log.i(TAG, "$LOG_TAG: processing start session=${rawSession.id} samples=${rawSession.samples.size}")
             val processed = processSessionInternal(rawSession).copy(processingVersion = CURRENT_PROCESSING_VERSION)
+            Log.i(TAG, "$LOG_TAG: processing end session=${rawSession.id} state=${processed.processingState} laps=${processed.laps.size}")
             _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FINALIZING_SESSION, "Finalizing session…", rawSession.id)
             if (sessionStorageManager.saveSession(processed)) {
                 sessionStorageManager.deletePartialSnapshot(rawSession.trackName, rawSession.startTimeEpochMs)
@@ -916,6 +963,7 @@ class SessionRepository(
                 refreshStoredSessions()
                 processed.trackName.takeIf { it.isNotBlank() }?.let(::refreshTrackProfileState)
                 _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.COMPLETED, "Session finalized", rawSession.id)
+                transitionRecordingState(RecordingState.COMPLETED, "Session finalized")
             } else {
                 val failed = rawSession.copy(
                     processingState = Session.PROCESSING_STATE_FAILED,
@@ -926,15 +974,87 @@ class SessionRepository(
                 _currentSession.value = failed
                 _latestSession.value = failed
                 _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Finalization failed; raw session preserved", rawSession.id)
+                transitionRecordingState(RecordingState.FAILED, "Final processed save failed")
+                _recordingHealth.value = _recordingHealth.value.copy(
+                    rawPersistenceStatus = "raw_saved_processing_failed",
+                    lastFailureReason = "Final session persist failed for session ${rawSession.id}"
+                )
             }
         }
+    }
+
+    fun updateRecordingState(state: RecordingState) {
+        transitionRecordingState(state, "External update")
+    }
+
+    fun markRecordingFailed(reason: String, aborted: Boolean = false) {
+        transitionRecordingState(if (aborted) RecordingState.ABORTED else RecordingState.FAILED, reason)
+        synchronized(lock) {
+            if (_isRecording.value) {
+                val failureSnapshot = buildPartialSessionSnapshot()
+                _isRecording.value = false
+                stopAutosaveLocked()
+                failureSnapshot?.let { snapshot ->
+                    persistSessionWithVerification(snapshot, "failure_snapshot")
+                }
+            }
+        }
+        _recordingHealth.value = _recordingHealth.value.copy(
+            lastFailureReason = reason,
+            watchdogStopReason = if (reason.contains("watchdog", ignoreCase = true) || reason.contains("stalled", ignoreCase = true)) {
+                reason
+            } else {
+                _recordingHealth.value.watchdogStopReason
+            },
+            lastTransitionReason = reason
+        )
+        _stopPipelineStatus.value = StopPipelineStatus(
+            stage = StopPipelineStage.FAILED,
+            message = reason
+        )
+        Log.e(TAG, "$LOG_TAG: recording transitioned to ${_recordingState.value} reason=$reason")
+    }
+
+    fun updateServiceHeartbeat(wakeLockHeld: Boolean) {
+        _recordingHealth.value = _recordingHealth.value.copy(
+            serviceAliveAtEpochMs = System.currentTimeMillis(),
+            wakeLockHeld = wakeLockHeld
+        )
+    }
+
+    fun updateNotificationHeartbeat() {
+        _recordingHealth.value = _recordingHealth.value.copy(lastNotificationUpdateAtEpochMs = System.currentTimeMillis())
+    }
+
+    fun updateWatchdogActive(active: Boolean) {
+        _recordingHealth.value = _recordingHealth.value.copy(watchdogActive = active)
+    }
+
+    private fun transitionRecordingState(state: RecordingState, reason: String) {
+        if (!stateMachine.transitionTo(state)) {
+            Log.w(TAG, "$LOG_TAG: illegal recording state transition ${stateMachine.state} -> $state")
+            stateMachine.forceSet(RecordingState.FAILED)
+            _recordingState.value = RecordingState.FAILED
+            _recordingHealth.value = _recordingHealth.value.copy(
+                lastFailureReason = "Illegal state transition ${stateMachine.state} -> $state",
+                lastTransitionReason = "Illegal state transition ${stateMachine.state} -> $state"
+            )
+            return
+        }
+        _recordingState.value = stateMachine.state
+        _recordingHealth.value = _recordingHealth.value.copy(lastTransitionReason = reason)
     }
 
     private fun persistSessionWithVerification(session: Session, stage: String) {
         val saved = sessionStorageManager.saveSession(session)
         if (!saved) {
             Log.e(TAG, "$LOG_TAG: failed to persist session=${session.id} stage=$stage")
+            _recordingHealth.value = _recordingHealth.value.copy(autosaveStatus = "failed:$stage")
+            return
         }
+        val sessionFile = sessionStorageManager.resolveSessionFile(session)
+        _recordingHealth.value = _recordingHealth.value.copy(autosaveStatus = "ok:$stage")
+        Log.i(TAG, "$LOG_TAG: autosave success file=${sessionFile.absolutePath} bytes=${sessionFile.length()} samples=${session.samples.size}")
     }
 
     private fun <T> measureOperation(label: String, block: () -> T): T {

@@ -8,7 +8,9 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import com.kartingtracker.data.RecordingState
 import com.kartingtracker.data.SensorSample
+import com.kartingtracker.data.SimulatedSessionGenerator
 import com.kartingtracker.data.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +83,8 @@ class SensorRecorder(
         _recordingStartedAtEpochMs.value = null
         preStartCountdownJob?.cancel()
         _recorderPhase.value = RecorderPhase.PREPARING
+        sessionRepository.updateRecordingState(RecordingState.PRESTART_COUNTDOWN)
+        Log.i(TAG, "$LOG_TAG: prestart countdown start seconds=$PRE_START_COUNTDOWN_SECONDS")
         preStartCountdownJob = recorderScope.launch {
             for (seconds in PRE_START_COUNTDOWN_SECONDS downTo 1) {
                 if (!active) {
@@ -95,11 +99,13 @@ class SensorRecorder(
             }
             calibrationManager.startCalibration()
             _recorderPhase.value = RecorderPhase.CALIBRATING
-            Log.i(TAG, "$LOG_TAG: sensor recorder start calibration")
+            sessionRepository.updateRecordingState(RecordingState.CALIBRATING)
+            Log.i(TAG, "$LOG_TAG: calibration start")
             if (!registerListeners()) {
                 active = false
                 _recorderPhase.value = RecorderPhase.IDLE
                 calibrationManager.reset()
+                sessionRepository.markRecordingFailed("Sensor listener registration failed", aborted = true)
                 Log.e(TAG, "$LOG_TAG: failed to register sensor listeners")
             }
         }
@@ -121,6 +127,7 @@ class SensorRecorder(
             val phaseAtStop = _recorderPhase.value
             active = false
             _recorderPhase.value = RecorderPhase.STOPPING
+            sessionRepository.updateRecordingState(RecordingState.STOPPING)
             if (phaseAtStop == RecorderPhase.RECORDING || phaseAtStop == RecorderPhase.STOPPING) {
                 val lastTimestamp = sessionRepository.lastSample.value?.timestampNs ?: lastSensorTimestampNs
                 stopProcessingJob?.cancel()
@@ -128,6 +135,7 @@ class SensorRecorder(
                     runCatching { sessionRepository.stopSession(lastTimestamp) }
                         .onFailure { exception ->
                             Log.e(TAG, "$LOG_TAG: stopSession failed", exception)
+                            sessionRepository.markRecordingFailed("Stop pipeline failed: ${exception.message}")
                         }
                     _recorderPhase.value = RecorderPhase.IDLE
                     _recordingStartedAtEpochMs.value = null
@@ -135,6 +143,7 @@ class SensorRecorder(
             } else {
                 _recorderPhase.value = RecorderPhase.IDLE
                 _recordingStartedAtEpochMs.value = null
+                sessionRepository.updateRecordingState(RecordingState.ABORTED)
             }
             calibrationManager.reset()
         }
@@ -169,6 +178,8 @@ class SensorRecorder(
                         if (calibrationFinished) {
                             sessionRepository.startSession(event.timestamp)
                             _recorderPhase.value = RecorderPhase.RECORDING
+                            sessionRepository.updateRecordingState(RecordingState.RECORDING)
+                            Log.i(TAG, "$LOG_TAG: entered RECORDING at timestampNs=${event.timestamp}")
                             _recordingStartedAtEpochMs.value = System.currentTimeMillis()
                         }
                         return
@@ -197,7 +208,20 @@ class SensorRecorder(
             }
         } catch (exception: Exception) {
             Log.e(TAG, "$LOG_TAG: sensor callback failed", exception)
+            sessionRepository.markRecordingFailed("Sensor callback failed: ${exception.message}")
         }
+    }
+
+    fun simulateRecording(trackName: String, durationMinutes: Int) {
+        val synthetic = SimulatedSessionGenerator.generateSeededSession(
+            trackName = trackName,
+            seed = 42 + durationMinutes,
+            durationMinutes = durationMinutes
+        )
+        sessionRepository.updateRecordingState(RecordingState.PRESTART_COUNTDOWN)
+        sessionRepository.startSession(synthetic.startTimestampNs)
+        synthetic.samples.forEach { sample -> sessionRepository.appendSample(sample) }
+        sessionRepository.stopSession(synthetic.endTimestampNs)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
