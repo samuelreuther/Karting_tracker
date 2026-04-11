@@ -30,4 +30,6 @@
     <color name="karting_accent_blue">#78A7FF</color>
     <color name="karting_accent_teal">#33D5C8</color>
     <color name="karting_accent_orange">#FF9E44</color>
+    <color name="warning_background">#FFF3CD</color>
+    <color name="warning_text">#856404</color>
 </resources>

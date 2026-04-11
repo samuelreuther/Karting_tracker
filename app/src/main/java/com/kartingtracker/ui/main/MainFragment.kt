@@ -22,6 +22,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.kartingtracker.BuildConfig
 import com.kartingtracker.R
 import com.kartingtracker.databinding.FragmentMainBinding
+import com.kartingtracker.util.BatteryOptimizationHelper
 import com.kartingtracker.databinding.FragmentMainBottomBinding
 import com.kartingtracker.ui.AppViewModelFactory
 import com.kartingtracker.ui.SessionViewModel
@@ -38,6 +39,7 @@ class MainFragment : Fragment() {
     }
 
     private lateinit var trackTileAdapter: TrackTileAdapter
+    private lateinit var batteryHelper: BatteryOptimizationHelper
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -53,6 +55,7 @@ class MainFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         setupTrackGrid()
+        checkBatteryOptimization()
 
         binding.startButton.setOnClickListener { sessionViewModel.startRecording() }
         binding.stopButton.setOnClickListener { sessionViewModel.stopRecording() }
@@ -160,10 +163,36 @@ class MainFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        checkBatteryOptimization()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _bottomBinding = null
         _binding = null
+    }
+
+    private fun checkBatteryOptimization() {
+        batteryHelper = BatteryOptimizationHelper(requireContext())
+        if (batteryHelper.isBatteryOptimizationEnabled()) {
+            binding.batteryWarningCard.visibility = View.VISIBLE
+            binding.batteryWarningMessage.text = if (batteryHelper.isSamsungDevice()) {
+                batteryHelper.getSamsungGuidanceMessage()
+            } else {
+                batteryHelper.getGeneralGuidanceMessage()
+            }
+            binding.fixBatteryButton.setOnClickListener {
+                try {
+                    startActivity(batteryHelper.openBatteryOptimizationSettings())
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(requireContext(), "Could not open settings", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            binding.batteryWarningCard.visibility = View.GONE
+        }
     }
 
     private fun setupTrackGrid() {
