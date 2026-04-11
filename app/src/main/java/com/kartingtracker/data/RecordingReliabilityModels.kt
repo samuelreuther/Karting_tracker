@@ -7,6 +7,7 @@ enum class RecordingState {
     RECORDING,
     STOPPING,
     SAVING_RAW,
+    RAW_SAVED,
     PROCESSING,
     COMPLETED,
     FAILED,
@@ -29,3 +30,11 @@ data class RecordingHealth(
     val watchdogStopReason: String = "",
     val lastTransitionReason: String = ""
 )
+
+enum class RecordingIssue {
+    RECORDER_DEAD,           // Service alive but recorder not active
+    SAMPLE_STALL,            // No samples received for too long
+    NOT_FOREGROUND,          // Service lost foreground status
+    NO_WAKE_LOCK,            // Wake lock released unexpectedly
+    BATTERY_OPTIMIZATION     // Battery optimization may kill app
+}
