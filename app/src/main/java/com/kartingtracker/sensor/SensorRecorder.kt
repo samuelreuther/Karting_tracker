@@ -43,6 +43,7 @@ class SensorRecorder(
     private val accelFilter = LowPassFilter()
     private val gyroFilter = LowPassFilter()
     private val calibrationManager = CalibrationManager()
+    private val rateManager = AdaptiveSensorRateManager()
 
     private val sensorThread = HandlerThread("karting-sensor-thread").apply { start() }
     private val sensorHandler = Handler(sensorThread.looper)
@@ -80,6 +81,7 @@ class SensorRecorder(
         gyroFilter.reset()
         lastGyro = floatArrayOf(0f, 0f, 0f)
         lastSensorTimestampNs = 0L
+        rateManager.reset()  // Reset rate manager for new session
         _recordingStartedAtEpochMs.value = null
         preStartCountdownJob?.cancel()
         _recorderPhase.value = RecorderPhase.PREPARING
@@ -171,7 +173,23 @@ class SensorRecorder(
                 }
 
                 Sensor.TYPE_ACCELEROMETER -> {
+                    val previousTimestamp = lastSensorTimestampNs
                     lastSensorTimestampNs = event.timestamp
+
+                    // Track actual sample rate and check for degradation
+                    if (previousTimestamp > 0L && _recorderPhase.value == RecorderPhase.RECORDING) {
+                        rateManager.onSampleReceived(event.timestamp, previousTimestamp)
+
+                        if (rateManager.shouldDowngrade()) {
+                            val downgraded = rateManager.downgrade()
+                            if (downgraded) {
+                                Log.w(TAG, "$LOG_TAG: sample drop rate high, downgrading to ${rateManager.currentRate.name} (${rateManager.currentRate.targetHz}Hz)")
+                                unregisterListeners()
+                                registerListeners()
+                            }
+                        }
+                    }
+
                     val filteredAccel = accelFilter.apply(event.values.copyOf())
                     if (_recorderPhase.value == RecorderPhase.CALIBRATING) {
                         val calibrationFinished = calibrationManager.addCalibrationSample(filteredAccel, event.timestamp)
@@ -231,14 +249,17 @@ class SensorRecorder(
             return listenersRegistered
         }
         val accelRegistered = accelerometer?.let { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, sensorHandler)
+            sensorManager.registerListener(this, sensor, rateManager.currentRate.delay, sensorHandler)
         } ?: false
         val gyroRegistered = gyroscope?.let { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, sensorHandler)
+            sensorManager.registerListener(this, sensor, rateManager.currentRate.delay, sensorHandler)
         } ?: false
         listenersRegistered = accelRegistered && gyroRegistered
         if (!listenersRegistered) {
             sensorManager.unregisterListener(this)
+        }
+        if (listenersRegistered) {
+            Log.i(TAG, "$LOG_TAG: sensors registered at ${rateManager.currentRate.name} rate (${rateManager.currentRate.targetHz}Hz)")
         }
         return listenersRegistered
     }
