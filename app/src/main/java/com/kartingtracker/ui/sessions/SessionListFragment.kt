@@ -264,10 +264,22 @@ class SessionListFragment : Fragment() {
             .setTitle(R.string.delete_session)
             .setMessage(getString(R.string.delete_session_confirmation, session.trackName))
             .setPositiveButton(R.string.delete_session) { _, _ ->
-                sessionViewModel.deleteSession(session)
+                performDeletion(session)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun performDeletion(session: Session) {
+        val deleted = sessionViewModel.deleteSession(session)
+        if (!deleted) return
+        com.google.android.material.snackbar.Snackbar.make(
+            binding.root,
+            "Session deleted. You can restore it for 7 days.",
+            com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+        ).setAction("UNDO") {
+            sessionViewModel.restoreSession(session)
+        }.show()
     }
 
     private fun confirmDeleteTrack(trackName: String) {

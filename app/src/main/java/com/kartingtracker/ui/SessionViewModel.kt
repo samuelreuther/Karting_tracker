@@ -591,6 +591,10 @@ class SessionViewModel(
         return sessionRepository.deleteSession(session.id)
     }
 
+    fun restoreSession(session: Session): Boolean {
+        return sessionRepository.restoreSession(session.id)
+    }
+
     fun loadTrack(trackName: String): Track? {
         return sessionRepository.loadTrack(trackName)
     }
