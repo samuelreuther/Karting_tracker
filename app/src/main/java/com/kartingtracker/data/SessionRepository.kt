@@ -361,7 +361,7 @@ class SessionRepository(
         val removedSession = _storedSessions.value.firstOrNull { session -> session.id == sessionId }
             ?: _currentSession.value?.takeIf { session -> session.id == sessionId }
             ?: _latestSession.value?.takeIf { session -> session.id == sessionId }
-        val deleted = sessionStorageManager.deleteSession(sessionId)
+        val deleted = sessionStorageManager.markSessionDeleted(sessionId, "User deleted from session list")
         if (!deleted) {
             return false
         }
@@ -377,6 +377,15 @@ class SessionRepository(
 
         refreshStoredSessions()
         removedSession?.trackName?.takeIf { trackName -> trackName.isNotBlank() }?.let(::refreshTrackProfileState)
+        return true
+    }
+
+    fun restoreSession(sessionId: Long): Boolean {
+        val restored = sessionStorageManager.restoreSession(sessionId)
+        if (!restored) {
+            return false
+        }
+        refreshStoredSessions()
         return true
     }
 
