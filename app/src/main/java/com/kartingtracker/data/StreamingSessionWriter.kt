@@ -47,6 +47,7 @@ class StreamingSessionWriter(
 
     @Volatile private var ioFailed = false
     @Volatile private var ioError: Exception? = null
+    @Volatile private var finalized = false
 
     init {
         val dir = tempFile.parentFile
@@ -66,6 +67,7 @@ class StreamingSessionWriter(
 
     suspend fun writeSample(sample: SensorSample) = withContext(Dispatchers.IO) {
         if (ioFailed) throw IOException("StreamingSessionWriter failed: ${ioError?.message}")
+        if (finalized) return@withContext  // silently discard after finalize
 
         synchronized(writeBuffer) {
             if (writeBuffer.remaining() < SAMPLE_SIZE) {
@@ -90,6 +92,7 @@ class StreamingSessionWriter(
     }
 
     suspend fun finalize(): File = withContext(Dispatchers.IO) {
+        finalized = true  // Prevent new writeSample calls from writing after channel close
         flushJob?.cancelAndJoin()
         flushBuffer()
 
@@ -109,6 +112,18 @@ class StreamingSessionWriter(
 
         scope.cancel()
         rawFile
+    }
+
+    fun abort() {
+        finalized = true
+        flushJob?.cancel()
+        try {
+            outputChannel?.close()
+        } catch (_: Exception) {}
+        outputChannel = null
+        tempFile.delete()
+        scope.cancel()
+        Log.i(TAG, "Aborted streaming writer for session $sessionId, temp file deleted")
     }
 
     private fun flushBuffer() {

@@ -950,8 +950,10 @@ class SessionRepository(
 
             try {
                 // Step 1: Finalize binary file (fast — just flush + rename)
-                val rawFile = streamingWriter?.finalize()
+                val writer = streamingWriter
                     ?: throw IllegalStateException("No streaming writer active for session ${rawSession.id}")
+                val rawFile = writer.finalize()
+                val persistedSampleCount = writer.samplesWritten
                 streamingWriter = null
                 recentSamples.clear()
 
@@ -959,7 +961,7 @@ class SessionRepository(
 
                 // Step 2: Calculate actual sample rate
                 val durationSeconds = (rawSession.endTimestampNs - rawSession.startTimestampNs) / 1_000_000_000.0
-                val actualRateHz = if (durationSeconds > 0) (_sampleCount.value / durationSeconds).toInt() else 0
+                val actualRateHz = if (durationSeconds > 0) (persistedSampleCount / durationSeconds).toInt() else 0
                 val sampleRateQuality = when {
                     actualRateHz >= rawSession.targetSampleRateHz * 0.9 -> "STABLE"
                     actualRateHz >= rawSession.targetSampleRateHz * 0.6 -> "INCONSISTENT"
@@ -1029,6 +1031,9 @@ class SessionRepository(
                 val failureSnapshot = buildPartialSessionSnapshot()
                 _isRecording.value = false
                 stopAutosaveLocked()
+                streamingWriter?.abort()
+                streamingWriter = null
+                recentSamples.clear()
                 failureSnapshot?.let { snapshot ->
                     persistSessionWithVerification(snapshot, "failure_snapshot")
                 }
