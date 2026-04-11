@@ -65,6 +65,8 @@
     <string name="session_filter_label">Filter by track</string>
     <string name="no_saved_sessions">No saved sessions found.</string>
     <string name="no_saved_sessions_for_track">No saved sessions found for %1$s yet.</string>
+    <string name="loading_sessions">Loading sessions…</string>
+    <string name="error_loading_sessions">Failed to load sessions.</string>
     <string name="file_size">File size</string>
     <string name="delete_session">Delete session</string>
     <string name="delete_track">Delete track</string>

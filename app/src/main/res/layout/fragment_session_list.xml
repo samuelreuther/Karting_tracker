@@ -49,6 +49,24 @@
             android:text="@string/import_backup" />
     </LinearLayout>
 
+    <ProgressBar
+        android:id="@+id/sessionsLoadingIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="24dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/sessionsErrorLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:text="@string/error_loading_sessions"
+        android:visibility="gone"
+        style="@style/KartingBodyMuted" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/sessionRecyclerView"
         android:layout_width="match_parent"

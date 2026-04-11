@@ -116,7 +116,8 @@ data class ComparisonUiState(
 data class SessionListUiState(
     val filterOptions: List<String> = emptyList(),
     val selectedFilter: String = SessionViewModel.ALL_TRACKS_FILTER,
-    val sessions: List<SessionListItemUiState> = emptyList()
+    val sessions: List<SessionListItemUiState> = emptyList(),
+    val isLoading: Boolean = true
 )
 
 data class SessionListItemUiState(

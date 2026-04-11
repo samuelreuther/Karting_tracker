@@ -26,6 +26,7 @@ import com.kartingtracker.databinding.FragmentSessionListBinding
 import com.kartingtracker.ui.AppViewModelFactory
 import com.kartingtracker.ui.AnalysisMode
 import com.kartingtracker.ui.SessionListItemUiState
+import com.kartingtracker.ui.SessionListUiState
 import com.kartingtracker.ui.SessionViewModel
 import kotlinx.coroutines.launch
 
@@ -108,17 +109,17 @@ class SessionListFragment : Fragment() {
                 .show()
         }
 
+        showLoadingState()
+
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sessionViewModel.sessionListUiState.collect { state ->
-                    updateFilterSpinner(state.filterOptions, state.selectedFilter)
-                    adapter.submitList(state.sessions)
-                    binding.emptyStateLabel.visibility = if (state.sessions.isEmpty()) View.VISIBLE else View.GONE
-                    binding.sessionRecyclerView.visibility = if (state.sessions.isEmpty()) View.GONE else View.VISIBLE
-                    binding.emptyStateLabel.text = if (state.selectedFilter == SessionViewModel.ALL_TRACKS_FILTER) {
-                        getString(R.string.no_saved_sessions)
-                    } else {
-                        getString(R.string.no_saved_sessions_for_track, state.selectedFilter)
+                    when {
+                        state.isLoading -> showLoadingState()
+                        else -> {
+                            showSuccessState(state)
+                            updateFilterSpinner(state.filterOptions, state.selectedFilter)
+                        }
                     }
                 }
             }
@@ -128,6 +129,35 @@ class SessionListFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun showLoadingState() {
+        binding.sessionsLoadingIndicator.visibility = View.VISIBLE
+        binding.sessionsErrorLabel.visibility = View.GONE
+        binding.sessionRecyclerView.visibility = View.GONE
+        binding.emptyStateLabel.visibility = View.GONE
+    }
+
+    private fun showSuccessState(state: SessionListUiState) {
+        binding.sessionsLoadingIndicator.visibility = View.GONE
+        binding.sessionsErrorLabel.visibility = View.GONE
+        adapter.submitList(state.sessions)
+        val isEmpty = state.sessions.isEmpty()
+        binding.sessionRecyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        binding.emptyStateLabel.visibility = if (isEmpty) View.VISIBLE else View.GONE
+        binding.emptyStateLabel.text = if (state.selectedFilter == SessionViewModel.ALL_TRACKS_FILTER) {
+            getString(R.string.no_saved_sessions)
+        } else {
+            getString(R.string.no_saved_sessions_for_track, state.selectedFilter)
+        }
+    }
+
+    private fun showErrorState(message: String) {
+        binding.sessionsLoadingIndicator.visibility = View.GONE
+        binding.sessionRecyclerView.visibility = View.GONE
+        binding.emptyStateLabel.visibility = View.GONE
+        binding.sessionsErrorLabel.visibility = View.VISIBLE
+        binding.sessionsErrorLabel.text = message.ifBlank { getString(R.string.error_loading_sessions) }
     }
 
     private fun updateFilterSpinner(options: List<String>, selectedFilter: String) {

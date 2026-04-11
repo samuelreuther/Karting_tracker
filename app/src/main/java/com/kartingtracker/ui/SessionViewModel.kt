@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -57,6 +59,19 @@ class SessionViewModel(
     private val selectedLapAIndex = MutableStateFlow(0)
     private val selectedLapBIndex = MutableStateFlow(1)
     private val selectedSessionFilter = MutableStateFlow(ALL_TRACKS_FILTER)
+    private val _isSessionListLoaded = MutableStateFlow(false)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Wait for the repository's first IO load to complete, then mark the list as loaded.
+            // storedSessions starts as emptyList(); it will be updated once refreshStoredSessions()
+            // finishes. We skip the initial empty emission and wait for any subsequent one.
+            sessionRepository.storedSessions
+                .drop(1)
+                .firstOrNull()
+            _isSessionListLoaded.value = true
+        }
+    }
 
     val idealLap: StateFlow<IdealLap?> = combine(
         sessionRepository.storedSessions,
@@ -251,8 +266,12 @@ class SessionViewModel(
     val sessionListUiState: StateFlow<SessionListUiState> = combine(
         sessionRepository.storedSessions,
         sessionRepository.availableTracks,
-        selectedSessionFilter
-    ) { storedSessions, tracks, selectedFilter ->
+        selectedSessionFilter,
+        _isSessionListLoaded
+    ) { storedSessions, tracks, selectedFilter, isLoaded ->
+        if (!isLoaded) {
+            return@combine SessionListUiState(isLoading = true)
+        }
         val filterOptions = listOf(ALL_TRACKS_FILTER) + tracks.map { track -> track.name }
         val activeFilter = selectedFilter.takeIf { filterOptions.contains(it) } ?: ALL_TRACKS_FILTER
         val filteredSessions = if (activeFilter == ALL_TRACKS_FILTER) {
@@ -269,11 +288,12 @@ class SessionViewModel(
                     sampleCount = session.samples.size,
                     fileSizeBytes = sessionRepository.getSessionFileSize(session)
                 )
-            }
+            },
+            isLoading = false
         )
     }
         .flowOn(Dispatchers.IO)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionListUiState(isLoading = true))
 
     private val selectedCompareSessionAId = MutableStateFlow<Long?>(null)
     private val selectedCompareSessionBId = MutableStateFlow<Long?>(null)
