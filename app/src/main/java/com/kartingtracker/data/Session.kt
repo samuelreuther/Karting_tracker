@@ -27,7 +27,13 @@ data class Session(
     val lapDetectionDebugInfo: LapDetectionDebugInfo? = null,
     val analysisValidity: AnalysisValidity = AnalysisValidity.VALID,
     val invalidReason: String? = null,
-    val invalidDiagnostics: List<String> = emptyList()
+    val invalidDiagnostics: List<String> = emptyList(),
+    val rawFilePath: String? = null,
+    val targetSampleRateHz: Int = 50,
+    val actualAverageSampleRateHz: Int = 0,
+    val sampleRateQuality: String = "UNKNOWN",
+    val deletedAt: Long? = null,
+    val deletionReason: String? = null
 ) {
     companion object {
         const val DEFAULT_PROCESSING_VERSION = 1
