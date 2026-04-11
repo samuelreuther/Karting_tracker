@@ -6,12 +6,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
@@ -37,14 +39,20 @@ class StreamingSessionWriter(
 
     private val writeBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var outputChannel: FileChannel? = null
+    @Volatile private var outputChannel: FileChannel? = null
     private var flushJob: Job? = null
 
-    var samplesWritten = 0L
+    @Volatile var samplesWritten = 0L
         private set
 
+    @Volatile private var ioFailed = false
+    @Volatile private var ioError: Exception? = null
+
     init {
-        tempFile.parentFile?.mkdirs()
+        val dir = tempFile.parentFile
+        if (dir != null && !dir.exists() && !dir.mkdirs()) {
+            throw IOException("Could not create session directory: $dir")
+        }
         outputChannel = FileOutputStream(tempFile).channel
 
         // Background flush loop
@@ -57,6 +65,8 @@ class StreamingSessionWriter(
     }
 
     suspend fun writeSample(sample: SensorSample) = withContext(Dispatchers.IO) {
+        if (ioFailed) throw IOException("StreamingSessionWriter failed: ${ioError?.message}")
+
         synchronized(writeBuffer) {
             if (writeBuffer.remaining() < SAMPLE_SIZE) {
                 flushBuffer()
@@ -80,15 +90,19 @@ class StreamingSessionWriter(
     }
 
     suspend fun finalize(): File = withContext(Dispatchers.IO) {
-        flushJob?.cancel()
+        flushJob?.cancelAndJoin()
         flushBuffer()
 
         outputChannel?.close()
         outputChannel = null
 
+        if (ioFailed) {
+            throw IOException("Session $sessionId binary write failed: ${ioError?.message}")
+        }
+
         // Atomic rename: temp → final
         if (!tempFile.renameTo(rawFile)) {
-            throw IllegalStateException("Failed to finalize raw session file")
+            throw IllegalStateException("Failed to rename $tempFile to $rawFile (session $sessionId)")
         }
 
         Log.i(TAG, "Finalized raw session $sessionId: $samplesWritten samples, ${rawFile.length()} bytes")
@@ -102,8 +116,15 @@ class StreamingSessionWriter(
             if (writeBuffer.position() == 0) return
 
             writeBuffer.flip()
-            outputChannel?.write(writeBuffer)
-            writeBuffer.clear()
+            try {
+                outputChannel?.write(writeBuffer)
+            } catch (e: Exception) {
+                ioFailed = true
+                ioError = e
+                Log.e(TAG, "Failed to flush buffer for session $sessionId", e)
+            } finally {
+                writeBuffer.clear()
+            }
         }
     }
 
@@ -114,27 +135,30 @@ class StreamingSessionWriter(
 
         fun loadSamplesFromBinaryFile(file: File): List<SensorSample> {
             val samples = mutableListOf<SensorSample>()
-            val bytes = file.readBytes()
-            val buffer = ByteBuffer.wrap(bytes)
-
-            while (buffer.remaining() >= SAMPLE_SIZE) {
-                samples.add(
-                    SensorSample(
-                        timestampNs = buffer.getLong(),
-                        accelX = buffer.getFloat(),
-                        accelY = buffer.getFloat(),
-                        accelZ = buffer.getFloat(),
-                        gyroX = buffer.getFloat(),
-                        gyroY = buffer.getFloat(),
-                        gyroZ = buffer.getFloat(),
-                        longitudinalAccel = buffer.getFloat(),
-                        lateralAccel = buffer.getFloat(),
-                        totalAcceleration = buffer.getFloat(),
-                        yawRateAbs = buffer.getFloat()
-                    )
-                )
+            java.io.FileInputStream(file).channel.use { channel ->
+                val buf = ByteBuffer.allocateDirect(BUFFER_SIZE)
+                while (channel.read(buf) > 0) {
+                    buf.flip()
+                    while (buf.remaining() >= SAMPLE_SIZE) {
+                        samples.add(
+                            SensorSample(
+                                timestampNs = buf.getLong(),
+                                accelX = buf.getFloat(),
+                                accelY = buf.getFloat(),
+                                accelZ = buf.getFloat(),
+                                gyroX = buf.getFloat(),
+                                gyroY = buf.getFloat(),
+                                gyroZ = buf.getFloat(),
+                                longitudinalAccel = buf.getFloat(),
+                                lateralAccel = buf.getFloat(),
+                                totalAcceleration = buf.getFloat(),
+                                yawRateAbs = buf.getFloat()
+                            )
+                        )
+                    }
+                    buf.compact()
+                }
             }
-
             return samples
         }
     }

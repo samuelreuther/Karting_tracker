@@ -57,4 +57,46 @@ class StreamingSessionWriterTest {
         assertEquals(1000L, readSamples.first().timestampNs)
         assertEquals(100000L, readSamples.last().timestampNs)
     }
+
+    @Test
+    fun `finalize with no samples creates empty file`() = runTest {
+        val sessionDir = tempFolder.newFolder()
+        val writer = StreamingSessionWriter(sessionId = 789L, sessionDirectory = sessionDir)
+        val file = writer.finalize()
+        assertTrue(file.exists())
+        assertEquals(0L, file.length())
+        assertEquals(0L, writer.samplesWritten)
+    }
+
+    @Test
+    fun `samplesWritten matches samples passed in`() = runTest {
+        val sessionDir = tempFolder.newFolder()
+        val writer = StreamingSessionWriter(sessionId = 111L, sessionDirectory = sessionDir)
+        val sample = SensorSample(1L, 1f, 2f, 3f, 0.1f, 0.2f, 0.3f, 0.5f, 0.6f, 0.7f, 0.8f)
+        repeat(50) { writer.writeSample(sample) }
+        writer.finalize()
+        assertEquals(50L, writer.samplesWritten)
+    }
+
+    @Test
+    fun `loadSamplesFromBinaryFile preserves all field values`() = runTest {
+        val sessionDir = tempFolder.newFolder()
+        val writer = StreamingSessionWriter(sessionId = 222L, sessionDirectory = sessionDir)
+        val sample = SensorSample(
+            timestampNs = 9999L,
+            accelX = 1.1f, accelY = 2.2f, accelZ = 3.3f,
+            gyroX = 4.4f, gyroY = 5.5f, gyroZ = 6.6f,
+            longitudinalAccel = 7.7f, lateralAccel = 8.8f,
+            totalAcceleration = 9.9f, yawRateAbs = 10.10f
+        )
+        writer.writeSample(sample)
+        val file = writer.finalize()
+        val loaded = StreamingSessionWriter.loadSamplesFromBinaryFile(file)
+        assertEquals(1, loaded.size)
+        val s = loaded[0]
+        assertEquals(9999L, s.timestampNs)
+        assertEquals(1.1f, s.accelX, 0.001f)
+        assertEquals(7.7f, s.longitudinalAccel, 0.001f)
+        assertEquals(10.10f, s.yawRateAbs, 0.001f)
+    }
 }
