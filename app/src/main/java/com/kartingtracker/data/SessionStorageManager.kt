@@ -15,6 +15,8 @@ class SessionStorageManager(
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     val sessionDirectory = File(context.filesDir, "sessions").apply { mkdirs() }
     private val corruptDirectory = File(context.filesDir, "corrupt_sessions").apply { mkdirs() }
+    private val deletedDirectory = File(context.filesDir, "deleted_sessions").apply { mkdirs() }
+    private val permanentDeleteAfterMs = java.util.concurrent.TimeUnit.DAYS.toMillis(7L)
     @Volatile
     private var sessionFileSizeById: Map<Long, Long> = emptyMap()
 
@@ -57,6 +59,7 @@ class SessionStorageManager(
         sessionFileSizeById = fileSizesById
 
         return sessions
+            .filter { session -> session.deletedAt == null }
             .sortedByDescending { session -> session.startTimeEpochMs }
     }
 
@@ -95,6 +98,102 @@ class SessionStorageManager(
     fun deleteSession(sessionId: Long): Boolean {
         val targetFile = findSessionFile(sessionId) ?: return false
         return targetFile.delete()
+    }
+
+    fun markSessionDeleted(sessionId: Long, reason: String = "User deleted"): Boolean {
+        return try {
+            val sourceFile = findSessionFile(sessionId) ?: return false
+            val destFile = File(deletedDirectory, sourceFile.name)
+            if (!sourceFile.renameTo(destFile)) {
+                sourceFile.copyTo(destFile, overwrite = true)
+                if (!sourceFile.delete()) {
+                    Log.w(TAG, "Failed to delete source file after copy during soft delete for session $sessionId")
+                }
+            }
+            val session = parseSession(destFile) ?: return false
+            val updated = session.copy(
+                deletedAt = System.currentTimeMillis(),
+                deletionReason = reason
+            )
+            writeAtomically(destFile, gson.toJson(updated))
+            Log.i(TAG, "$LOG_TAG: soft-deleted session=$sessionId reason=$reason")
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "Failed to soft-delete session $sessionId", exception)
+            false
+        }
+    }
+
+    fun restoreSession(sessionId: Long): Boolean {
+        return try {
+            val sourceFile = findDeletedSessionFile(sessionId) ?: return false
+            val destFile = File(sessionDirectory, sourceFile.name)
+            if (!sourceFile.renameTo(destFile)) {
+                sourceFile.copyTo(destFile, overwrite = true)
+                if (!sourceFile.delete()) {
+                    Log.w(TAG, "Failed to delete deleted-directory file after copy during restore for session $sessionId")
+                }
+            }
+            val session = parseSession(destFile) ?: return false
+            val updated = session.copy(
+                deletedAt = null,
+                deletionReason = null
+            )
+            writeAtomically(destFile, gson.toJson(updated))
+            Log.i(TAG, "$LOG_TAG: restored session=$sessionId")
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "Failed to restore session $sessionId", exception)
+            false
+        }
+    }
+
+    fun loadDeletedSessions(): List<Session> {
+        val files = deletedDirectory
+            .listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }
+            .orEmpty()
+        return files.mapNotNull { file -> parseSession(file) }
+            .filter { session -> session.deletedAt != null }
+            .sortedByDescending { session -> session.deletedAt }
+    }
+
+    fun cleanupOldDeletedSessions() {
+        val cutoffMs = System.currentTimeMillis() - permanentDeleteAfterMs
+        val files = deletedDirectory
+            .listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }
+            .orEmpty()
+        files.forEach { file ->
+            val metadata = readDeletedSessionMetadata(file)
+            val deletedAt = metadata?.deletedAt ?: return@forEach
+            if (deletedAt < cutoffMs) {
+                if (file.delete()) {
+                    Log.i(TAG, "$LOG_TAG: permanently deleted expired session file ${file.name}")
+                } else {
+                    Log.w(TAG, "Failed to permanently delete expired session file ${file.name}")
+                }
+            }
+        }
+    }
+
+    private fun findDeletedSessionFile(sessionId: Long): File? {
+        return deletedDirectory
+            .listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }
+            .orEmpty()
+            .firstOrNull { file -> readSessionMetadata(file)?.id == sessionId }
+    }
+
+    private fun readDeletedSessionMetadata(file: File): DeletedSessionFileMetadata? {
+        return try {
+            val jsonObject = JsonParser.parseString(file.readText()).asJsonObject
+            DeletedSessionFileMetadata(
+                id = jsonObject.get(ID_FIELD)?.asLong ?: return null,
+                deletedAt = jsonObject.get(DELETED_AT_FIELD)
+                    ?.takeIf { element -> !element.isJsonNull }
+                    ?.asLong
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun deleteSessionsForTrack(trackName: String): Int {
@@ -370,6 +469,7 @@ class SessionStorageManager(
         private const val CORNER_COACHING_INSIGHTS_FIELD = "cornerCoachingInsights"
         private const val CORNER_COACHING_SUMMARY_FIELD = "cornerCoachingSummary"
         private const val IS_PARTIAL_FIELD = "isPartial"
+        private const val DELETED_AT_FIELD = "deletedAt"
         private const val JSON_SUFFIX = ".json"
         private const val PARTIAL_SUFFIX = "_partial.json"
         private const val MAX_SESSION_FILE_SIZE_BYTES = 64L * 1024L * 1024L
@@ -380,5 +480,10 @@ class SessionStorageManager(
     private data class SessionFileMetadata(
         val id: Long,
         val trackName: String
+    )
+
+    private data class DeletedSessionFileMetadata(
+        val id: Long,
+        val deletedAt: Long?
     )
 }
