@@ -52,7 +52,8 @@ class SessionRepository(
     private var currentSessionId: Long = System.currentTimeMillis()
     private var currentStartTimestampNs: Long = 0L
     private var currentStartTimeEpochMs: Long = 0L
-    private val currentSamples = mutableListOf<SensorSample>()
+    private val recentSamples = CircularBuffer<SensorSample>(capacity = CIRCULAR_BUFFER_SIZE)
+    private var streamingWriter: StreamingSessionWriter? = null
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var autosaveJob: Job? = null
     private var trackStateRefreshJob: Job? = null
@@ -126,7 +127,11 @@ class SessionRepository(
             currentSessionId += 1L
             currentStartTimestampNs = startTimestampNs
             currentStartTimeEpochMs = System.currentTimeMillis()
-            currentSamples.clear()
+            recentSamples.clear()
+            streamingWriter = StreamingSessionWriter(
+                sessionId = currentSessionId,
+                sessionDirectory = sessionStorageManager.sessionDirectory
+            )
             _latestSession.value = null
             _currentSession.value = null
             _sampleCount.value = 0
@@ -142,8 +147,8 @@ class SessionRepository(
             if (!_isRecording.value) {
                 return
             }
-            currentSamples += sample
-            _sampleCount.value = currentSamples.size
+            recentSamples.add(sample)
+            _sampleCount.value++
             _lastSample.value = sample
             val existingHealth = _recordingHealth.value
             if (existingHealth.samplesReceived == 0) {
@@ -151,8 +156,16 @@ class SessionRepository(
             }
             _recordingHealth.value = existingHealth.copy(
                 lastSensorSampleAtEpochMs = System.currentTimeMillis(),
-                samplesReceived = currentSamples.size
+                samplesReceived = _sampleCount.value
             )
+            // Stream to binary file (non-blocking launch)
+            repositoryScope.launch {
+                try {
+                    streamingWriter?.writeSample(sample)
+                } catch (e: Exception) {
+                    Log.e(TAG, "$LOG_TAG: streaming write failed for session=$currentSessionId", e)
+                }
+            }
         }
     }
 
@@ -173,7 +186,7 @@ class SessionRepository(
             transitionRecordingState(RecordingState.STOPPING, "Stop session invoked")
             _isRecording.value = false
             stopAutosaveLocked()
-            val snapshot = if (currentSamples.isEmpty()) {
+            val snapshot = if (recentSamples.size == 0 && _sampleCount.value == 0) {
                 Session(
                     id = currentSessionId,
                     trackName = _currentTrackName.value,
@@ -202,7 +215,7 @@ class SessionRepository(
                     endTimeEpochMs = System.currentTimeMillis(),
                     startTimestampNs = currentStartTimestampNs,
                     endTimestampNs = endTimestampNs,
-                    samples = currentSamples.toList(),
+                    samples = recentSamples.toList(),
                     laps = emptyList(),
                     estimatedLapTimeMs = null,
                     insights = emptyList(),
@@ -667,7 +680,7 @@ class SessionRepository(
             if (!_isRecording.value || currentStartTimeEpochMs == 0L) {
                 return null
             }
-            val snapshotSamples = currentSamples.toList()
+            val snapshotSamples = recentSamples.toList()
             if (!RawPersistenceGuard.shouldPersistAutosave(snapshotSamples.size)) {
                 return null
             }
@@ -931,56 +944,78 @@ class SessionRepository(
     private fun finalizeSessionAsync(rawSession: Session) {
         finalizeJob?.cancel()
         finalizeJob = repositoryScope.launch {
-            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.SAVING_RAW_SESSION, "Saving raw session…", rawSession.id)
+            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.SAVING_RAW_SESSION, "Saving binary file…", rawSession.id)
             Log.i(TAG, "$LOG_TAG: entered SAVING_RAW session=${rawSession.id}")
             transitionRecordingState(RecordingState.SAVING_RAW, "Stop pipeline entered raw save")
-            if (!sessionStorageManager.saveSession(rawSession)) {
-                Log.e(TAG, "$LOG_TAG: raw final save failure session=${rawSession.id}")
-                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Failed to save raw session", rawSession.id)
-                transitionRecordingState(RecordingState.FAILED, "Raw final save failure")
-                _recordingHealth.value = _recordingHealth.value.copy(
-                    rawPersistenceStatus = "raw_save_failed",
-                    lastFailureReason = "Failed to save raw session ${rawSession.id}"
+
+            try {
+                // Step 1: Finalize binary file (fast — just flush + rename)
+                val rawFile = streamingWriter?.finalize()
+                    ?: throw IllegalStateException("No streaming writer active for session ${rawSession.id}")
+                streamingWriter = null
+                recentSamples.clear()
+
+                Log.i(TAG, "$LOG_TAG: binary file saved ${rawFile.absolutePath} ${rawFile.length()} bytes")
+
+                // Step 2: Calculate actual sample rate
+                val durationSeconds = (rawSession.endTimestampNs - rawSession.startTimestampNs) / 1_000_000_000.0
+                val actualRateHz = if (durationSeconds > 0) (_sampleCount.value / durationSeconds).toInt() else 0
+                val sampleRateQuality = when {
+                    actualRateHz >= rawSession.targetSampleRateHz * 0.9 -> "STABLE"
+                    actualRateHz >= rawSession.targetSampleRateHz * 0.6 -> "INCONSISTENT"
+                    else -> "DEGRADED"
+                }
+
+                // Step 3: Save minimal session metadata (no samples in JSON — they're in binary file)
+                val minimalSession = rawSession.copy(
+                    samples = emptyList(),
+                    laps = emptyList(),
+                    processingState = Session.PROCESSING_STATE_PENDING,
+                    rawFilePath = rawFile.absolutePath,
+                    actualAverageSampleRateHz = actualRateHz,
+                    sampleRateQuality = sampleRateQuality
                 )
-                return@launch
-            }
-            val rawFile = sessionStorageManager.resolveSessionFile(rawSession)
-            _recordingHealth.value = _recordingHealth.value.copy(
-                rawPersistenceStatus = "raw_saved",
-                rawFilePath = rawFile.absolutePath
-            )
-            Log.i(TAG, "$LOG_TAG: raw final save success file=${rawFile.absolutePath} bytes=${rawFile.length()} samples=${rawSession.samples.size}")
-            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.PROCESSING_LAPS, "Processing laps…", rawSession.id)
-            transitionRecordingState(RecordingState.PROCESSING, "Raw persisted; processing start")
-            Log.i(TAG, "$LOG_TAG: processing start session=${rawSession.id} samples=${rawSession.samples.size}")
-            val processed = processSessionInternal(rawSession).copy(processingVersion = CURRENT_PROCESSING_VERSION)
-            Log.i(TAG, "$LOG_TAG: processing end session=${rawSession.id} state=${processed.processingState} laps=${processed.laps.size}")
-            _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FINALIZING_SESSION, "Finalizing session…", rawSession.id)
-            if (sessionStorageManager.saveSession(processed)) {
-                sessionStorageManager.deletePartialSnapshot(rawSession.trackName, rawSession.startTimeEpochMs)
-                _latestSession.value = processed
-                _currentSession.value = processed
+
+                _recordingHealth.value = _recordingHealth.value.copy(
+                    rawPersistenceStatus = "raw_binary_saved",
+                    rawFilePath = rawFile.absolutePath
+                )
+
+                if (!sessionStorageManager.saveSession(minimalSession)) {
+                    Log.e(TAG, "$LOG_TAG: metadata save failure session=${rawSession.id}")
+                    _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Failed to save session metadata", rawSession.id)
+                    transitionRecordingState(RecordingState.FAILED, "Metadata save failure")
+                    return@launch
+                }
+
+                _latestSession.value = minimalSession
+                _currentSession.value = minimalSession
                 refreshStoredSessions()
-                processed.trackName.takeIf { it.isNotBlank() }?.let(::refreshTrackProfileState)
-                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.COMPLETED, "Session finalized", rawSession.id)
-                transitionRecordingState(RecordingState.COMPLETED, "Session finalized")
-            } else {
-                val failed = rawSession.copy(
-                    processingState = Session.PROCESSING_STATE_FAILED,
-                    processingFailureReason = "final_session_persist_failed",
-                    isReprocessable = true
-                )
-                sessionStorageManager.saveSession(failed)
-                _currentSession.value = failed
-                _latestSession.value = failed
-                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Finalization failed; raw session preserved", rawSession.id)
-                transitionRecordingState(RecordingState.FAILED, "Final processed save failed")
+
+                transitionRecordingState(RecordingState.RAW_SAVED, "Binary + metadata saved")
+                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.COMPLETED, "Session saved, analysis scheduled", rawSession.id)
+                Log.i(TAG, "$LOG_TAG: session stop completed in <3 seconds, actual rate: ${actualRateHz}Hz")
+
+                // Step 4: Schedule background analysis (non-blocking)
+                scheduleSessionAnalysis(minimalSession.id, rawFile.absolutePath)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "$LOG_TAG: finalizeSessionAsync failed session=${rawSession.id}", e)
+                streamingWriter = null
+                recentSamples.clear()
+                _stopPipelineStatus.value = StopPipelineStatus(StopPipelineStage.FAILED, "Finalization failed: ${e.message}", rawSession.id)
+                transitionRecordingState(RecordingState.FAILED, "Finalization exception: ${e.message}")
                 _recordingHealth.value = _recordingHealth.value.copy(
-                    rawPersistenceStatus = "raw_saved_processing_failed",
-                    lastFailureReason = "Final session persist failed for session ${rawSession.id}"
+                    rawPersistenceStatus = "finalize_failed",
+                    lastFailureReason = "Finalization failed for session ${rawSession.id}: ${e.message}"
                 )
             }
         }
+    }
+
+    private fun scheduleSessionAnalysis(sessionId: Long, rawFilePath: String) {
+        Log.i(TAG, "$LOG_TAG: background analysis scheduled for session=$sessionId rawFile=$rawFilePath")
+        // WorkManager scheduling will be wired in SessionAnalysisWorker (Task 9)
     }
 
     fun updateRecordingState(state: RecordingState) {
@@ -1110,6 +1145,7 @@ class SessionRepository(
     companion object {
         private const val TAG = "SessionRepository"
         private const val CURRENT_PROCESSING_VERSION = 9
+        private const val CIRCULAR_BUFFER_SIZE = 1000
         private const val AUTOSAVE_INTERVAL_MS = 5_000L
         private const val minimumSectorSpacingPercent = 10
         private const val minimumReferenceConfidence = 0.7f

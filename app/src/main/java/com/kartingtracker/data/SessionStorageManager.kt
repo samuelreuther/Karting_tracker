@@ -13,7 +13,7 @@ class SessionStorageManager(
     context: Context
 ) {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
-    private val sessionDirectory = File(context.filesDir, "sessions").apply { mkdirs() }
+    val sessionDirectory = File(context.filesDir, "sessions").apply { mkdirs() }
     private val corruptDirectory = File(context.filesDir, "corrupt_sessions").apply { mkdirs() }
     @Volatile
     private var sessionFileSizeById: Map<Long, Long> = emptyMap()
