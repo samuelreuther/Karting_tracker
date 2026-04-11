@@ -50,4 +50,38 @@ class CircularBufferTest {
 
         assertEquals(3, buffer.latest())
     }
+
+    @Test
+    fun `latest returns null on empty buffer`() {
+        val buffer = CircularBuffer<Int>(capacity = 3)
+        assertNull(buffer.latest())
+    }
+
+    @Test
+    fun `capacity 1 evicts on second add`() {
+        val buffer = CircularBuffer<Int>(capacity = 1)
+        buffer.add(1)
+        buffer.add(2)
+        assertEquals(1, buffer.size)
+        assertEquals(listOf(2), buffer.toList())
+        assertEquals(2, buffer.latest())
+    }
+
+    @Test
+    fun `multiple full wraps preserve last capacity elements`() {
+        val buffer = CircularBuffer<Int>(capacity = 3)
+        (1..9).forEach { buffer.add(it) }
+        assertEquals(3, buffer.size)
+        assertEquals(listOf(7, 8, 9), buffer.toList())
+    }
+
+    @Test
+    fun `latest after wrap returns most recent`() {
+        val buffer = CircularBuffer<Int>(capacity = 3)
+        buffer.add(1)
+        buffer.add(2)
+        buffer.add(3)
+        buffer.add(4)  // wraps: evicts 1
+        assertEquals(4, buffer.latest())
+    }
 }

@@ -2,9 +2,13 @@ package com.kartingtracker.data
 
 /**
  * Fixed-capacity circular buffer that evicts oldest elements when full.
- * Thread-safe for single writer, multiple readers.
+ * Thread-safe: all methods synchronize on this instance.
  */
-class CircularBuffer<T>(val capacity: Int) {
+class CircularBuffer<T>(private val capacity: Int) {
+
+    init {
+        require(capacity > 0) { "CircularBuffer capacity must be greater than 0, was $capacity" }
+    }
 
     private val buffer = ArrayList<T>(capacity)
     private var writeIndex = 0
@@ -33,7 +37,7 @@ class CircularBuffer<T>(val capacity: Int) {
         return if (buffer.size < capacity) {
             buffer.toList()
         } else {
-            // Reorder: from writeIndex to end, then from start to writeIndex
+            // Elements are stored out-of-order; iterate from oldest (writeIndex) using modular arithmetic
             val result = ArrayList<T>(capacity)
             for (i in 0 until capacity) {
                 val index = (writeIndex + i) % capacity
