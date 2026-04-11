@@ -210,8 +210,10 @@ class TrackManager(
         var deletedCount = 0
         if (sessions.isNotEmpty()) {
             sessions.forEach { session ->
-                // TODO: replace with markSessionDeleted when Task 17 is complete
-                val deleted = sessionManager.deleteSession(session.id)
+                val deleted = sessionManager.markSessionDeleted(
+                    sessionId = session.id,
+                    reason = "Track '$normalized' deleted by user"
+                )
                 if (deleted) deletedCount++
             }
         }
