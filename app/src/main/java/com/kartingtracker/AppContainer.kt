@@ -40,6 +40,7 @@ class AppContainer(context: Context) {
     }
 
     val sessionRepository = SessionRepository(
+        context = context.applicationContext,
         lapDetector = lapDetector,
         peakDetector = peakDetector,
         sessionStorageManager = sessionStorageManager,

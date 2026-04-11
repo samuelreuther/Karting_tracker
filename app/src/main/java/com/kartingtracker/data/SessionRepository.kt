@@ -1,5 +1,6 @@
 package com.kartingtracker.data
 
+import android.content.Context
 import android.graphics.PointF
 import android.net.Uri
 import android.util.Log
@@ -35,6 +36,7 @@ data class StopPipelineStatus(
 )
 
 class SessionRepository(
+    private val context: Context,
     private val lapDetector: LapDetector,
     private val peakDetector: PeakDetector,
     private val sessionStorageManager: SessionStorageManager,
@@ -1016,8 +1018,83 @@ class SessionRepository(
     }
 
     private fun scheduleSessionAnalysis(sessionId: Long, rawFilePath: String) {
-        Log.i(TAG, "$LOG_TAG: background analysis scheduled for session=$sessionId rawFile=$rawFilePath")
-        // WorkManager scheduling will be wired in SessionAnalysisWorker (Task 9)
+        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.kartingtracker.worker.SessionAnalysisWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    com.kartingtracker.worker.SessionAnalysisWorker.KEY_SESSION_ID to sessionId,
+                    com.kartingtracker.worker.SessionAnalysisWorker.KEY_RAW_FILE_PATH to rawFilePath
+                )
+            )
+            .build()
+
+        androidx.work.WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                "analyze_session_$sessionId",
+                androidx.work.ExistingWorkPolicy.KEEP,
+                workRequest
+            )
+
+        Log.i(TAG, "$LOG_TAG: WorkManager analysis job enqueued for session=$sessionId")
+    }
+
+    suspend fun analyzeRawSession(sessionId: Long, rawFilePath: String): Boolean = withContext(Dispatchers.Default) {
+        try {
+            Log.i(TAG, "$LOG_TAG: background analysis started session=$sessionId")
+
+            // Load session metadata (was saved as minimal JSON during stop)
+            val session = sessionStorageManager.loadAllSessions().find { it.id == sessionId }
+            if (session == null) {
+                Log.e(TAG, "$LOG_TAG: session $sessionId not found for analysis")
+                return@withContext false
+            }
+
+            // Load samples from binary file
+            val rawFile = java.io.File(rawFilePath)
+            if (!rawFile.exists()) {
+                Log.e(TAG, "$LOG_TAG: raw binary file not found: $rawFilePath")
+                return@withContext false
+            }
+            val samples = StreamingSessionWriter.loadSamplesFromBinaryFile(rawFile)
+            Log.i(TAG, "$LOG_TAG: loaded ${samples.size} samples from binary file")
+
+            // Run full analysis pipeline (reuses existing private infrastructure)
+            val sessionWithSamples = session.copy(samples = samples)
+            val analyzed = processSessionInternal(sessionWithSamples).copy(
+                processingVersion = CURRENT_PROCESSING_VERSION,
+                samples = emptyList()  // Don't persist samples in JSON — they're in the binary file
+            )
+
+            // Save analyzed session
+            sessionStorageManager.saveSession(analyzed)
+
+            // Update live state if this is the current session
+            synchronized(lock) {
+                if (_latestSession.value?.id == sessionId) {
+                    _latestSession.value = analyzed
+                }
+                if (_currentSession.value?.id == sessionId) {
+                    _currentSession.value = analyzed
+                }
+            }
+
+            refreshStoredSessions()
+            analyzed.trackName.takeIf { it.isNotBlank() }?.let { trackName ->
+                refreshTrackProfileState(trackName)
+            }
+
+            Log.i(TAG, "$LOG_TAG: background analysis completed session=$sessionId laps=${analyzed.laps.size}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "$LOG_TAG: background analysis failed session=$sessionId", e)
+            // Mark as failed but preserve the raw binary file
+            val session = sessionStorageManager.loadAllSessions().find { it.id == sessionId }
+            session?.let { existing ->
+                sessionStorageManager.saveSession(
+                    existing.copy(processingState = Session.PROCESSING_STATE_FAILED)
+                )
+            }
+            false
+        }
     }
 
     fun updateRecordingState(state: RecordingState) {
