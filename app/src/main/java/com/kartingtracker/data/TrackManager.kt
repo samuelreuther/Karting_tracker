@@ -4,6 +4,15 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 
+sealed class TrackDeletionResult {
+    data class RequiresConfirmation(
+        val trackName: String,
+        val sessionCount: Int
+    ) : TrackDeletionResult()
+    data class Success(val deletedSessions: Int) : TrackDeletionResult()
+    data class Failed(val reason: String) : TrackDeletionResult()
+}
+
 class TrackManager(
     context: Context,
     private val sessionStorageManager: SessionStorageManager,
@@ -176,6 +185,44 @@ class TrackManager(
 
     fun clearSelectedTrack() {
         preferences.edit().remove(KEY_SELECTED_TRACK).apply()
+    }
+
+    fun deleteTrackSafely(
+        trackName: String,
+        sessionManager: SessionStorageManager,
+        confirmed: Boolean = false
+    ): TrackDeletionResult {
+        val normalized = normalizeTrackName(trackName)
+        if (normalized.isBlank()) {
+            return TrackDeletionResult.Failed("Track name is blank")
+        }
+
+        val sessions = sessionManager.loadSessionsForTrack(normalized)
+
+        if (sessions.isNotEmpty() && !confirmed) {
+            return TrackDeletionResult.RequiresConfirmation(
+                trackName = normalized,
+                sessionCount = sessions.size
+            )
+        }
+
+        // Soft-delete all sessions for this track
+        var deletedCount = 0
+        if (sessions.isNotEmpty()) {
+            sessions.forEach { session ->
+                // TODO: replace with markSessionDeleted when Task 17 is complete
+                val deleted = sessionManager.deleteSession(session.id)
+                if (deleted) deletedCount++
+            }
+        }
+
+        // Remove track
+        val deleted = deleteTrack(normalized)
+        return if (deleted) {
+            TrackDeletionResult.Success(deletedSessions = deletedCount)
+        } else {
+            TrackDeletionResult.Failed("Failed to delete track '$normalized'")
+        }
     }
 
     fun deleteTrack(trackName: String): Boolean {
