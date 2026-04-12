@@ -1,0 +1,26 @@
+{
+  "doc_path": "docs/TROUBLESHOOTING.md",
+  "claims_checked": 8,
+  "claims_passed": 5,
+  "claims_failed": 3,
+  "failures": [
+    {
+      "line": 16,
+      "claim": "tap \"Retry Analysis\" if available",
+      "expected": "UI label 'Retry Analysis' in codebase",
+      "actual": "No 'Retry Analysis' label found; the actual reprocess button is labelled 'Reprocess session' (strings.xml:77, R.string.reprocess_session)"
+    },
+    {
+      "line": 30,
+      "claim": "Go to Menu → Recently Deleted",
+      "expected": "navigation path 'Menu → Recently Deleted' exists in UI",
+      "actual": "No 'Recently Deleted' screen or menu item found; restore is only available via Snackbar UNDO action immediately after deletion in SessionListFragment"
+    },
+    {
+      "line": 39,
+      "claim": "Settings → Export Logs",
+      "expected": "navigation path 'Settings → Export Logs' exists in UI",
+      "actual": "No Settings screen and no Export Logs feature found in codebase; available export options are 'Export CSV' (R.string.export_csv) and 'Export Backup' (R.string.export_backup)"
+    }
+  ]
+}

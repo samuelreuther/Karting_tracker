@@ -1,0 +1,20 @@
+{
+  "doc_path": "README.md",
+  "claims_checked": 47,
+  "claims_passed": 45,
+  "claims_failed": 2,
+  "failures": [
+    {
+      "line": 77,
+      "claim": "recording with accelerometer and gyroscope at `SENSOR_DELAY_FASTEST`",
+      "expected": "SENSOR_DELAY_FASTEST used in sensor registration code",
+      "actual": "Code uses SENSOR_DELAY_GAME (50Hz) as the highest tier via AdaptiveSensorRateManager; SENSOR_DELAY_FASTEST is not referenced anywhere in the codebase"
+    },
+    {
+      "line": 638,
+      "claim": "configured Gradle wrapper (`8.7`)",
+      "expected": "Gradle wrapper version 8.7 in gradle/wrapper/gradle-wrapper.properties",
+      "actual": "gradle-wrapper.properties shows gradle-8.14.3-bin.zip; wrapper version is 8.14.3, not 8.7"
+    }
+  ]
+}

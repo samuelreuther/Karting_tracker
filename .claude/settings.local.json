@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(./gradlew build:*)",
+      "Bash(git commit:*)",
+      "Bash(./gradlew test:*)",
+      "Read(//usr/lib/**)",
+      "Read(//opt/**)",
+      "Read(//usr/local/lib/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(update-alternatives --list java)",
+      "Read(//home/sr/**)",
+      "Read(//root/**)",
+      "Read(//home/**)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64)",
+      "Bash(update-java-alternatives -l)",
+      "Skill(gsd-docs-update)",
+      "Bash(python3 -c \"import sys,json; lines=[l for l in sys.stdin if l.strip\\(\\)]; last=json.loads\\(lines[-1]\\) if lines else {}; print\\(last.get\\('type',''\\), last.get\\('message',{}\\).get\\('stop_reason',''\\) if isinstance\\(last.get\\('message'\\),dict\\) else ''\\)\")",
+      "Bash(grep -E '\\(sk-[a-zA-Z0-9]{20,}|sk_live_[a-zA-Z0-9]+|sk_test_[a-zA-Z0-9]+|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|glpat-[a-zA-Z0-9_-]+|AKIA[A-Z0-9]{16}|xox[baprs]-[a-zA-Z0-9-]+|-----BEGIN.*PRIVATE KEY|eyJ[a-zA-Z0-9_-]+\\\\.eyJ[a-zA-Z0-9_-]+\\\\.\\)' /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/README.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/ARCHITECTURE.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/CONFIGURATION.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/GETTING-STARTED.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/DEVELOPMENT.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/TESTING.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/TROUBLESHOOTING.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/CORNER_COACHING_FEATURE_SPEC.md /mnt/c/home/sandbox/sandbox/z-Sonstige_Analysen/Karting_Tracker/docs/PROJEKTDOKUMENTATION.md)",
+      "Bash(git reset:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

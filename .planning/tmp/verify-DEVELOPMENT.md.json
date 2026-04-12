@@ -1,0 +1,20 @@
+{
+  "doc_path": "docs/DEVELOPMENT.md",
+  "claims_checked": 74,
+  "claims_passed": 72,
+  "claims_failed": 2,
+  "failures": [
+    {
+      "line": 53,
+      "claim": "app/src/androidTest/",
+      "expected": "directory exists at app/src/androidTest/",
+      "actual": "directory not found; app/src/ contains only 'main' and 'test' subdirectories"
+    },
+    {
+      "line": 407,
+      "claim": "Sessions stored under these track names are also excluded from backup exports in AppBackupManager",
+      "expected": "'sr test' excluded from AppBackupManager backup exports alongside 'Test Track' and 'Demo Indoor Track'",
+      "actual": "AppBackupManager.excludedTrackTokens only contains normalized forms of 'Test Track' and 'Demo Indoor Track'; 'sr test' is not present in the exclusion list"
+    }
+  ]
+}

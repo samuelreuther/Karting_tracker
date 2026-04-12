@@ -1,0 +1,32 @@
+{
+  "doc_path": "docs/RELIABILITY_VALIDATION_CHECKLIST.md",
+  "claims_checked": 11,
+  "claims_passed": 11,
+  "claims_failed": 0,
+  "failures": [],
+  "_notes": {
+    "method": "The doc contains no backtick-wrapped file paths, npm/gradle commands, API endpoints, function calls, or dependency references per the five formal claim categories. All verifiable technical claims are prose references to RecordingState enum values and named features, verified against the live codebase.",
+    "state_names_verified": {
+      "RECORDING": "PASS - RecordingReliabilityModels.kt enum RecordingState",
+      "SAVING_RAW": "PASS - RecordingReliabilityModels.kt enum RecordingState",
+      "FAILED": "PASS - RecordingReliabilityModels.kt enum RecordingState",
+      "ABORTED": "PASS - RecordingReliabilityModels.kt enum RecordingState"
+    },
+    "log_strings_verified": {
+      "entered RECORDING": "PASS - SensorRecorder.kt:200 Log.i: entered RECORDING at timestampNs=...",
+      "first sample after RECORDING": "PASS - SessionRepository.kt:157 Log.i: first sample after RECORDING",
+      "heartbeat logs every few seconds": "PASS - RecordingForegroundService.kt HEARTBEAT_LOG_INTERVAL_MS=5000ms",
+      "autosave success with file path and byte size": "PASS - SessionRepository.kt:1183 autosave success file=... bytes=...",
+      "entered SAVING_RAW": "PASS - SessionRepository.kt:959 Log.i: entered SAVING_RAW"
+    },
+    "feature_names_verified": {
+      "diagnostics panel": "PASS - SessionViewModel.kt:258-262 diagnosticPanel field, shown in MainFragment via binding.debugRecorderPanel",
+      "debug action (simulator)": "PASS - MainFragment.kt:63-80 generateSeededButton visible in DEBUG builds, triggers 3-min or 10-min simulator",
+      "watchdog": "PASS - RecordingForegroundService.kt, RecorderWatchdogEvaluator.kt, watchdogActive in RecordingHealth",
+      "autosave": "PASS - SessionRepository.kt autosaveJob, autosaveStatus in RecordingHealth",
+      "heartbeat": "PASS - RecordingForegroundService.kt HEARTBEAT_LOG_INTERVAL_MS"
+    },
+    "raw_path_and_raw_status_in_diagnostics": "PASS - SessionViewModel.kt:261 rawStatus= and rawPath= shown in diagnosticPanel",
+    "watchdog_reason_visible_in_diagnostics": "PASS - SessionViewModel.kt:259 watchdogActive shown; SessionRepository.kt:1130 watchdogStopReason populated"
+  }
+}

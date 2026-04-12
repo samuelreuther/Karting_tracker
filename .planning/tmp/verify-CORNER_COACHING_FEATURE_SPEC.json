@@ -1,0 +1,20 @@
+{
+  "doc_path": "docs/CORNER_COACHING_FEATURE_SPEC.md",
+  "claims_checked": 22,
+  "claims_passed": 20,
+  "claims_failed": 2,
+  "failures": [
+    {
+      "line": 168,
+      "claim": "category: CornerCoachingCategory (ACTION, POSITIVE, CONSISTENCY, CAUTION)",
+      "expected": "enum type named 'CornerCoachingCategory' used in CornerCoachingInsight.category field",
+      "actual": "field exists but uses enum type 'CornerInsightCategory', not 'CornerCoachingCategory' — defined in data/CornerCoaching.kt line 3"
+    },
+    {
+      "line": 507,
+      "claim": "SessionViewModel: expose CornerCoachingSummaryUiModel",
+      "expected": "class or type alias 'CornerCoachingSummaryUiModel' in codebase",
+      "actual": "no definition of 'CornerCoachingSummaryUiModel' found in any source file; SessionViewModel accesses cornerCoachingSummary directly without a dedicated UiModel wrapper"
+    }
+  ]
+}

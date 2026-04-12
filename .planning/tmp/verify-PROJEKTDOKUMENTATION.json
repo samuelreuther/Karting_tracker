@@ -1,0 +1,44 @@
+{
+  "doc_path": "docs/PROJEKTDOKUMENTATION.md",
+  "claims_checked": 56,
+  "claims_passed": 50,
+  "claims_failed": 6,
+  "failures": [
+    {
+      "line": 407,
+      "claim": "SensorRecorder kennt drei Phasen: IDLE, CALIBRATING, RECORDING",
+      "expected": "RecorderPhase enum has exactly IDLE, CALIBRATING, RECORDING",
+      "actual": "RecorderPhase enum has five phases: IDLE, PREPARING, CALIBRATING, RECORDING, STOPPING (sensor/SensorRecorder.kt line 27-33)"
+    },
+    {
+      "line": 1007,
+      "claim": "CURRENT_PROCESSING_VERSION = 2",
+      "expected": "CURRENT_PROCESSING_VERSION constant equals 2",
+      "actual": "CURRENT_PROCESSING_VERSION = 9 in data/SessionRepository.kt line 1238"
+    },
+    {
+      "line": 325,
+      "claim": "Track ist aktuell minimal: name — Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort",
+      "expected": "Track data class has only 'name' field",
+      "actual": "Track data class has mapImagePath, mapWidthMeters, mapHeightMeters, startPoint, startDirectionDeg, lengthMeters, location, isIndoor, lastUsedEpochMs fields (data/Track.kt)"
+    },
+    {
+      "line": 454,
+      "claim": "der Service verwendet START_NOT_STICKY",
+      "expected": "RecordingForegroundService returns START_NOT_STICKY unconditionally",
+      "actual": "onStartCommand returns START_STICKY when recorder is active or not IDLE, START_NOT_STICKY otherwise (service/RecordingForegroundService.kt line 64)"
+    },
+    {
+      "line": 614,
+      "claim": "highConfidenceLapRatio als Kennzahl in SessionQuality",
+      "expected": "SessionQuality data class contains highConfidenceLapRatio field",
+      "actual": "SessionQuality has only overallScore, validLapRatio, avgConfidence, disturbedLapRatio, lapTimeVariance — highConfidenceLapRatio is an internal variable in SessionQualityEvaluator only"
+    },
+    {
+      "line": 1062,
+      "claim": "TrackManager: Aktuell nicht vorhanden — Track-Loeschen, Umbenennen",
+      "expected": "TrackManager lacks delete and rename functionality",
+      "actual": "TrackManager implements deleteTrack(), deleteTrackSafely(), renameTrack() (data/TrackManager.kt lines 112, 190, 230)"
+    }
+  ]
+}

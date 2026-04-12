@@ -1,0 +1,91 @@
+{
+  "canonical_queue": [
+    {
+      "type": "readme",
+      "resolved_path": "README.md",
+      "mode": "supplement",
+      "preservation_mode": "supplement",
+      "wave": 1,
+      "status": "completed"
+    },
+    {
+      "type": "architecture",
+      "resolved_path": "docs/ARCHITECTURE.md",
+      "mode": "create",
+      "preservation_mode": null,
+      "wave": 1,
+      "status": "completed"
+    },
+    {
+      "type": "configuration",
+      "resolved_path": "docs/CONFIGURATION.md",
+      "mode": "create",
+      "preservation_mode": null,
+      "wave": 1,
+      "status": "completed"
+    },
+    {
+      "type": "getting_started",
+      "resolved_path": "docs/GETTING-STARTED.md",
+      "mode": "create",
+      "preservation_mode": null,
+      "wave": 2,
+      "status": "completed"
+    },
+    {
+      "type": "development",
+      "resolved_path": "docs/DEVELOPMENT.md",
+      "mode": "create",
+      "preservation_mode": null,
+      "wave": 2,
+      "status": "completed"
+    },
+    {
+      "type": "testing",
+      "resolved_path": "docs/TESTING.md",
+      "mode": "create",
+      "preservation_mode": null,
+      "wave": 2,
+      "status": "completed"
+    }
+  ],
+  "review_queue": [
+    {
+      "path": "docs/PROJEKTDOKUMENTATION.md",
+      "type": "hand-written",
+      "status": "pending_review"
+    },
+    {
+      "path": "docs/CORNER_COACHING_FEATURE_SPEC.md",
+      "type": "hand-written",
+      "status": "pending_review"
+    },
+    {
+      "path": "docs/RELIABILITY_VALIDATION_CHECKLIST.md",
+      "type": "hand-written",
+      "status": "pending_review"
+    },
+    {
+      "path": "docs/TROUBLESHOOTING.md",
+      "type": "hand-written",
+      "status": "pending_review"
+    },
+    {
+      "path": "docs/USER_GUIDE_RELIABILITY.md",
+      "type": "hand-written",
+      "status": "pending_review"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-04-11-reliability-bulletproofing.md",
+      "type": "hand-written",
+      "status": "skipped_planning_artifact"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-11-reliability-bulletproofing-design.md",
+      "type": "hand-written",
+      "status": "skipped_planning_artifact"
+    }
+  ],
+  "gap_queue": [],
+  "created_at": "2026-04-11T00:00:00Z"
+}

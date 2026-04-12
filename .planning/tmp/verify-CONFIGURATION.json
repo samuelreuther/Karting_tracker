@@ -1,0 +1,14 @@
+{
+  "doc_path": "docs/CONFIGURATION.md",
+  "claims_checked": 75,
+  "claims_passed": 74,
+  "claims_failed": 1,
+  "failures": [
+    {
+      "line": 294,
+      "claim": "Debug tracks (`Test Track`, `Demo Indoor Track`, `sr test`) are excluded from exports.",
+      "expected": "'sr test' excluded from AppBackupManager.exportBackup() via excludedTrackTokens",
+      "actual": "AppBackupManager.excludedTrackTokens only contains tokens for 'Test Track' and 'Demo Indoor Track'; 'sr test' is absent. It is suppressed from the UI track list in TrackManager but not from backup exports."
+    }
+  ]
+}
