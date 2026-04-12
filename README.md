@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Karting Tracker
 
 Android app for indoor karting telemetry with smartphone sensors only. No GPS is required.
@@ -28,6 +29,13 @@ The app records accelerometer and gyroscope data, processes the signal on-device
 
 - `README.md` (this file): quick overview, setup, and feature summary
 - `docs/PROJEKTDOKUMENTATION.md`: detailed architecture and algorithm documentation (German)
+- `docs/ARCHITECTURE.md`: system architecture, module boundaries, and data-flow overview
+- `docs/GETTING-STARTED.md`: developer prerequisites, clone, build, and first-run instructions
+- `docs/DEVELOPMENT.md`: development workflow, build commands, code style, and PR process
+- `docs/TESTING.md`: test framework setup, running tests, coverage, and CI integration
+- `docs/CONFIGURATION.md`: build configuration, Gradle properties, and runtime constants
+- `docs/TROUBLESHOOTING.md`: recording issues, common failure modes, and fixes
+- `docs/USER_GUIDE_RELIABILITY.md`: battery settings, OEM restrictions, and recording best practices
 
 ## Quick Start
 
@@ -67,7 +75,7 @@ This is a practical usable app version, not a throwaway prototype.
 
 Implemented today:
 
-- recording with accelerometer and gyroscope at `SENSOR_DELAY_FASTEST`
+- recording with accelerometer and gyroscope at `SENSOR_DELAY_GAME`
 - foreground service based recording with persistent notification
 - 2-second calibration before recording
 - low-pass filtering
@@ -126,7 +134,7 @@ When you press `Start`, recording does not begin immediately.
 
 The app now enters a **10-second pre-start countdown** first:
 
-- large “put phone in pocket now” prompt
+- large "put phone in pocket now" prompt
 - clear countdown indicator
 - explicit messaging that recording has not started yet
 - calibration starts only after countdown completes
@@ -628,7 +636,7 @@ Recommended doc-update checklist for each feature:
 
 ## Build Status In This Workspace
 
-Build and tests depend on network access for downloading the configured Gradle wrapper (`8.7`) and dependencies.
+Build and tests depend on network access for downloading the configured Gradle wrapper (`8.14.3`) and dependencies.
 
 ## UX updates (2026-04-04)
 

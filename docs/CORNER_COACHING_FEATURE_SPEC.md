@@ -12,11 +12,11 @@ Enable drivers to leave each session with **immediate, corner-specific coaching*
 
 The feature must convert existing telemetry and analysis outputs (lap/sector/peak/comparison/track-layout/profile/coach pipeline) into guidance like:
 
-- “Brake earlier into Corner 2.”
-- “Corner 3 is already very consistent.”
-- “Brake slightly later into Corner 4.”
-- “Trail braking in Corner 5 looks promising.”
-- “Focus on exit speed in Corner 6.”
+- "Brake earlier into Corner 2."
+- "Corner 3 is already very consistent."
+- "Brake slightly later into Corner 4."
+- "Trail braking in Corner 5 looks promising."
+- "Focus on exit speed in Corner 6."
 
 Primary success outcome:
 
@@ -52,7 +52,7 @@ Primary success outcome:
 
 ### Post-session compact summary (start/main surface)
 
-Show a small card: **“Corner Coaching (Latest Session)”** with:
+Show a small card: **"Corner Coaching (Latest Session)"** with:
 
 - Top 3 actionable items for next run.
 - Biggest time-gain corner.
@@ -80,7 +80,7 @@ Per corner (expandable row/card):
   - brake timing trend vs reference
   - exit proxy trend vs reference
   - consistency score + sample count
-- confidence bar and reason tooltip (e.g., “limited clean laps”).
+- confidence bar and reason tooltip (e.g., "limited clean laps").
 
 Optional secondary tab/section:
 
@@ -165,7 +165,7 @@ Fields:
 
 - `cornerIndex: Int`
 - `cornerLabel: String`
-- `category: CornerCoachingCategory` (`ACTION`, `POSITIVE`, `CONSISTENCY`, `CAUTION`)
+- `category: CornerInsightCategory` (`ACTION`, `POSITIVE`, `CONSISTENCY`, `CAUTION`)
 - `headline: String`
 - `details: String?`
 - `estimatedGainMs: Float?`
@@ -296,7 +296,7 @@ For each corner, choose first available high-quality reference:
 
 ### Anti-overfitting safeguards
 
-- Do not rely on single “lucky” lap when >=3 clean laps exist.
+- Do not rely on single "lucky" lap when >=3 clean laps exist.
 - Use trimmed median (drop top/bottom outlier lap per metric when possible).
 - Require minimum sample count before emitting strong advice.
 - Degrade confidence when reference source quality is low.
@@ -504,7 +504,7 @@ Likely touched existing classes:
 
 ### UI layer
 
-- `SessionViewModel`: expose `CornerCoachingSummaryUiModel`.
+- `SessionViewModel`: exposes `cornerCoachingSummary` directly from the `Session` model (no dedicated UI wrapper type).
 - `MainFragment`: nutshell card.
 - New adapter/model for corner list screen.
 - Optionally `ComparisonFragment` integration.
@@ -594,7 +594,7 @@ No GPS ground truth required; validate via repeatability and expected directiona
 
 ## 16) Risks and Limitations
 
-1. **No true speed / position**: all “entry/exit speed” feedback is proxy-based.
+1. **No true speed / position**: all "entry/exit speed" feedback is proxy-based.
 2. **Phone mounting variability**: affects absolute thresholds and noise profile.
 3. **Corner boundary approximation**: normalized-percent mapping can drift without absolute track position.
 4. **Sparse clean laps**: weak references can mislead if not suppressed.

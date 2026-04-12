@@ -321,11 +321,16 @@ Bedeutung:
 
 ## Track
 
-`Track` ist aktuell minimal:
+`Track` speichert neben dem Namen auch optionale Streckenmetadaten:
 
 - `name`
-
-Es gibt noch keine Streckenmetadaten wie Laenge, Layout oder Indoor-Standort.
+- `mapImagePath`
+- `mapWidthMeters`, `mapHeightMeters`
+- `startPoint`, `startDirectionDeg`
+- `lengthMeters`
+- `location`
+- `isIndoor`
+- `lastUsedEpochMs`
 
 ## TrackProfile
 
@@ -401,12 +406,14 @@ Detektionspipeline (deterministisch):
 
 - kapselt `SensorManager`
 - registriert `TYPE_ACCELEROMETER` und `TYPE_GYROSCOPE`
-- verwendet `SENSOR_DELAY_FASTEST`
+- verwendet `SENSOR_DELAY_GAME` als Ausgangsstufe (50 Hz) mit adaptivem Downgrade auf `SENSOR_DELAY_UI` (20 Hz) oder `SENSOR_DELAY_NORMAL` (10 Hz) via `AdaptiveSensorRateManager`
 - laeuft auf eigenem `HandlerThread`
-- kennt drei Phasen:
+- kennt fuenf Phasen:
   - `IDLE`
+  - `PREPARING`
   - `CALIBRATING`
   - `RECORDING`
+  - `STOPPING`
 
 Wichtig:
 
@@ -451,7 +458,7 @@ Android-Anforderungen:
 
 Restart-Verhalten:
 
-- der Service verwendet `START_NOT_STICKY`
+- der Service verwendet `START_STICKY` wenn der Recorder aktiv oder nicht-IDLE ist; `START_NOT_STICKY` nur im IDLE-Zustand
 - ein bereits laufender Service bleibt bei UI-Wechseln stabil
 - nach echtem Prozess-Tod wird das Recording nicht automatisch ueber einen Sticky-Restart rekonstruiert
 - Start, Foreground-Promotion, Notification-Updates und Shutdown sind defensiv abgefangen und fuehren bei Fehlern zu sauberem Stop statt zu einem haengenden Service-Zustand
@@ -611,8 +618,6 @@ Kennzahlen:
     - `confidenceScore >= 0.7`
 - `avgConfidence`
   - Mittelwert aller `confidenceScore`
-- `highConfidenceLapRatio`
-  - Anteil normaler, nicht gestoerter Laps mit `confidenceScore >= 0.85`
 - `disturbedLapRatio`
   - Anteil gestoerter Laps
 - `lapTimeVariance`
@@ -1004,7 +1009,7 @@ Wichtige States:
 
 Zentrale Reprocessing-Logik:
 
-- `CURRENT_PROCESSING_VERSION = 2`
+- `CURRENT_PROCESSING_VERSION = 9`
 - `processSessionInternal(session)` fuehrt die komplette deterministische Verarbeitung erneut aus:
   - `LapDetector`
   - `PeakDetector`
@@ -1058,12 +1063,14 @@ Aktuelles Verhalten:
 - der zuletzt ausgewaehlte Track wird gespeichert und beim App-Start wiederhergestellt
 - es gibt keinen impliziten Default wie `General Track`
 
+Implementiert:
+
+- Track-Loeschen: `deleteTrack()` und `deleteTrackSafely()` (mit Soft-Delete aller Sessions)
+- Umbenennen: `renameTrack()` mit case-insensitivem Duplikatschutz
+
 Aktuell nicht vorhanden:
 
-- Track-Loeschen
-- Umbenennen
 - Reihenfolge/Sortierung nach echter letzter Nutzung ausserhalb der aktuellen Letztwahl-Priorisierung
-- Streckenprofile oder Metadaten
 
 ## Track-spezifisches Lernen
 

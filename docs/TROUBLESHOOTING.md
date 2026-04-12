@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Troubleshooting Guide
 
 ## Recording Issues
@@ -13,7 +14,7 @@
 ### No coaching feedback after recording
 - **Check:** Is analysis still running? Check notification
 - **Wait:** Background analysis takes 30–60 seconds
-- **Fix:** Open session details, tap "Retry Analysis" if available
+- **Fix:** Open session details, tap "Reprocess session" if available
 
 ## Performance Issues
 
@@ -27,8 +28,7 @@
 ## Data Issues
 
 ### Accidentally deleted session
-- **Solution:** Go to Menu → Recently Deleted
-- **Action:** Restore within 7 days
+- **Solution:** Restore is only available via the UNDO action in the Snackbar that appears immediately after deleting a session in the session list. Once the Snackbar is dismissed there is no way to recover the session.
 
 ### Accidentally deleted track
 - **Solution:** All sessions moved to Recently Deleted
@@ -36,6 +36,6 @@
 
 ## Getting Help
 
-1. Check app logs: Settings → Export Logs
-2. Report issue with logs attached
+1. Export your data from the Session library screen using Export CSV or Export Backup
+2. Report issue with exported data attached
 3. Include device model and Android version
