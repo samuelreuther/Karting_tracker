@@ -106,6 +106,7 @@ class SessionRepository(
                     _storedSessions.value.maxOfOrNull { session -> session.id } ?: currentSessionId
                 )
             }
+            recoverOrphanRawSessions()
             refreshCurrentTrackState(_currentTrackName.value)
         }
     }
@@ -134,6 +135,12 @@ class SessionRepository(
                 sessionId = currentSessionId,
                 sessionDirectory = sessionStorageManager.sessionDirectory
             )
+            streamingWriter?.writeSidecar(
+                trackName = _currentTrackName.value,
+                startTimeEpochMs = currentStartTimeEpochMs,
+                startTimestampNs = startTimestampNs,
+                targetSampleRateHz = 50
+            )
             _latestSession.value = null
             _currentSession.value = null
             _sampleCount.value = 0
@@ -160,14 +167,8 @@ class SessionRepository(
                 lastSensorSampleAtEpochMs = System.currentTimeMillis(),
                 samplesReceived = _sampleCount.value
             )
-            // Stream to binary file (non-blocking launch)
-            repositoryScope.launch {
-                try {
-                    streamingWriter?.writeSample(sample)
-                } catch (e: Exception) {
-                    Log.e(TAG, "$LOG_TAG: streaming write failed for session=$currentSessionId", e)
-                }
-            }
+            // Stream to binary file (non-blocking enqueue)
+            streamingWriter?.enqueue(sample)
         }
     }
 
@@ -1057,11 +1058,19 @@ class SessionRepository(
                 return@withContext false
             }
 
-            // Load samples from binary file
-            val rawFile = java.io.File(rawFilePath)
-            if (!rawFile.exists()) {
-                Log.e(TAG, "$LOG_TAG: raw binary file not found: $rawFilePath")
-                return@withContext false
+            // Resolve binary file by sessionId first, then fall back to stored path
+            val canonicalFile = java.io.File(sessionStorageManager.sessionDirectory, "session_${sessionId}_raw.bin")
+            val rawFile = if (canonicalFile.exists()) {
+                canonicalFile
+            } else {
+                val fallbackFile = java.io.File(rawFilePath)
+                if (fallbackFile.exists()) {
+                    Log.i(TAG, "$LOG_TAG: using fallback path for session=$sessionId")
+                    fallbackFile
+                } else {
+                    Log.e(TAG, "$LOG_TAG: raw binary file not found: canonical=$canonicalFile fallback=$rawFilePath")
+                    return@withContext false
+                }
             }
             val samples = StreamingSessionWriter.loadSamplesFromBinaryFile(rawFile)
             Log.i(TAG, "$LOG_TAG: loaded ${samples.size} samples from binary file")
@@ -1089,6 +1098,13 @@ class SessionRepository(
             refreshStoredSessions()
             analyzed.trackName.takeIf { it.isNotBlank() }?.let { trackName ->
                 refreshTrackProfileState(trackName)
+            }
+
+            // Delete sidecar metadata after successful analysis
+            val sidecarFile = java.io.File(sessionStorageManager.sessionDirectory, "session_${sessionId}_raw.meta.json")
+            if (sidecarFile.exists()) {
+                sidecarFile.delete()
+                Log.i(TAG, "$LOG_TAG: deleted sidecar metadata for session=$sessionId")
             }
 
             Log.i(TAG, "$LOG_TAG: background analysis completed session=$sessionId laps=${analyzed.laps.size}")
@@ -1230,6 +1246,99 @@ class SessionRepository(
         }
         return session.laps.any { lap ->
             lap.sectorBoundaries.isEmpty() || lap.sectorTimesMs.isEmpty()
+        }
+    }
+
+    private fun recoverOrphanRawSessions() {
+        if (_isRecording.value) {
+            Log.i(TAG, "$LOG_TAG: skipping recovery (recording active)")
+            return
+        }
+
+        try {
+            val sessionDir = sessionStorageManager.sessionDirectory
+            val allFiles = sessionDir.listFiles() ?: return
+            val existingSessions = _storedSessions.value.associateBy { it.id }
+
+            // Step 1: Recover orphaned .tmp files
+            allFiles.filter { it.name.matches(Regex("session_(\\d+)_raw\\.tmp")) }.forEach { tmpFile ->
+                val sessionId = tmpFile.name.substringAfter("session_").substringBefore("_raw.tmp").toLongOrNull()
+                if (sessionId != null) {
+                    val binFile = java.io.File(sessionDir, "session_${sessionId}_raw.bin")
+                    if (!binFile.exists()) {
+                        val renamed = tmpFile.renameTo(binFile)
+                        if (renamed) {
+                            Log.i(TAG, "$LOG_TAG: recovered orphan tmp file -> bin for session=$sessionId")
+                        } else {
+                            Log.w(TAG, "$LOG_TAG: failed to rename orphan tmp file for session=$sessionId")
+                        }
+                    }
+                }
+            }
+
+            // Step 2: Recover orphaned .bin files without FINAL session
+            allFiles.filter { it.name.matches(Regex("session_(\\d+)_raw\\.bin")) }.forEach { binFile ->
+                val sessionId = binFile.name.substringAfter("session_").substringBefore("_raw.bin").toLongOrNull()
+                if (sessionId != null) {
+                    val existingSession = existingSessions[sessionId]
+                    val needsRecovery = existingSession == null ||
+                                       existingSession.processingState != Session.PROCESSING_STATE_FINAL
+
+                    if (needsRecovery) {
+                        val sidecarFile = java.io.File(sessionDir, "session_${sessionId}_raw.meta.json")
+                        val sidecarData = if (sidecarFile.exists()) {
+                            try {
+                                com.google.gson.Gson().fromJson(
+                                    sidecarFile.readText(),
+                                    Map::class.java
+                                ) as? Map<String, Any>
+                            } catch (e: Exception) {
+                                Log.w(TAG, "$LOG_TAG: failed to parse sidecar for session=$sessionId", e)
+                                null
+                            }
+                        } else {
+                            null
+                        }
+
+                        val trackName = (sidecarData?.get("trackName") as? String) ?: ""
+                        val startTimeEpochMs = ((sidecarData?.get("startTimeEpochMs") as? Number)?.toLong())
+                                              ?: System.currentTimeMillis()
+                        val startTimestampNs = ((sidecarData?.get("startTimestampNs") as? Number)?.toLong()) ?: 0L
+
+                        val recoveredSession = Session(
+                            id = sessionId,
+                            trackName = trackName,
+                            startTimeEpochMs = startTimeEpochMs,
+                            endTimeEpochMs = startTimeEpochMs,
+                            startTimestampNs = startTimestampNs,
+                            endTimestampNs = startTimestampNs,
+                            samples = emptyList(),
+                            laps = emptyList(),
+                            estimatedLapTimeMs = null,
+                            insights = emptyList(),
+                            coachingInsights = emptyList(),
+                            theoreticalBestLapTimeMs = null,
+                            topTimeLossSegments = emptyList(),
+                            segmentMarkers = emptyList(),
+                            cornerCoachingInsights = emptyList(),
+                            cornerCoachingSummary = null,
+                            quality = null,
+                            processingState = Session.PROCESSING_STATE_PENDING,
+                            processingVersion = CURRENT_PROCESSING_VERSION,
+                            rawFilePath = binFile.absolutePath,
+                            isReprocessable = true
+                        )
+
+                        sessionStorageManager.saveSession(recoveredSession)
+                        scheduleSessionAnalysis(sessionId, binFile.absolutePath)
+                        Log.i(TAG, "$LOG_TAG: recovered orphan bin file and scheduled analysis for session=$sessionId")
+                    }
+                }
+            }
+
+            refreshStoredSessions()
+        } catch (e: Exception) {
+            Log.e(TAG, "$LOG_TAG: crash recovery failed", e)
         }
     }
 

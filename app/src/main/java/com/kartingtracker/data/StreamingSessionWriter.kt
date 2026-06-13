@@ -1,12 +1,14 @@
 package com.kartingtracker.data
 
 import android.util.Log
+import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -36,11 +38,15 @@ class StreamingSessionWriter(
 ) {
     private val rawFile = File(sessionDirectory, "session_${sessionId}_raw.bin")
     private val tempFile = File(sessionDirectory, "session_${sessionId}_raw.tmp")
+    private val sidecarFile = File(sessionDirectory, "session_${sessionId}_raw.meta.json")
 
     private val writeBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var outputChannel: FileChannel? = null
     private var flushJob: Job? = null
+    private var drainJob: Job? = null
+
+    private val sampleChannel = Channel<SensorSample>(Channel.UNLIMITED)
 
     @Volatile var samplesWritten = 0L
         private set
@@ -56,6 +62,13 @@ class StreamingSessionWriter(
         }
         outputChannel = FileOutputStream(tempFile).channel
 
+        // Single-consumer drain coroutine for ordered writes
+        drainJob = scope.launch {
+            for (sample in sampleChannel) {
+                writeSample(sample)
+            }
+        }
+
         // Background flush loop
         flushJob = scope.launch {
             while (isActive) {
@@ -65,7 +78,14 @@ class StreamingSessionWriter(
         }
     }
 
-    suspend fun writeSample(sample: SensorSample) = withContext(Dispatchers.IO) {
+    fun enqueue(sample: SensorSample) {
+        val result = sampleChannel.trySend(sample)
+        if (result.isFailure) {
+            Log.w(TAG, "Failed to enqueue sample for session $sessionId (channel closed or full)")
+        }
+    }
+
+    private suspend fun writeSample(sample: SensorSample) = withContext(Dispatchers.IO) {
         if (ioFailed) throw IOException("StreamingSessionWriter failed: ${ioError?.message}")
         if (finalized) return@withContext  // silently discard after finalize
 
@@ -92,7 +112,11 @@ class StreamingSessionWriter(
     }
 
     suspend fun finalize(): File = withContext(Dispatchers.IO) {
-        finalized = true  // Prevent new writeSample calls from writing after channel close
+        // Close channel and wait for drain to complete all queued writes
+        sampleChannel.close()
+        drainJob?.join()
+        finalized = true  // now safe: every queued sample has been written
+
         flushJob?.cancelAndJoin()
         flushBuffer()
 
@@ -110,18 +134,26 @@ class StreamingSessionWriter(
 
         Log.i(TAG, "Finalized raw session $sessionId: $samplesWritten samples, ${rawFile.length()} bytes")
 
+        // Delete sidecar metadata after successful finalization
+        if (sidecarFile.exists()) {
+            sidecarFile.delete()
+        }
+
         scope.cancel()
         rawFile
     }
 
     fun abort() {
         finalized = true
+        sampleChannel.close()
+        drainJob?.cancel()
         flushJob?.cancel()
         try {
             outputChannel?.close()
         } catch (_: Exception) {}
         outputChannel = null
         tempFile.delete()
+        sidecarFile.delete()
         scope.cancel()
         Log.i(TAG, "Aborted streaming writer for session $sessionId, temp file deleted")
     }
@@ -140,6 +172,24 @@ class StreamingSessionWriter(
             } finally {
                 writeBuffer.clear()
             }
+        }
+    }
+
+    fun writeSidecar(trackName: String, startTimeEpochMs: Long, startTimestampNs: Long, targetSampleRateHz: Int) {
+        try {
+            val sidecarData = mapOf(
+                "id" to sessionId,
+                "trackName" to trackName,
+                "startTimeEpochMs" to startTimeEpochMs,
+                "startTimestampNs" to startTimestampNs,
+                "endTimestampNs" to 0L,
+                "targetSampleRateHz" to targetSampleRateHz
+            )
+            val json = Gson().toJson(sidecarData)
+            sidecarFile.writeText(json)
+            Log.i(TAG, "Wrote sidecar metadata for session $sessionId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write sidecar metadata for session $sessionId", e)
         }
     }
 
